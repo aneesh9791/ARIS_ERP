@@ -1,0 +1,71 @@
+{
+  "name": "new-erp-frontend",
+  "version": "1.0.0",
+  "description": "Modern ERP system frontend for Kerala Diagnostic Centers",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.8.4",
+    "axios": "^1.6.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.48.2",
+    "react-router-dom": "^6.20.1",
+    "react-scripts": "5.0.1",
+    "lucide-react": "^0.294.0",
+    "recharts": "^2.8.0",
+    "tailwindcss": "^3.3.6",
+    "@headlessui/react": "^1.7.17",
+    "zustand": "^4.4.7",
+    "clsx": "^2.0.0",
+    "date-fns": "^2.30.0",
+    "react-datepicker": "^4.10.0",
+    "react-select": "^5.7.0",
+    "jspdf": "^2.5.1",
+    "html2canvas": "^1.4.1",
+    "xlsx": "^0.18.5",
+    "file-saver": "^2.0.5",
+    "react-toastify": "^9.1.1",
+    "react-hot-toast": "^2.4.0",
+    "react-query-devtools": "^4.24.6",
+    "react-dropzone": "^14.2.3",
+    "moment": "^2.29.4",
+    "yup": "^1.3.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.21",
+    "@types/react-dom": "^18.2.7",
+    "@types/node": "^18.15.11",
+    "typescript": "^4.9.5",
+    "@types/jest": "^29.5.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/user-event": "^13.5.0",
+    "eslint": "^8.42.0",
+    "@typescript-eslint/eslint-plugin": "^5.57.1",
+    "@typescript-eslint/parser": "^5.57.1",
+    "prettier": "^2.8.8",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-prettier": "^4.2.1"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "proxy": "http://localhost:3001"
+}
