@@ -336,6 +336,39 @@ router.put('/study-pricing/:id', [
   }
 });
 
+// Batch upsert — saves all centre pricing in one DB round trip
+router.post('/study-pricing/batch', authenticateToken, async (req, res) => {
+  const { center_id, items } = req.body;
+  if (!center_id || !Array.isArray(items) || !items.length)
+    return res.status(400).json({ error: 'center_id and items[] required' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const results = [];
+    for (const { study_definition_id, base_rate } of items) {
+      if (!study_definition_id || isNaN(parseFloat(base_rate)) || parseFloat(base_rate) < 0) continue;
+      const { rows } = await client.query(
+        `INSERT INTO study_center_pricing (study_definition_id, center_id, base_rate, insurance_rate, self_pay_rate)
+         VALUES ($1, $2, $3, $3, $3)
+         ON CONFLICT (study_definition_id, center_id)
+         DO UPDATE SET base_rate=$3, insurance_rate=$3, self_pay_rate=$3, active=true, updated_at=NOW()
+         RETURNING id, study_definition_id, center_id, base_rate`,
+        [study_definition_id, center_id, parseFloat(base_rate)]
+      );
+      results.push(rows[0]);
+    }
+    await client.query('COMMIT');
+    res.json({ success: true, saved: results.length, pricing: results });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('study-pricing batch POST:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
 router.delete('/study-pricing/:id', authenticateToken, async (req, res) => {
   try {
     const { rows } = await pool.query(

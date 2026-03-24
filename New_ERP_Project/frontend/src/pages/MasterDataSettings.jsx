@@ -743,7 +743,7 @@ const StudyCatalogFull = ({ studyDefs, onDefCreate, onDefUpdate, onDefDelete, on
 };
 
 // ── StudyPricing — center × study pricing screen ─────────────────────────────
-const StudyPricing = ({ studyDefs, studyPricing, centers, onPricingCreate, onPricingUpdate, onPricingDelete }) => {
+const StudyPricing = ({ studyDefs, studyPricing, centers, onPricingBatch, onPricingCreate, onPricingUpdate, onPricingDelete }) => {
   const activeCenters = useMemo(() => (centers || []).filter(c => c.active !== false && c.corporate_entity_id != null), [centers]);
   const [selectedCenter, setSelectedCenter] = useState('');
   const [filterModality, setFilterModality] = useState('');
@@ -789,19 +789,15 @@ const StudyPricing = ({ studyDefs, studyPricing, centers, onPricingCreate, onPri
     setPrices(p => ({ ...p, [defId]: { ...p[defId], value: val, dirty: true } }));
 
   const saveAll = async () => {
-    const dirty = Object.entries(prices).filter(([, v]) => v.dirty && v.value !== '');
+    const dirty = Object.entries(prices)
+      .filter(([, v]) => v.dirty && v.value !== '')
+      .map(([defId, { value }]) => ({ study_definition_id: parseInt(defId), base_rate: parseFloat(value) }))
+      .filter(({ base_rate }) => !isNaN(base_rate) && base_rate >= 0);
     if (!dirty.length) return;
     setSaving(true); setSaveMsg('');
     try {
-      for (const [defId, { value, existingId }] of dirty) {
-        const rate = parseFloat(value);
-        if (isNaN(rate) || rate < 0) continue;
-        if (existingId) {
-          await onPricingUpdate(existingId, { base_rate: rate });
-        } else {
-          await onPricingCreate({ study_definition_id: parseInt(defId), center_id: parseInt(selectedCenter), base_rate: rate });
-        }
-      }
+      // Single batch request — all prices saved in one DB transaction
+      await onPricingBatch(parseInt(selectedCenter), dirty);
       setSaveMsg(`Saved ${dirty.length} stud${dirty.length > 1 ? 'ies' : 'y'}`);
       setTimeout(() => setSaveMsg(''), 3000);
     } catch (err) { setSaveMsg('Error: ' + (err.message || 'Save failed')); }
@@ -4102,37 +4098,34 @@ const MasterDataSettings = () => {
     }
   }, []);
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      await Promise.all([
-        fetchStudyDefs(),
-        fetchStudyPricing(),
-        fetchReporters(),
-        fetchStudyList(),
-        fetchCenters(),
-        fetchModalities(),
-        fetchRoles(),
-        fetchUsers(),
-        fetchPhysicians(),
-      ]);
-      setLoading(false);
-    };
-    loadData();
-  }, [fetchStudyDefs, fetchStudyPricing, fetchReporters, fetchStudyList, fetchCenters, fetchModalities, fetchRoles, fetchUsers, fetchPhysicians]);
+  // Track which tabs have already been loaded so we don't re-fetch on every visit
+  const loadedTabs = useRef(new Set());
 
   useEffect(() => {
-    if (activeTab === 'study-catalog' || activeTab === 'study-pricing') {
-      fetchStudyDefs();
-      fetchStudyPricing();
-    } else if (activeTab === 'radiologist') {
-      fetchReporters();
-      fetchStudyList();
-    } else if (activeTab === 'center-modality') {
-      fetchCenters();
-      fetchModalities();
-    }
-  }, [activeTab, fetchStudyDefs, fetchStudyPricing, fetchReporters, fetchStudyList, fetchCenters, fetchModalities]);
+    if (loadedTabs.current.has(activeTab)) return;
+    loadedTabs.current.add(activeTab);
+
+    const load = async () => {
+      setLoading(true);
+      if (activeTab === 'study-catalog') {
+        await fetchStudyDefs();
+      } else if (activeTab === 'study-pricing') {
+        await Promise.all([fetchStudyDefs(), fetchStudyPricing(), fetchCenters()]);
+      } else if (activeTab === 'radiologist') {
+        await Promise.all([fetchReporters(), fetchStudyList()]);
+      } else if (activeTab === 'physician') {
+        await fetchPhysicians();
+      } else if (activeTab === 'center') {
+        await fetchCenters();
+      } else if (activeTab === 'modality-master') {
+        await fetchModalities();
+      } else if (activeTab === 'center-modality') {
+        await Promise.all([fetchCenters(), fetchModalities()]);
+      }
+      setLoading(false);
+    };
+    load();
+  }, [activeTab, fetchStudyDefs, fetchStudyPricing, fetchReporters, fetchStudyList, fetchCenters, fetchModalities, fetchRoles, fetchUsers, fetchPhysicians]);
 
   const handleCenterCreate = async (centerData) => {
     const res = await fetch('/api/center-master', {
@@ -4196,6 +4189,17 @@ const MasterDataSettings = () => {
   };
 
   // ── Study Pricing (center mappings) ───────────────────────────
+  // Batch save — single API call for all dirty prices
+  const handlePricingBatch = async (centerId, items) => {
+    const res = await fetch('/api/masters/study-pricing/batch', {
+      method: 'POST', headers: AUTH_HEADER(),
+      body: JSON.stringify({ center_id: centerId, items }),
+    });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to save pricing'); }
+    fetchStudyPricing();
+  };
+
+  // Keep single-item handlers for individual row edits
   const handlePricingCreate = async (payload) => {
     const res = await fetch('/api/masters/study-pricing', { method: 'POST', headers: AUTH_HEADER(), body: JSON.stringify(payload) });
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || d.errors?.[0]?.msg || 'Failed to create pricing'); }
@@ -4420,7 +4424,7 @@ const MasterDataSettings = () => {
           <div className="p-3 sm:p-6">
             {activeTab === 'service-master' && <ServiceMaster embedded />}
             {activeTab === 'study-catalog' && <StudyCatalogFull studyDefs={studyDefs} onDefCreate={handleDefCreate} onDefUpdate={handleDefUpdate} onDefDelete={handleDefDelete} onRegisterAdd={fn => setCatalogAddHandler(() => fn)} onSelectionChange={setCatalogHasSelection} />}
-            {activeTab === 'study-pricing' && <StudyPricing studyDefs={studyDefs} studyPricing={studyPricing} centers={centers} onPricingCreate={handlePricingCreate} onPricingUpdate={handlePricingUpdate} onPricingDelete={handlePricingDelete} />}
+            {activeTab === 'study-pricing' && <StudyPricing studyDefs={studyDefs} studyPricing={studyPricing} centers={centers} onPricingBatch={handlePricingBatch} onPricingCreate={handlePricingCreate} onPricingUpdate={handlePricingUpdate} onPricingDelete={handlePricingDelete} />}
             {activeTab === 'radiologist' && <RadReportingMaster reporters={reporters} studies={studyList} onReporterCreate={handleReporterCreate} onReporterUpdate={handleReporterUpdate} onReporterDelete={handleReporterDelete} />}
             {activeTab === 'physician' && <PhysicianMaster physicians={physicians} onPhysicianCreate={handlePhysicianCreate} onPhysicianUpdate={handlePhysicianUpdate} onPhysicianDelete={handlePhysicianDelete} />}
             {activeTab === 'center' && <CenterMaster centers={centers} onCenterCreate={handleCenterCreate} onCenterUpdate={handleCenterUpdate} onCenterDelete={handleCenterDelete} />}
