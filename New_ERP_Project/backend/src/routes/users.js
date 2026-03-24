@@ -40,7 +40,9 @@ router.get('/', async (req, res) => {
     }
 
     // Non-super-admins can only see users at their own center
-    if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'CENTER_MANAGER') {
+    const userPerms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+    const isSuperUser = req.user.role === 'SUPER_ADMIN' || req.user.role === 'CENTER_MANAGER' || userPerms.includes('ALL_ACCESS');
+    if (!isSuperUser) {
       conds.push(`u.center_id = $${params.length + 1}`);
       params.push(req.user.center_id);
     }
