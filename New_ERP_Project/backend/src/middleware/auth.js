@@ -70,7 +70,8 @@ const authorize = (roles) => {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Authentication required', error: 'AUTH_REQUIRED' });
     }
-    if (!roles.includes(req.user.role)) {
+    const userPerms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+    if (!roles.includes(req.user.role) && !userPerms.includes('ALL_ACCESS')) {
       return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS', required_roles: roles, user_role: req.user.role });
     }
     next();
