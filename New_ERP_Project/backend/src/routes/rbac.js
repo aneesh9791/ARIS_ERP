@@ -193,7 +193,7 @@ router.put('/roles/:id', [
   body('is_corporate_role').isBoolean(),
   body('can_access_all_centers').isBoolean(),
   body('allowed_centers').isArray(),
-  body('notes').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 500 })
+  body('notes').optional({ nullable: true, checkFalsy: true }).trim().isLength({ max: 500 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -224,13 +224,13 @@ router.put('/roles/:id', [
       return res.status(404).json({ error: 'Role not found' });
     }
 
-    // Validate permissions
+    // Filter out any unrecognised permissions (log but don't reject)
     const validPermissions = await getValidPermissions();
     const invalidPermissions = permissions.filter(p => !validPermissions.includes(p));
-    
     if (invalidPermissions.length > 0) {
-      return res.status(400).json({ error: `Invalid permissions: ${invalidPermissions.join(', ')}` });
+      logger.warn(`Role ${id} save: stripping unknown permissions: ${invalidPermissions.join(', ')}`);
     }
+    const safePermissions = permissions.filter(p => validPermissions.includes(p));
 
     // Update role
     await pool.query(
@@ -240,7 +240,7 @@ router.put('/roles/:id', [
         allowed_centers = $8, notes = $9, updated_at = NOW()
       WHERE id = $10 AND active = true`,
       [
-        role_name, description, JSON.stringify(permissions), 
+        role_name, description, JSON.stringify(safePermissions),
         JSON.stringify(dashboard_widgets), JSON.stringify(report_access),
         is_corporate_role, can_access_all_centers, allowed_centers, notes, id
       ]
@@ -254,7 +254,7 @@ router.put('/roles/:id', [
         id,
         role_name,
         description,
-        permissions,
+        permissions: safePermissions,
         dashboard_widgets,
         report_access,
         is_corporate_role,
