@@ -3964,7 +3964,7 @@ const MasterDataSettings = () => {
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
   const [physicians, setPhysicians] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -4412,27 +4412,26 @@ const MasterDataSettings = () => {
 
           {/* Tab content */}
           <div className="p-3 sm:p-6">
-            {activeTab === 'service-master' && <ServiceMaster embedded />}
-            {activeTab === 'study-catalog' && <StudyCatalogFull studyDefs={studyDefs} onDefCreate={handleDefCreate} onDefUpdate={handleDefUpdate} onDefDelete={handleDefDelete} onRegisterAdd={fn => setCatalogAddHandler(() => fn)} onSelectionChange={setCatalogHasSelection} />}
-            {activeTab === 'study-pricing' && <StudyPricing studyDefs={studyDefs} studyPricing={studyPricing} centers={centers} centerModMap={centerModMap} onPricingBatch={handlePricingBatch} onPricingCreate={handlePricingCreate} onPricingUpdate={handlePricingUpdate} onPricingDelete={handlePricingDelete} />}
-            {activeTab === 'radiologist' && <RadReportingMaster reporters={reporters} studies={studyList} onReporterCreate={handleReporterCreate} onReporterUpdate={handleReporterUpdate} onReporterDelete={handleReporterDelete} />}
-            {activeTab === 'physician' && <PhysicianMaster physicians={physicians} onPhysicianCreate={handlePhysicianCreate} onPhysicianUpdate={handlePhysicianUpdate} onPhysicianDelete={handlePhysicianDelete} />}
-            {activeTab === 'center' && <CenterMaster centers={centers} onCenterCreate={handleCenterCreate} onCenterUpdate={handleCenterUpdate} onCenterDelete={handleCenterDelete} />}
-            {activeTab === 'modality-master' && <ModalityMaster modalities={modalities} onRefresh={fetchModalities} />}
-            {activeTab === 'center-modality' && <CenterModalityMap centers={centers} modalities={modalities} />}
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-16 text-slate-400 text-sm">
+                <div className="w-5 h-5 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+                <span>Loading…</span>
+              </div>
+            ) : (
+              <>
+                {activeTab === 'service-master' && <ServiceMaster embedded />}
+                {activeTab === 'study-catalog' && <StudyCatalogFull studyDefs={studyDefs} onDefCreate={handleDefCreate} onDefUpdate={handleDefUpdate} onDefDelete={handleDefDelete} onRegisterAdd={fn => setCatalogAddHandler(() => fn)} onSelectionChange={setCatalogHasSelection} />}
+                {activeTab === 'study-pricing' && <StudyPricing studyDefs={studyDefs} studyPricing={studyPricing} centers={centers} centerModMap={centerModMap} onPricingBatch={handlePricingBatch} onPricingCreate={handlePricingCreate} onPricingUpdate={handlePricingUpdate} onPricingDelete={handlePricingDelete} />}
+                {activeTab === 'radiologist' && <RadReportingMaster reporters={reporters} studies={studyList} onReporterCreate={handleReporterCreate} onReporterUpdate={handleReporterUpdate} onReporterDelete={handleReporterDelete} />}
+                {activeTab === 'physician' && <PhysicianMaster physicians={physicians} onPhysicianCreate={handlePhysicianCreate} onPhysicianUpdate={handlePhysicianUpdate} onPhysicianDelete={handlePhysicianDelete} />}
+                {activeTab === 'center' && <CenterMaster centers={centers} onCenterCreate={handleCenterCreate} onCenterUpdate={handleCenterUpdate} onCenterDelete={handleCenterDelete} />}
+                {activeTab === 'modality-master' && <ModalityMaster modalities={modalities} onRefresh={fetchModalities} />}
+                {activeTab === 'center-modality' && <CenterModalityMap centers={centers} modalities={modalities} />}
+              </>
+            )}
           </div>
         </div>
       </div>
-
-      {/* ── Loading overlay ── */}
-      {loading && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl px-10 py-8 flex flex-col items-center gap-4">
-            <div className="w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-semibold text-slate-700">Loading master data…</p>
-          </div>
-        </div>
-      )}
 
     </div>
   );
