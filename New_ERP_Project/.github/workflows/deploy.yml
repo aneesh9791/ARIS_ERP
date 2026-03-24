@@ -15,28 +15,4 @@ jobs:
           host: erp.feenixtech.com
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
-            echo "=== Starting deployment ==="
-            cd /opt/aris
-
-            # Pull latest code from GitHub
-            git fetch origin
-            git reset --hard origin/main
-
-            # Install backend dependencies
-            echo "=== Backend dependencies ==="
-            cd /opt/aris/backend
-            npm install --production
-
-            # Build frontend
-            echo "=== Building frontend ==="
-            cd /opt/aris/frontend
-            npm install
-            npm run build
-
-            # Restart backend
-            echo "=== Restarting backend ==="
-            pm2 restart aris-backend
-
-            echo "=== Deployment complete ==="
+          script: bash /opt/aris/deploy.sh
