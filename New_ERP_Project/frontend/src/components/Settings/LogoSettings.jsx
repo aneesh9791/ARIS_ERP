@@ -3,7 +3,7 @@ import { Upload, X, Eye, Download, RefreshCw, Palette, Type, Image, Building, He
 import ResponsiveCard from '../Common/ResponsiveCard';
 import ResponsiveForm from '../Common/ResponsiveForm';
 import Logo from '../Common/Logo';
-import '../styles/theme.css';
+import '../../styles/theme.css';
 
 const LogoSettings = () => {
   const [logoConfig, setLogoConfig] = useState({
@@ -217,7 +217,7 @@ const LogoSettings = () => {
                 <img 
                   src={logoPreview} 
                   alt="Logo preview" 
-                  className="max-w-full max-h-32 object-contain"
+                  className="w-auto max-w-full max-h-32 object-contain"
                 />
                 <button
                   onClick={() => {

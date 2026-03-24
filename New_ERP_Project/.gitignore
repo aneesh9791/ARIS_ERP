@@ -1,0 +1,54 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Build output
+frontend/build/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+
+# Environment files (contain secrets)
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# Logs
+*.log
+backend/logs/
+
+# Uploads (user data)
+backend/uploads/
+
+# Test/debug scripts
+backend/debug-*.js
+backend/test-*.js
+backend/quick-check.js
+backend/full-check.js
+backend/files-check.js
+backend/redis-*.js
+backend/verify-*.js
+backend/backfill-*.js
+backend/fix-*.js
+frontend/test-*.js
+frontend/test-*.html
+
+# Reports/docs generated during deployment
+DEPLOYMENT_SUCCESS.md
+DEPLOYMENT_SUMMARY.md
+backend/BACKEND_TEST_REPORT.md
+backend/FINAL_SYSTEM_AUDIT.md
+backend/FINAL_TEST_REPORT.md
+backend/SECURITY_FIXES_SUMMARY.md
+
+# Database
+database/node_modules/
+database/package-lock.json
+
+# Backup folders
+"Last Running Backup_13-03-26/"

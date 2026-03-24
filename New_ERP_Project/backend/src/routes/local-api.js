@@ -1,22 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/local-api.log' })
-  ]
-});
 
 // Enhanced CORS for local API
 router.use(cors({

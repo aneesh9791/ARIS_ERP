@@ -1,26 +1,15 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/rbac.log' })
-  ]
-});
 
 // RBAC MIDDLEWARE - Check user permissions
 const checkPermission = (permission) => {
   return async (req, res, next) => {
     try {
-      const userId = req.session.user?.id;
+      const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'Authentication required' });
       }
@@ -74,7 +63,7 @@ router.get('/roles', async (req, res) => {
     
     let whereClause = '1=1';
     if (active_only === 'true') {
-      whereClause += ' AND active = true';
+      whereClause += ' AND ur.active = true';
     }
 
     const query = `
@@ -115,7 +104,7 @@ router.post('/roles', [
   body('is_corporate_role').isBoolean(),
   body('can_access_all_centers').isBoolean(),
   body('allowed_centers').isArray(),
-  body('notes').optional().trim().isLength({ min: 2, max: 500 })
+  body('notes').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 500 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -204,7 +193,7 @@ router.put('/roles/:id', [
   body('is_corporate_role').isBoolean(),
   body('can_access_all_centers').isBoolean(),
   body('allowed_centers').isArray(),
-  body('notes').optional().trim().isLength({ min: 2, max: 500 })
+  body('notes').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 500 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -326,16 +315,11 @@ router.delete('/roles/:id', async (req, res) => {
 
 // PERMISSION MANAGEMENT
 
-// Get all available permissions
+// Get all available permissions (flat list + grouped by module)
 router.get('/permissions', async (req, res) => {
   try {
-    const permissions = await getValidPermissions();
-    
-    res.json({
-      success: true,
-      permissions
-    });
-
+    const [permissions, groups] = await Promise.all([getValidPermissions(), getGroupedPermissions()]);
+    res.json({ success: true, permissions, groups });
   } catch (error) {
     logger.error('Get permissions error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -501,7 +485,7 @@ router.get('/users/:userId/permissions', async (req, res) => {
 // Get user dashboard configuration
 router.get('/dashboard/config', async (req, res) => {
   try {
-    const userId = req.session.user?.id;
+    const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required' });
     }
@@ -569,7 +553,7 @@ router.get('/dashboard/config', async (req, res) => {
 // Check if user can access report
 router.get('/reports/:reportType/check-access', async (req, res) => {
   try {
-    const userId = req.session.user?.id;
+    const userId = req.user?.id;
     const { reportType } = req.params;
 
     if (!userId) {
@@ -609,7 +593,7 @@ router.get('/reports/:reportType/check-access', async (req, res) => {
 // Get user's accessible centers
 router.get('/centers/accessible', async (req, res) => {
   try {
-    const userId = req.session.user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -710,56 +694,136 @@ router.get('/statistics', async (req, res) => {
   }
 });
 
+// Maps permission prefix → group label (order matters for display)
+const PERM_GROUP_LABELS = {
+  USER:        'User Management',
+  PATIENT:     'Patient Management',
+  PHYSICIAN:   'Patient Management',
+  STUDY:       'Study Management',
+  RADIOLOGY:   'Radiology Reporting',
+  RADIOLOGIST: 'Radiologist',
+  BILLING:     'Billing',
+  BILL:        'Billing',
+  INSURANCE:   'Insurance',
+  SERVICE:     'Service Management',
+  CENTER:      'Center Management',
+  EMPLOYEE:    'HR & Payroll',
+  PAYROLL:     'HR & Payroll',
+  VENDOR:      'Vendor & AP',
+  INVENTORY:   'Inventory & Procurement',
+  PR:          'Inventory & Procurement',
+  PO:          'Inventory & Procurement',
+  GRN:         'Inventory & Procurement',
+  ASSET:       'Assets',
+  LOANER:      'Assets',
+  SCANNER:     'Equipment & Scanners',
+  JE:          'Finance',
+  COA:         'Finance',
+  PETTY:       'Finance',
+  GST:         'GST Management',
+  EXPENSE:     'Expense Tracking',
+  EQUITY:      'Equity & Capital',
+  MWL:         'DICOM MWL Gateway',
+  MASTER:      'Master Data',
+  WHATSAPP:    'WhatsApp Integration',
+  REPORTS:     'Reports',
+  DASHBOARD:   'Dashboard',
+  SYSTEM:      'System',
+  ALL:         'System',
+};
+
+// Derives the group label for a permission string
+function permGroup(perm) {
+  const prefix = perm.split('_')[0];
+  return PERM_GROUP_LABELS[prefix] || 'Other';
+}
+
+// All permissions that must always appear in the role editor, even if no role has them yet.
+// Add new module permissions here when a new module is built.
+const KNOWN_PERMISSIONS = [
+  // Patient & Study
+  'PATIENT_VIEW','PATIENT_CREATE','PATIENT_EDIT','PATIENT_DELETE',
+  'STUDY_VIEW','STUDY_CREATE','STUDY_EDIT',
+  'RADIOLOGY_VIEW','RADIOLOGY_REPORT','RADIOLOGY_APPROVE',
+  'RADIOLOGIST_VIEW','RADIOLOGIST_CREATE','RADIOLOGIST_EDIT',
+  // Billing & Finance
+  'BILLING_VIEW','BILLING_CREATE','BILLING_EDIT','BILLING_DELETE','BILLING_REFUND',
+  'BILL_VIEW','BILL_CREATE','BILL_EDIT',
+  'INSURANCE_VIEW','INSURANCE_CREATE','INSURANCE_EDIT',
+  'JE_VIEW','JE_CREATE','JE_EDIT','JE_APPROVE','JE_POST',
+  'COA_VIEW','COA_CREATE','COA_EDIT',
+  'PETTY_CASH_VIEW','PETTY_CASH_CREATE','PETTY_CASH_APPROVE',
+  'GST_VIEW','GST_RECONCILE',
+  'EXPENSE_VIEW','EXPENSE_CREATE','EXPENSE_APPROVE',
+  'EQUITY_VIEW','EQUITY_CREATE',
+  // MWL Gateway
+  'MWL_VIEW','MWL_MANAGE',
+  // HR & Payroll
+  'EMPLOYEE_VIEW','EMPLOYEE_CREATE','EMPLOYEE_EDIT',
+  'PAYROLL_VIEW','PAYROLL_CREATE','PAYROLL_APPROVE',
+  // Assets & Inventory
+  'ASSET_VIEW','ASSET_CREATE','ASSET_EDIT',
+  'ASSET_MAINTENANCE_VIEW','ASSET_MAINTENANCE_CREATE',
+  'LOANER_VIEW','LOANER_CREATE',
+  'INVENTORY_VIEW','INVENTORY_CREATE','INVENTORY_EDIT',
+  'PO_VIEW','PO_CREATE','PO_APPROVE',
+  'PR_VIEW','PR_CREATE',
+  'GRN_VIEW','GRN_CREATE',
+  // Center & Vendor
+  'CENTER_VIEW','CENTER_CREATE','CENTER_EDIT',
+  'VENDOR_VIEW','VENDOR_CREATE','VENDOR_EDIT',
+  // Service & Physician
+  'SERVICE_VIEW','SERVICE_CREATE','SERVICE_EDIT',
+  'PHYSICIAN_VIEW','PHYSICIAN_CREATE','PHYSICIAN_EDIT',
+  // Scanner & Equipment
+  'SCANNER_VIEW','SCANNER_CREATE','SCANNER_EDIT',
+  // Master Data, Reports & System
+  'MASTER_DATA_VIEW','MASTER_DATA_CREATE','MASTER_DATA_EDIT',
+  'REPORTS_VIEW','REPORTS_EXPORT',
+  'DASHBOARD_VIEW',
+  'WHATSAPP_VIEW','WHATSAPP_SEND',
+  'USER_VIEW','USER_CREATE','USER_EDIT','USER_DELETE','USER_ASSIGN_ROLE',
+  'SYSTEM_ADMIN','ALL_ACCESS',
+];
+
 // Helper functions
 async function getValidPermissions() {
-  return [
-    // User Management
-    'USER_VIEW', 'USER_CREATE', 'USER_UPDATE', 'USER_DELETE', 'USER_ASSIGN_ROLE',
-    
-    // Patient Management
-    'PATIENT_VIEW', 'PATIENT_CREATE', 'PATIENT_UPDATE', 'PATIENT_DELETE',
-    'PATIENT_BILLING', 'PATIENT_INSURANCE',
-    
-    // Study Management
-    'STUDY_VIEW', 'STUDY_CREATE', 'STUDY_UPDATE', 'STUDY_DELETE', 'STUDY_REPORT',
-    'STUDY_ASSIGN_RADIOLOGIST', 'STUDY_PAYMENT',
-    
-    // Billing Management
-    'BILLING_VIEW', 'BILLING_CREATE', 'BILLING_UPDATE', 'BILLING_DELETE',
-    'BILLING_PRINT', 'BILLING_PAYMENT',
-    
-    // Center Management
-    'CENTER_VIEW', 'CENTER_CREATE', 'CENTER_UPDATE', 'CENTER_DELETE',
-    'CENTER_MODALITIES', 'CENTER_SETTINGS',
-    
-    // Radiologist Management
-    'RADIOLOGIST_VIEW', 'RADIOLOGIST_CREATE', 'RADIOLOGIST_UPDATE', 'RADIOLOGIST_DELETE',
-    'RADIOLOGIST_PAYMENT', 'RADIOLOGIST_REPORTING',
-    
-    // Employee Management
-    'EMPLOYEE_VIEW', 'EMPLOYEE_CREATE', 'EMPLOYEE_UPDATE', 'EMPLOYEE_DELETE',
-    'EMPLOYEE_ATTENDANCE', 'EMPLOYEE_PAYROLL',
-    
-    // Vendor Management
-    'VENDOR_VIEW', 'VENDOR_CREATE', 'VENDOR_UPDATE', 'VENDOR_DELETE',
-    'VENDOR_BILLING', 'VENDOR_PAYMENT',
-    
-    // Inventory Management
-    'INVENTORY_VIEW', 'INVENTORY_CREATE', 'INVENTORY_UPDATE', 'INVENTORY_DELETE',
-    'INVENTORY_PURCHASE', 'INVENTORY_STOCK',
-    
-    // Reports
-    'REPORTS_VIEW', 'REPORTS_PATIENT', 'REPORTS_BILLING', 'REPORTS_RADIOLOGY',
-    'REPORTS_EMPLOYEE', 'REPORTS_FINANCIAL', 'REPORTS_DOWNLOAD',
-    
-    // Dashboard
-    'DASHBOARD_VIEW', 'DASHBOARD_ADMIN', 'DASHBOARD_FINANCIAL',
-    'DASHBOARD_CLINICAL', 'DASHBOARD_OPERATIONAL',
-    
-    // System
-    'SYSTEM_SETTINGS', 'SYSTEM_BACKUP', 'SYSTEM_LOGS',
-    'ALL_ACCESS'
-  ];
+  // Pull all distinct permissions from active roles in the DB
+  const { rows } = await pool.query(`
+    SELECT DISTINCT jsonb_array_elements_text(permissions) AS perm
+    FROM user_roles
+    WHERE active = true AND jsonb_typeof(permissions) = 'array'
+    ORDER BY perm
+  `);
+  const dbPerms = new Set(rows.map(r => r.perm));
+  // Merge with KNOWN_PERMISSIONS so new module perms always appear in the editor
+  for (const p of KNOWN_PERMISSIONS) dbPerms.add(p);
+  return Array.from(dbPerms).sort();
+}
+
+// Returns permissions grouped by module for the UI
+async function getGroupedPermissions() {
+  const perms = await getValidPermissions();
+  const groupMap = {};
+  for (const perm of perms) {
+    const label = permGroup(perm);
+    if (!groupMap[label]) groupMap[label] = [];
+    groupMap[label].push(perm);
+  }
+  // Return as ordered array matching PERM_GROUP_LABELS order
+  const seen = new Set();
+  const ordered = [];
+  for (const label of Object.values(PERM_GROUP_LABELS)) {
+    if (!seen.has(label) && groupMap[label]) {
+      seen.add(label);
+      ordered.push({ label, perms: groupMap[label] });
+    }
+  }
+  // Append any groups not covered by the map
+  for (const [label, perms] of Object.entries(groupMap)) {
+    if (!seen.has(label)) ordered.push({ label, perms });
+  }
+  return ordered;
 }
 
 async function getValidDashboardWidgets() {
@@ -815,6 +879,182 @@ async function getValidReportTypes() {
     'ALL_REPORTS'
   ];
 }
+
+// ─── USER MANAGEMENT ─────────────────────────────────────────────────────────
+
+// GET all users with role info
+router.get('/users', async (req, res) => {
+  try {
+    const { active_only = 'true' } = req.query;
+    const where = active_only === 'true' ? 'WHERE u.active = true' : '';
+    const result = await pool.query(`
+      SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.name,
+             u.phone, u.role, u.center_id, u.active, u.last_login, u.created_at,
+             ur.role_name, c.name AS center_name
+      FROM users u
+      LEFT JOIN user_roles ur ON u.role = ur.role
+      LEFT JOIN centers c ON u.center_id = c.id
+      ${where}
+      ORDER BY COALESCE(u.name, u.username)
+    `);
+    res.json({ success: true, users: result.rows });
+  } catch (error) {
+    logger.error('Get users error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST create user
+router.post('/users', [
+  body('username').trim().isLength({ min: 3, max: 50 }).withMessage('Username must be 3–50 characters'),
+  body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
+  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('role').trim().isLength({ min: 2, max: 50 }).withMessage('Role is required'),
+  body('first_name').optional({ checkFalsy: true }).trim(),
+  body('last_name').optional({ checkFalsy: true }).trim(),
+  body('phone').optional({ checkFalsy: true }).trim(),
+  body('center_id').optional({ checkFalsy: true }).isInt(),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { username, email, password, first_name, last_name, role, center_id, phone } = req.body;
+
+    const existing = await pool.query(
+      'SELECT id FROM users WHERE email = $1 OR username = $2',
+      [email, username]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Email or username already exists' });
+    }
+
+    const roleCheck = await pool.query(
+      'SELECT role FROM user_roles WHERE role = $1 AND active = true', [role]
+    );
+    if (roleCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'Role not found' });
+    }
+
+    const bcrypt = require('bcryptjs');
+    const password_hash = await bcrypt.hash(password, 12);
+    const name = [first_name, last_name].filter(Boolean).join(' ') || username;
+
+    const result = await pool.query(`
+      INSERT INTO users (username, email, password_hash, first_name, last_name, name, phone, role, center_id, active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, NOW(), NOW())
+      RETURNING id, username, email, first_name, last_name, name, role, center_id, active
+    `, [username, email, password_hash, first_name || null, last_name || null, name,
+        phone || null, role, center_id || null]);
+
+    logger.info('User created:', { username, email, role });
+    res.status(201).json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    logger.error('Create user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT update user
+router.put('/users/:id', [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
+  body('role').trim().isLength({ min: 2, max: 50 }).withMessage('Role is required'),
+  body('first_name').optional({ checkFalsy: true }).trim(),
+  body('last_name').optional({ checkFalsy: true }).trim(),
+  body('phone').optional({ checkFalsy: true }).trim(),
+  body('center_id').optional({ checkFalsy: true }).isInt(),
+  body('active').isBoolean(),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const { email, first_name, last_name, role, center_id, phone, active } = req.body;
+
+    const dupCheck = await pool.query(
+      'SELECT id FROM users WHERE email = $1 AND id != $2', [email, id]
+    );
+    if (dupCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'Email already in use by another user' });
+    }
+
+    const roleCheck = await pool.query(
+      'SELECT role FROM user_roles WHERE role = $1 AND active = true', [role]
+    );
+    if (roleCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'Role not found' });
+    }
+
+    const name = [first_name, last_name].filter(Boolean).join(' ');
+
+    const result = await pool.query(`
+      UPDATE users
+      SET email=$1, first_name=$2, last_name=$3, name=NULLIF($4,''), phone=$5,
+          role=$6, center_id=$7, active=$8, updated_at=NOW()
+      WHERE id=$9
+      RETURNING id, username, email, first_name, last_name, name, role, center_id, active
+    `, [email, first_name || null, last_name || null, name, phone || null,
+        role, center_id || null, active, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    logger.info('User updated:', { id, email, role });
+    res.json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    logger.error('Update user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST reset user password
+router.post('/users/:id/reset-password', [
+  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const { id } = req.params;
+    const { password } = req.body;
+    const bcrypt = require('bcryptjs');
+    const password_hash = await bcrypt.hash(password, 12);
+    const result = await pool.query(
+      'UPDATE users SET password_hash=$1, failed_login_attempts=0, locked_until=NULL, updated_at=NOW() WHERE id=$2 RETURNING id',
+      [password_hash, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    logger.info('Password reset for user:', { id });
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (error) {
+    logger.error('Reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE user (soft delete)
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'UPDATE users SET active=false, updated_at=NOW() WHERE id=$1 RETURNING id',
+      [id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    logger.info('User soft-deleted:', { id });
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    logger.error('Delete user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 module.exports = router;
 module.exports.checkPermission = checkPermission;

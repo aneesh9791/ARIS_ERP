@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, MoreHorizontal, Edit, Trash2, Eye, Download, Share2, Maximize2, Minimize2 } from 'lucide-react';
-import '../styles/theme.css';
-import '../styles/responsive.css';
+import '../../styles/theme.css';
+import '../../styles/responsive.css';
 
 const ResponsiveCard = ({
   title,

@@ -1,18 +1,57 @@
-/* ARIS ERP - Modern Healthcare Theme */
-/* Compatible with blue/white logo - Clean, Professional, Modern */
+/* ARIS ERP - ARIS Diagnostic Centre Theme */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap');
+/* Teal + Amber brand colors matching the ARIS logo */
+
+/* CSS Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+  color: #374151;
+  background-color: #ffffff;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.App {
+  min-height: 100vh;
+  flex: 1;
+  background-color: #f8fafc !important;
+}
 
 :root {
-  /* Primary Brand Colors - Healthcare Professional Blue */
-  --primary-50: #eff6ff;
-  --primary-100: #dbeafe;
-  --primary-200: #bfdbfe;
-  --primary-300: #93c5fd;
-  --primary-400: #60a5fa;
-  --primary-500: #3b82f6; /* Main Brand Blue */
-  --primary-600: #2563eb;
-  --primary-700: #1d4ed8;
-  --primary-800: #1e40af;
-  --primary-900: #1e3a8a;
+  /* Primary Brand Colors - #00FFEF cyan palette */
+  --primary-50:  #e6fffd;
+  --primary-100: #b3fffb;
+  --primary-200: #80fff9;
+  --primary-300: #4dfff5;
+  --primary-400: #00FFEF; /* brand highlight */
+  --primary-500: #00ccc0;
+  --primary-600: #009990; /* main brand */
+  --primary-700: #007a73;
+  --primary-800: #005c57;
+  --primary-900: #003d3a; /* sidebar bg */
+
+  /* Accent Colors - Orange/Amber (matching logo person figure ~#D4841A) */
+  --accent-50: #fff7ed;
+  --accent-100: #ffedd5;
+  --accent-200: #fed7aa;
+  --accent-300: #fdba74;
+  --accent-400: #fb923c;
+  --accent-500: #f97316; /* orange-500 */
+  --accent-600: #ea580c; /* orange-600 */
+  --accent-orange: #d97706; /* amber-600 - closest to logo orange */
+  --accent-amber: #f59e0b; /* amber-500 */
 
   /* Secondary Colors - Soft Medical Greens */
   --secondary-50: #f0fdf4;
@@ -26,19 +65,7 @@
   --secondary-800: #166534;
   --secondary-900: #14532d;
 
-  /* Accent Colors - Medical Purple */
-  --accent-50: #faf5ff;
-  --accent-100: #f3e8ff;
-  --accent-200: #e9d5ff;
-  --accent-300: #d8b4fe;
-  --accent-400: #c084fc;
-  --accent-500: #a855f7; /* Accent Purple */
-  --accent-600: #9333ea;
-  --accent-700: #7c3aed;
-  --accent-800: #6b21a8;
-  --accent-900: #581c87;
-
-  /* Neutral Colors - Clean Grays */
+  /* Neutral Colors - Clean Slates */
   --gray-50: #f9fafb;
   --gray-100: #f3f4f6;
   --gray-200: #e5e7eb;
@@ -54,26 +81,26 @@
   --success: #22c55e;
   --warning: #f59e0b;
   --error: #ef4444;
-  --info: #3b82f6;
+  --info: #009990;
 
   /* Background Colors */
   --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
-  --bg-dark: #1e293b;
+  --bg-secondary: #f8fafc;   /* slate-50 */
+  --bg-tertiary: #f1f5f9;    /* slate-100 */
+  --bg-dark: #003d3a;        /* teal-900 - sidebar */
   --bg-overlay: rgba(0, 0, 0, 0.5);
 
   /* Text Colors */
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --text-tertiary: #94a3b8;
+  --text-primary: #1e293b;   /* slate-800 */
+  --text-secondary: #64748b; /* slate-500 */
+  --text-tertiary: #94a3b8;  /* slate-400 */
   --text-inverse: #ffffff;
   --text-muted: #94a3b8;
 
   /* Border Colors */
   --border-primary: #e2e8f0;
   --border-secondary: #cbd5e1;
-  --border-focus: #3b82f6;
+  --border-focus: #009990;   /* teal-600 */
   --border-error: #ef4444;
 
   /* Shadow Colors */
@@ -156,16 +183,16 @@
   --bg-secondary: #1e293b;
   --bg-tertiary: #334155;
   --bg-dark: #020617;
-  
+
   --text-primary: #f8fafc;
   --text-secondary: #cbd5e1;
   --text-tertiary: #94a3b8;
   --text-muted: #64748b;
-  
+
   --border-primary: #334155;
   --border-secondary: #475569;
-  --border-focus: #60a5fa;
-  
+  --border-focus: #2dd4bf;
+
   --gray-50: #0f172a;
   --gray-100: #1e293b;
   --gray-200: #334155;
@@ -313,6 +340,17 @@ a:focus {
   border-color: var(--border-secondary);
 }
 
+.btn-accent {
+  background-color: var(--accent-orange);
+  color: var(--text-inverse);
+  border-color: var(--accent-orange);
+}
+
+.btn-accent:hover:not(:disabled) {
+  background-color: var(--accent-600);
+  border-color: var(--accent-600);
+}
+
 .btn-success {
   background-color: var(--success);
   color: var(--text-inverse);
@@ -331,8 +369,8 @@ a:focus {
 }
 
 .btn-warning:hover:not(:disabled) {
-  background-color: #d97706;
-  border-color: #d97706;
+  background-color: var(--accent-orange);
+  border-color: var(--accent-orange);
 }
 
 .btn-error {
@@ -417,7 +455,7 @@ a:focus {
 .form-textarea:focus {
   outline: none;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
 }
 
 .form-input:invalid,
@@ -549,12 +587,12 @@ a:focus {
 
 .table th {
   font-weight: var(--font-semibold);
-  color: var(--text-primary);
-  background-color: var(--bg-secondary);
+  color: var(--text-inverse);
+  background-color: var(--primary-700);
 }
 
 .table tbody tr:hover {
-  background-color: var(--bg-tertiary);
+  background-color: var(--primary-50);
 }
 
 /* Loading Spinner */
@@ -574,8 +612,8 @@ a:focus {
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -583,25 +621,38 @@ a:focus {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--gray-400);
+  background: var(--primary-300);
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-500);
+  background: var(--primary-400);
+}
+
+/* Sidebar scroll - darker scrollbar for teal-900 bg */
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
 }
 
 /* Print Styles */
 @media print {
   * {
     -webkit-print-color-adjust: exact !important;
-    color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  
+
   .no-print {
     display: none !important;
   }
-  
+
   .page-break {
     page-break-before: always;
   }
@@ -613,20 +664,15 @@ a:focus {
     padding-left: var(--space-4);
     padding-right: var(--space-4);
   }
-  
-  .btn {
-    width: 100%;
-    justify-content: center;
-  }
-  
+
   .card {
     border-radius: var(--radius-md);
   }
-  
+
   .table {
     font-size: var(--text-sm);
   }
-  
+
   .table th,
   .table td {
     padding: var(--space-2);
@@ -639,6 +685,11 @@ a:focus {
   outline-offset: 2px;
 }
 
+/* Sidebar collapse transition */
+.sidebar-transition {
+  transition: width var(--transition-normal);
+}
+
 /* Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -649,4 +700,43 @@ a:focus {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Image Sizing and Alignment */
+img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Logo-specific sizing */
+img[alt*="Logo"] {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  width: auto;
+}
+
+/* Prevent images from breaking layout */
+img:not([width]):not([height]) {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Icon Sizing - Fix oversized icons */
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Specific icon size fixes */
+.w-4.h-4, .w-5.h-5, .w-6.h-6, .w-7.h-7, .w-8.h-8 {
+  max-width: 2rem;
+  max-height: 2rem;
+}
+
+/* Ensure proper icon scaling */
+.icon {
+  max-width: 100%;
+  height: auto;
 }

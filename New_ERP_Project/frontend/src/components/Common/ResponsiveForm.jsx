@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, AlertCircle, CheckCircle, Info, Plus, Minus, ChevronDown, ChevronUp } from 'lucide-react';
-import '../styles/theme.css';
-import '../styles/responsive.css';
+import '../../styles/theme.css';
+import '../../styles/responsive.css';
 
 const ResponsiveForm = ({
   fields = [],

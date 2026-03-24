@@ -1,31 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/service-management.log' }),
-    new winston.transports.Console({ format: winston.format.simple() })
-  ]
-});
+router.use(authorizePermission('SERVICE_VIEW'));
 
 // Service Management Class
 class ServiceManager {
@@ -457,6 +437,163 @@ router.get('/services', async (req, res) => {
     });
   }
 });
+
+// ─── Add-on Services (CONTRAST + DICOM_CD) — must be BEFORE /services/:serviceCode ──
+
+// GET /services/addons — list all ADD_ON services
+router.get('/services/addons', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM services WHERE category = 'ADD_ON' ORDER BY display_order, name`
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    logger.error('Error fetching add-on services:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// GET /services/addons/contrast — list CONTRAST services, optional ?modality=CT
+router.get('/services/addons/contrast', async (req, res) => {
+  try {
+    const { modality } = req.query;
+    let query = `SELECT * FROM services WHERE item_type = 'CONTRAST' AND category = 'ADD_ON'`;
+    const params = [];
+    if (modality) {
+      params.push(modality.toUpperCase());
+      query += ` AND modality = $1`;
+    }
+    query += ` ORDER BY display_order, name`;
+    const result = await pool.query(query, params);
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    logger.error('Error fetching contrast services:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// POST /services/addons — create a new add-on service
+router.post('/services/addons', async (req, res) => {
+  try {
+    const { name, code, item_type, modality, price, gst_rate, gst_applicable, display_order } = req.body;
+    if (!name || !code || !item_type || price === undefined) {
+      return res.status(400).json({ success: false, message: 'name, code, item_type and price are required' });
+    }
+    const result = await pool.query(
+      `INSERT INTO services (name, code, category, item_type, modality, price, gst_rate, gst_applicable, is_active, display_order, created_at, updated_at)
+       VALUES ($1, $2, 'ADD_ON', $3, $4, $5, $6, $7, true, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       RETURNING *`,
+      [name, code.toUpperCase(), item_type, modality || null, price, gst_rate || 0, gst_applicable || false, display_order || 0]
+    );
+    logger.info(`Add-on service created: ${code}`);
+    res.status(201).json({ success: true, message: 'Add-on service created successfully', data: result.rows[0] });
+  } catch (error) {
+    logger.error('Error creating add-on service:', error);
+    if (error.code === '23505') {
+      return res.status(400).json({ success: false, message: 'Service code already exists' });
+    }
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// PUT /services/addons/:id — update an add-on service
+router.put('/services/addons/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, price, gst_rate, gst_applicable, is_active } = req.body;
+    const result = await pool.query(
+      `UPDATE services
+       SET name = COALESCE($1, name),
+           price = COALESCE($2, price),
+           gst_rate = COALESCE($3, gst_rate),
+           gst_applicable = COALESCE($4, gst_applicable),
+           is_active = COALESCE($5, is_active),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $6 AND category = 'ADD_ON'
+       RETURNING *`,
+      [name || null, price !== undefined ? price : null, gst_rate !== undefined ? gst_rate : null, gst_applicable !== undefined ? gst_applicable : null, is_active !== undefined ? is_active : null, id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Add-on service not found' });
+    }
+    logger.info(`Add-on service updated: ${id}`);
+    res.json({ success: true, message: 'Add-on service updated successfully', data: result.rows[0] });
+  } catch (error) {
+    logger.error('Error updating add-on service:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// DELETE /services/addons/:id — soft delete (set is_active=false)
+router.delete('/services/addons/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `UPDATE services SET is_active = false, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND category = 'ADD_ON'
+       RETURNING *`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Add-on service not found' });
+    }
+    logger.info(`Add-on service soft-deleted: ${id}`);
+    res.json({ success: true, message: 'Add-on service deactivated successfully' });
+  } catch (error) {
+    logger.error('Error deleting add-on service:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ─── Study Charges (from study_master) — must be BEFORE /services/:serviceCode ──
+
+// GET /services/study-charges — study_master rows as service objects
+router.get('/services/study-charges', async (req, res) => {
+  try {
+    const { modality, center_id, search } = req.query;
+    const params = [];
+    const conditions = ['sm.active = true'];
+    if (modality) { params.push(modality.toUpperCase()); conditions.push(`sm.modality = $${params.length}`); }
+    if (center_id) { params.push(center_id); conditions.push(`(sm.center_id = $${params.length} OR sm.center_id IS NULL)`); }
+    if (search) { params.push(`%${search}%`); conditions.push(`(sm.study_name ILIKE $${params.length} OR sm.study_code ILIKE $${params.length})`); }
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const query = `
+      SELECT sm.id, sm.study_code AS code, sm.study_name AS name, sm.modality,
+             sm.base_rate AS price, sm.gst_rate, sm.gst_applicable, sm.is_contrast, sm.active
+      FROM study_master sm ${whereClause} ORDER BY sm.study_name`;
+    const result = await pool.query(query, params);
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    logger.error('Error fetching study charges:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// PUT /services/study-charges/:studyCode — edit rate/GST/contrast flag on study_master
+router.put('/services/study-charges/:studyCode', async (req, res) => {
+  try {
+    const { studyCode } = req.params;
+    const { base_rate, gst_rate, gst_applicable, is_contrast } = req.body;
+    const result = await pool.query(
+      `UPDATE study_master
+       SET base_rate = COALESCE($1, base_rate),
+           gst_rate = COALESCE($2, gst_rate),
+           gst_applicable = COALESCE($3, gst_applicable),
+           is_contrast = COALESCE($4, is_contrast),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE study_code = $5 AND active = true RETURNING *`,
+      [base_rate !== undefined ? base_rate : null, gst_rate !== undefined ? gst_rate : null,
+       gst_applicable !== undefined ? gst_applicable : null, is_contrast !== undefined ? is_contrast : null, studyCode]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Study not found' });
+    res.json({ success: true, message: 'Study charge updated', data: result.rows[0] });
+  } catch (error) {
+    logger.error('Error updating study charge:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Get service by code
 router.get('/services/:serviceCode', async (req, res) => {
@@ -939,6 +1076,7 @@ router.get('/gst-rates', async (req, res) => {
     });
   }
 });
+
 
 // Error handler
 router.use((error, req, res, next) => {

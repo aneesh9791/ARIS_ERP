@@ -1,20 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/studies.log' })
-  ]
-});
+router.use(authorizePermission('STUDY_VIEW'));
 
 // Get study by accession number
 router.get('/accession/:accession_number', async (req, res) => {
@@ -145,9 +136,9 @@ router.get('/:id', async (req, res) => {
         p.pid as patient_pid,
         p.name as patient_name,
         p.phone as patient_phone,
-        sm.study_name,
-        sm.modality,
-        rm.name as radiologist_name,
+        sd.study_name,
+        sd.modality,
+        rm.radiologist_name,
         c.name as center_name,
         pb.id as bill_id,
         pb.total_amount as bill_amount,
@@ -155,11 +146,12 @@ router.get('/:id', async (req, res) => {
         pb.accession_number as bill_accession_number
       FROM studies s
       LEFT JOIN patients p ON s.patient_id = p.id
-      LEFT JOIN study_master sm ON s.study_code = sm.study_code
+      LEFT JOIN study_definitions sd ON s.study_code = sd.study_code
       LEFT JOIN radiologist_master rm ON s.radiologist_code = rm.radiologist_code
       LEFT JOIN centers c ON s.center_id = c.id
       LEFT JOIN patient_bills pb ON s.id = pb.study_id
       WHERE s.id = $1 AND s.active = true
+
     `;
     
     const result = await pool.query(query, [id]);
@@ -276,16 +268,16 @@ router.get('/', async (req, res) => {
         p.pid as patient_pid,
         p.name as patient_name,
         p.phone as patient_phone,
-        sm.study_name,
-        sm.modality,
-        rm.name as radiologist_name,
+        sd.study_name,
+        sd.modality,
+        rm.radiologist_name,
         c.name as center_name,
         pb.id as bill_id,
         pb.total_amount as bill_amount,
         pb.payment_status
       FROM studies s
       LEFT JOIN patients p ON s.patient_id = p.id
-      LEFT JOIN study_master sm ON s.study_code = sm.study_code
+      LEFT JOIN study_definitions sd ON s.study_code = sd.study_code
       LEFT JOIN radiologist_master rm ON s.radiologist_code = rm.radiologist_code
       LEFT JOIN centers c ON s.center_id = c.id
       LEFT JOIN patient_bills pb ON s.id = pb.study_id
@@ -314,41 +306,6 @@ router.get('/', async (req, res) => {
 
   } catch (error) {
     logger.error('Get studies error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Create API call logs table for tracking local system integration
-router.post('/create-logs-table', async (req, res) => {
-  try {
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS api_call_logs (
-        id SERIAL PRIMARY KEY,
-        patient_id INTEGER,
-        pid VARCHAR(20),
-        endpoint TEXT,
-        request_data JSONB,
-        response_code INTEGER,
-        success BOOLEAN,
-        error_message TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (patient_id) REFERENCES patients(id)
-      );
-      
-      CREATE INDEX IF NOT EXISTS idx_api_call_logs_patient_id ON api_call_logs(patient_id);
-      CREATE INDEX IF NOT EXISTS idx_api_call_logs_pid ON api_call_logs(pid);
-      CREATE INDEX IF NOT EXISTS idx_api_call_logs_created_at ON api_call_logs(created_at);
-      CREATE INDEX IF NOT EXISTS idx_api_call_logs_success ON api_call_logs(success);
-    `;
-    
-    await pool.query(createTableQuery);
-    
-    res.json({
-      success: true,
-      message: 'API call logs table created successfully'
-    });
-  } catch (error) {
-    logger.error('Create API call logs table error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

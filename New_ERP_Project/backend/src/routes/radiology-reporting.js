@@ -1,22 +1,286 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const financeService = require('../services/financeService');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+router.use(authorizePermission('RADIOLOGY_REPORT_VIEW'));
+
+// ── Study & Reporting Workflow ────────────────────────────────────────────────
+
+// GET /api/rad-reporting/worklist?exam_workflow_status=&center_id=
+// Returns PAID bills (not cancelled) as study workflow items.
+// If the bill has a linked studies row, uses its exam_workflow_status;
+// otherwise defaults to EXAM_SCHEDULED.
+router.get('/worklist', async (req, res) => {
+  try {
+    const { exam_workflow_status, center_id, page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Conditions on patient_bills
+    const billConds = ["pb.payment_status = 'PAID'", "pb.active = true"];
+    const params = [];
+
+    if (center_id) { params.push(center_id); billConds.push(`pb.center_id = $${params.length}`); }
+
+    // Workflow status filter (on the studies row or defaulted)
+    let statusFilter = '';
+    if (exam_workflow_status) {
+      params.push(exam_workflow_status);
+      statusFilter = `AND COALESCE(s.exam_workflow_status, 'EXAM_SCHEDULED') = $${params.length}`;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT
+         pb.id                                                    AS bill_id,
+         pb.id                                                    AS id,
+         COALESCE(pb.accession_number, s.accession_number, pb.invoice_number) AS accession_number,
+         pb.center_id,
+         pb.bill_date                                             AS created_at,
+         pb.notes                                                 AS study_name_fallback,
+         COALESCE(s.exam_workflow_status, 'EXAM_SCHEDULED')       AS exam_workflow_status,
+         s.id                                                     AS study_id,
+         s.radiologist_code,
+         s.reporter_radiologist_id,
+         s.rate_snapshot,
+         s.reporting_rate,
+         s.report_date,
+         s.reporting_posted_at,
+         p.name                                                   AS patient_name,
+         p.phone                                                  AS patient_phone,
+         p.id                                                     AS patient_id,
+         COALESCE(sm.study_name, pb.notes, pb.invoice_number)     AS study_name,
+         sm.modality,
+         sm.study_definition_id,
+         c.name                                                   AS center_name,
+         rm.name                                                  AS reporter_name,
+         rm.type                                                  AS reporter_type
+       FROM patient_bills pb
+       LEFT JOIN patients p          ON p.id::text = pb.patient_id::text
+       LEFT JOIN studies s           ON s.id = pb.study_id AND s.active = true
+       LEFT JOIN study_master sm     ON sm.study_code = s.study_code AND sm.active = true
+       LEFT JOIN centers c           ON c.id = pb.center_id
+       LEFT JOIN radiologist_master rm ON rm.id = s.reporter_radiologist_id
+       WHERE ${billConds.join(' AND ')} ${statusFilter}
+       ORDER BY pb.bill_date DESC, pb.id DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, parseInt(limit), offset]
+    );
+
+    const { rows: cnt } = await pool.query(
+      `SELECT COUNT(*) FROM patient_bills pb
+       LEFT JOIN studies s ON s.id = pb.study_id AND s.active = true
+       WHERE ${billConds.join(' AND ')} ${statusFilter}`,
+      params
+    );
+
+    res.json({ success: true, studies: rows, total: parseInt(cnt[0].count) });
+  } catch (e) {
+    logger.error('Worklist GET:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/radiology-reporting.log' })
-  ]
+// GET /api/rad-reporting/reporters?study_id= (study_id is bill_id in new workflow)
+// Returns reporters with their applicable rate for the given study/bill
+router.get('/reporters', async (req, res) => {
+  try {
+    const { study_id } = req.query; // study_id here is actually bill_id
+    let studyCode = null;
+    let modality  = null;
+
+    if (study_id) {
+      // Try bill → service name → study_master match
+      const { rows: billRows } = await pool.query(
+        `SELECT pb.service, pb.study_id,
+                sm.study_code, sm.modality
+         FROM patient_bills pb
+         LEFT JOIN studies s ON s.id = pb.study_id
+         LEFT JOIN study_master sm ON sm.billing_code = pb.service AND sm.active = true
+         WHERE pb.id = $1 LIMIT 1`, [study_id]
+      );
+      if (billRows[0]) {
+        studyCode = billRows[0].study_code || null;
+        modality  = billRows[0].modality  || null;
+      }
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id, radiologist_code, name, type, specialty, reporting_rates
+       FROM radiologist_master WHERE active = true ORDER BY type, name`
+    );
+
+    // Resolve applicable rate for each reporter — only include reporters with a configured rate
+    const reporters = rows.map(r => {
+      let rate = null;
+      try {
+        const rates = typeof r.reporting_rates === 'string'
+          ? JSON.parse(r.reporting_rates) : (r.reporting_rates || []);
+        // Prefer study_code match, fallback to modality match, then any rate
+        const byStudy    = rates.find(x => x.study_code === studyCode);
+        const byModality = rates.find(x => x.modality   === modality);
+        const found = byStudy || byModality || rates[0] || null;
+        rate = found ? parseFloat(found.rate) : null;
+      } catch (_) {}
+      return { id: r.id, code: r.radiologist_code, name: r.name, type: r.type, specialty: r.specialty, rate };
+    }).filter(r => r.rate !== null && r.rate > 0);  // only show reporters with a rate for this study
+
+    res.json({ success: true, reporters });
+  } catch (e) {
+    logger.error('Reporters GET:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-// UNIFIED RADIOLOGIST MASTER (includes both individual radiologists and teleradiology companies)
+// PUT /api/rad-reporting/:id/exam-complete
+// :id is bill_id. Mark exam done + assign reporter.
+// Auto-creates a studies row linked to the bill if one does not exist.
+router.put('/:id/exam-complete', async (req, res) => {
+  try {
+    const { reporter_radiologist_id, rate_snapshot } = req.body;
+    if (!reporter_radiologist_id) return res.status(400).json({ error: 'Reporter is required' });
+
+    const billId = parseInt(req.params.id, 10);
+
+    // Fetch the bill
+    const { rows: [bill] } = await pool.query(
+      `SELECT * FROM patient_bills WHERE id = $1 AND active = true`, [billId]
+    );
+    if (!bill) return res.status(404).json({ error: 'Bill not found' });
+
+    // Get reporter
+    const { rows: [rep] } = await pool.query(
+      `SELECT id, radiologist_code FROM radiologist_master WHERE id = $1`, [reporter_radiologist_id]
+    );
+    if (!rep) return res.status(404).json({ error: 'Reporter not found' });
+
+    // Resolve study_code from bill_items (which always has study_code set at billing time)
+    const { rows: [biRow] } = await pool.query(
+      `SELECT study_code FROM bill_items WHERE bill_id = $1 AND study_code IS NOT NULL AND active = true LIMIT 1`,
+      [billId]
+    );
+    const resolvedStudyCode = biRow?.study_code || null;
+
+    // Find or auto-create a studies row for this bill
+    let studyId = bill.study_id;
+    if (!studyId) {
+      const { rows: [newStudy] } = await pool.query(
+        `INSERT INTO studies
+           (patient_id, center_id, payment_status, exam_workflow_status,
+            study_code, accession_number, active, created_at, updated_at)
+         VALUES ($1, $2, 'PAID', 'EXAM_SCHEDULED',
+                 $3, $4, true, NOW(), NOW())
+         RETURNING id`,
+        [bill.patient_id, bill.center_id, resolvedStudyCode, bill.accession_number || null]
+      );
+      studyId = newStudy.id;
+      await pool.query(`UPDATE patient_bills SET study_id = $1 WHERE id = $2`, [studyId, billId]);
+    }
+
+    // Check current status; also patch study_code if it was never set
+    const { rows: [study] } = await pool.query(
+      `SELECT exam_workflow_status, study_code FROM studies WHERE id = $1`, [studyId]
+    );
+    if (study?.exam_workflow_status === 'REPORT_COMPLETED')
+      return res.status(400).json({ error: 'Report already completed' });
+
+    await pool.query(
+      `UPDATE studies
+       SET exam_workflow_status    = 'EXAM_COMPLETED',
+           reporter_radiologist_id = $1,
+           rate_snapshot           = $2,
+           radiologist_code        = $3,
+           reporting_rate          = $2,
+           study_code              = COALESCE(study_code, $5),
+           updated_at              = NOW()
+       WHERE id = $4`,
+      [reporter_radiologist_id, rate_snapshot || null, rep.radiologist_code, studyId, resolvedStudyCode]
+    );
+
+    logger.info('Exam completed + reporter assigned', { bill_id: billId, study_id: studyId, reporter_radiologist_id });
+    res.json({ success: true, message: 'Exam completed and reporter assigned' });
+  } catch (e) {
+    logger.error('Exam-complete PUT:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/rad-reporting/:id/report-complete
+// :id is bill_id. Mark report done → auto-generate reporting payable JE.
+router.put('/:id/report-complete', async (req, res) => {
+  try {
+    const { report_notes } = req.body;
+    const billId = parseInt(req.params.id, 10);
+
+    // Get the linked study via bill
+    const { rows: [bill] } = await pool.query(
+      `SELECT study_id FROM patient_bills WHERE id = $1 AND active = true`, [billId]
+    );
+    if (!bill?.study_id) return res.status(404).json({ error: 'No study linked to this bill. Complete exam first.' });
+
+    const { rows: [study] } = await pool.query(
+      `SELECT s.*, sm.modality FROM studies s
+       LEFT JOIN study_master sm ON sm.study_code = s.study_code
+       WHERE s.id = $1 AND s.active = true`, [bill.study_id]
+    );
+    if (!study) return res.status(404).json({ error: 'Study not found' });
+    if (study.exam_workflow_status !== 'EXAM_COMPLETED')
+      return res.status(400).json({ error: 'Exam must be completed before marking report done' });
+    if (!study.radiologist_code)
+      return res.status(400).json({ error: 'No reporter assigned to this study' });
+    if (study.reporting_posted_at)
+      return res.status(409).json({ error: 'Reporting payout already posted' });
+
+    // Update study
+    const now = new Date();
+    await pool.query(
+      `UPDATE studies
+       SET exam_workflow_status = 'REPORT_COMPLETED',
+           report_status = 'COMPLETED',
+           report_date = $1,
+           notes = COALESCE($2, notes),
+           updated_at = NOW()
+       WHERE id = $3 AND active = true`,
+      [now, report_notes || null, req.params.id]
+    );
+
+    // Re-fetch for finance posting
+    const { rows: [updated] } = await pool.query(
+      'SELECT * FROM studies WHERE id = $1', [req.params.id]
+    );
+
+    // Fire reporting payout JE
+    setImmediate(async () => {
+      try {
+        await financeService.postReportingPayoutJE(
+          {
+            id:               updated.id,
+            study_code:       updated.study_code,
+            center_id:        updated.center_id,
+            radiologist_code: updated.radiologist_code,
+            report_date:      updated.report_date || now,
+            accession_number: updated.accession_number,
+          },
+          req.user?.id
+        );
+        logger.info('Reporting payout JE posted', { study_id: req.params.id });
+      } catch (jeErr) {
+        logger.error('Reporting payout JE failed:', { study_id: req.params.id, error: jeErr.message });
+      }
+    });
+
+    logger.info('Report completed', { study_id: req.params.id });
+    res.json({ success: true, message: 'Report completed — payout payable being generated' });
+  } catch (e) {
+    logger.error('Report-complete PUT:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── UNIFIED RADIOLOGIST MASTER (includes both individual radiologists and teleradiology companies) ──
+
 
 // Get all radiologists (individual and companies)
 router.get('/radiologists', async (req, res) => {
@@ -56,7 +320,7 @@ router.get('/radiologists', async (req, res) => {
       LEFT JOIN study_master sm ON st.study_code = sm.study_code
       WHERE ${whereClause}
       GROUP BY rm.id, c.name
-      ORDER BY rm.type, rm.name
+      ORDER BY rm.type, rm.radiologist_name
     `;
 
     const result = await pool.query(query, queryParams);
@@ -146,23 +410,25 @@ router.post('/radiologists', [
       return res.status(400).json({ error: 'Radiologist code already exists' });
     }
 
+    const reporterType = type === 'TELERADIOLOGY_COMPANY' ? 'TELERADIOLOGY' : 'RADIOLOGIST';
+
     const query = `
       INSERT INTO radiologist_master (
-        radiologist_code, name, type, specialty, qualification, license_number,
+        radiologist_code, name, type, reporter_type, specialty, qualification, license_number,
         center_id, contact_phone, contact_email, address, city, state, postal_code,
         reporting_rates, bank_account_number, bank_name, ifsc_code, gst_number,
-        pan_number, contact_person, notes, created_at, updated_at, active
+        pan_number, contact_person, notes, credit_days, created_at, updated_at, active
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-        $19, $20, $21, NOW(), NOW(), true
+        $19, $20, $21, $22, $23, NOW(), NOW(), true
       )
     `;
 
     await pool.query(query, [
-      radiologist_code, name, type, specialty, qualification, license_number,
+      radiologist_code, name, type, reporterType, specialty, qualification, license_number,
       center_id, contact_phone, contact_email, address, city, state, postal_code,
       JSON.stringify(reporting_rates), bank_account_number, bank_name, ifsc_code, gst_number,
-      pan_number, contact_person, notes
+      pan_number, contact_person, notes, req.body.credit_days ?? 30
     ]);
 
     logger.info(`Radiologist created: ${name} (${radiologist_code}) - Type: ${type}`);
@@ -268,20 +534,22 @@ router.put('/radiologists/:id', [
       return res.status(400).json({ error: 'At least one reporting rate is required' });
     }
 
+    const reporterType = type === 'TELERADIOLOGY_COMPANY' ? 'TELERADIOLOGY' : 'RADIOLOGIST';
+
     // Update radiologist
     await pool.query(
-      `UPDATE radiologist_master SET 
-        name = $1, type = $2, specialty = $3, qualification = $4, license_number = $5,
-        center_id = $6, contact_phone = $7, contact_email = $8, address = $9, city = $10,
-        state = $11, postal_code = $12, reporting_rates = $13, bank_account_number = $14,
-        bank_name = $15, ifsc_code = $16, gst_number = $17, pan_number = $18,
-        contact_person = $19, notes = $20, updated_at = NOW()
-      WHERE id = $21 AND active = true`,
+      `UPDATE radiologist_master SET
+        name = $1, type = $2, reporter_type = $3, specialty = $4, qualification = $5, license_number = $6,
+        center_id = $7, contact_phone = $8, contact_email = $9, address = $10, city = $11,
+        state = $12, postal_code = $13, reporting_rates = $14, bank_account_number = $15,
+        bank_name = $16, ifsc_code = $17, gst_number = $18, pan_number = $19,
+        contact_person = $20, notes = $21, credit_days = $22, updated_at = NOW()
+      WHERE id = $23 AND active = true`,
       [
-        name, type, specialty, qualification, license_number, center_id, contact_phone,
+        name, type, reporterType, specialty, qualification, license_number, center_id, contact_phone,
         contact_email, address, city, state, postal_code, JSON.stringify(reporting_rates),
         bank_account_number, bank_name, ifsc_code, gst_number, pan_number,
-        contact_person, notes, id
+        contact_person, notes, req.body.credit_days ?? 30, id
       ]
     );
 
@@ -379,13 +647,13 @@ router.get('/radiologists/rates', async (req, res) => {
     const query = `
       SELECT 
         rm.radiologist_code,
-        rm.name,
+        rm.radiologist_name,
         rm.type,
         rm.specialty,
         jsonb_array_elements(rm.reporting_rates) as rate_data
       FROM radiologist_master rm
       WHERE ${whereClause}
-      ORDER BY rm.name
+      ORDER BY rm.radiologist_name
     `;
 
     const result = await pool.query(query, queryParams);
@@ -479,14 +747,46 @@ router.post('/studies/report', [
 
     // Update study with reporting information
     await pool.query(
-      `UPDATE studies SET 
-        radiologist_code = $1, report_date = $2, reporting_rate = $3, 
+      `UPDATE studies SET
+        radiologist_code = $1, report_date = $2, reporting_rate = $3,
         report_status = $4, notes = $5, updated_at = NOW()
       WHERE id = $6 AND active = true`,
       [radiologist_code, report_date, reporting_rate, report_status, notes, study_id]
     );
 
     logger.info(`Study reported: ${study_id} by ${radiologist_code} - Rate: ${reporting_rate}`);
+
+    // Re-fetch updated study to get all fields for finance payout
+    const { rows: updatedStudyRows } = await pool.query(
+      'SELECT id, study_code, center_id, radiologist_code, report_date, accession_number, reporting_posted_at FROM studies WHERE id = $1',
+      [study_id]
+    );
+    const updatedStudy = updatedStudyRows[0];
+
+    // Trigger radiologist payout JE only for completed/finalized reports and only if not already posted
+    if (
+      updatedStudy &&
+      !updatedStudy.reporting_posted_at &&
+      (report_status === 'COMPLETED' || report_status === 'FINALIZED' || report_status === 'APPROVED')
+    ) {
+      setImmediate(async () => {
+        try {
+          await financeService.postReportingPayoutJE(
+            {
+              id:               updatedStudy.id,
+              study_code:       updatedStudy.study_code,
+              center_id:        updatedStudy.center_id,
+              radiologist_code: updatedStudy.radiologist_code,
+              report_date:      updatedStudy.report_date || new Date(),
+              accession_number: updatedStudy.accession_number
+            },
+            req.user?.id
+          );
+        } catch (e) {
+          logger.error('Reporting payout JE failed:', e);
+        }
+      });
+    }
 
     res.json({
       message: 'Study reported successfully',
@@ -548,7 +848,7 @@ router.get('/studies/reporting', async (req, res) => {
         s.report_status,
         s.notes as study_notes,
         p.name as patient_name,
-        rm.name as radiologist_name,
+        rm.radiologist_name as radiologist_name,
         rm.type as radiologist_type,
         rm.specialty,
         sm.modality,
@@ -658,11 +958,58 @@ router.post('/payments', [
 
     // Update study payment status
     await pool.query(
-      `UPDATE studies SET 
+      `UPDATE studies SET
         payment_status = 'PAID', payment_date = $1, payment_id = $2, updated_at = NOW()
       WHERE id = ANY($3) AND active = true`,
       [payment_date, paymentResult.rows[0].id, study_ids]
     );
+
+    // Post GL: DR AP (2113) → CR Bank/Cash
+    setImmediate(async () => {
+      try {
+        const bankCode = (payment_mode || '').toUpperCase() === 'CASH' ? '1111' : '1112';
+        // Prefer bank_accounts.gl_account_id; fall back to hardcoded COA code
+        let bankGlId = null;
+        if (bank_account_id) {
+          const { rows: [ba] } = await pool.query(
+            `SELECT gl_account_id FROM bank_accounts WHERE id = $1 AND active = true LIMIT 1`,
+            [bank_account_id]
+          );
+          bankGlId = ba?.gl_account_id || null;
+        }
+        if (!bankGlId) {
+          const { rows: [ba] } = await pool.query(
+            `SELECT id FROM chart_of_accounts WHERE account_code=$1 AND is_active=true LIMIT 1`, [bankCode]
+          );
+          bankGlId = ba?.id || null;
+        }
+        const [{ rows: [apAcc] }] = await Promise.all([
+          pool.query(`SELECT id FROM chart_of_accounts WHERE account_code='2113' AND is_active=true LIMIT 1`),
+        ]);
+        const bankAcc = bankGlId ? { id: bankGlId } : null;
+        if (!apAcc || !bankAcc) {
+          logger.warn('Radiologist payment GL: AP/Bank account not found — skipping JE');
+          return;
+        }
+        const radiologist = radiologistQuery.rows[0];
+        const amt = parseFloat(amount_paid);
+        await financeService.createAndPostJE({
+          sourceModule: 'REPORTING',
+          sourceId:     null,
+          sourceRef:    paymentId,
+          narration:    `Radiologist payment: ${radiologist_code} | ${paymentId}`,
+          lines: [
+            { accountId: apAcc.id,   debit: amt, credit: 0,   description: `AP cleared: ${radiologist.radiologist_name || radiologist_code}` },
+            { accountId: bankAcc.id, debit: 0,   credit: amt, description: `${payment_mode} payment: ${transaction_reference || paymentId}` },
+          ],
+          createdBy:  req.user?.id,
+          postingKey: `RADPAY-${paymentId}`,
+          entryDate:  new Date(payment_date),
+        });
+      } catch (jeErr) {
+        logger.error('Radiologist payment JE failed:', { paymentId, error: jeErr.message });
+      }
+    });
 
     logger.info(`Radiologist payment processed: ${radiologist_code} - Amount: ${amount_paid}`);
 
@@ -721,7 +1068,7 @@ router.get('/payments', async (req, res) => {
     const query = `
       SELECT 
         rp.*,
-        rm.name as radiologist_name,
+        rm.radiologist_name as radiologist_name,
         rm.type as radiologist_type,
         rm.specialty,
         c.name as center_name,
@@ -732,7 +1079,7 @@ router.get('/payments', async (req, res) => {
       LEFT JOIN centers c ON rm.center_id = c.id
       LEFT JOIN studies s ON s.id = ANY(rp.study_ids) AND s.active = true
       WHERE ${whereClause} AND rp.active = true
-      GROUP BY rp.id, rm.name, rm.type, rm.specialty, c.name
+      GROUP BY rp.id, rm.radiologist_name, rm.type, rm.specialty, c.name
       ORDER BY rp.payment_date DESC
       LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
     `;
@@ -779,18 +1126,20 @@ router.get('/dashboard', async (req, res) => {
   try {
     const { center_id, radiologist_code, period = '30' } = req.query;
     
-    let centerFilter = center_id ? `AND rm.center_id = ${center_id}` : '';
+    const centerIdInt = center_id ? parseInt(center_id, 10) : null;
+    let centerFilter = centerIdInt ? `AND rm.center_id = ${centerIdInt}` : '';
+    let centerFilterStudy = centerIdInt ? `AND s.center_id = ${centerIdInt}` : '';
     let radiologistFilter = radiologist_code ? `AND rm.radiologist_code = '${radiologist_code}'` : '';
     let dateFilter = '';
-    
+
     if (period === '7') {
-      dateFilter = 'AND s.report_date >= CURRENT_DATE - INTERVAL \'7 days\'';
+      dateFilter = 'AND COALESCE(s.report_date, s.created_at::date) >= CURRENT_DATE - INTERVAL \'7 days\'';
     } else if (period === '30') {
-      dateFilter = 'AND s.report_date >= CURRENT_DATE - INTERVAL \'30 days\'';
+      dateFilter = 'AND COALESCE(s.report_date, s.created_at::date) >= CURRENT_DATE - INTERVAL \'30 days\'';
     } else if (period === '90') {
-      dateFilter = 'AND s.report_date >= CURRENT_DATE - INTERVAL \'90 days\'';
+      dateFilter = 'AND COALESCE(s.report_date, s.created_at::date) >= CURRENT_DATE - INTERVAL \'90 days\'';
     } else if (period === '365') {
-      dateFilter = 'AND s.report_date >= CURRENT_DATE - INTERVAL \'365 days\'';
+      dateFilter = 'AND COALESCE(s.report_date, s.created_at::date) >= CURRENT_DATE - INTERVAL \'365 days\'';
     }
 
     // Radiologist summary
@@ -815,7 +1164,7 @@ router.get('/dashboard', async (req, res) => {
     const topRadiologistsQuery = `
       SELECT 
         rm.radiologist_code,
-        rm.name,
+        rm.radiologist_name,
         rm.type,
         rm.specialty,
         COUNT(s.id) as studies_reported,
@@ -825,23 +1174,27 @@ router.get('/dashboard', async (req, res) => {
       FROM radiologist_master rm
       LEFT JOIN studies s ON rm.radiologist_code = s.radiologist_code AND s.active = true
       WHERE rm.active = true ${centerFilter} ${dateFilter}
-      GROUP BY rm.radiologist_code, rm.name, rm.type, rm.specialty
+      GROUP BY rm.radiologist_code, rm.radiologist_name, rm.type, rm.specialty
       HAVING COUNT(s.id) > 0
       ORDER BY total_earnings DESC
       LIMIT 10
     `;
 
     // Modality breakdown
+    // Studies auto-created during reporter assignment may not have study_code set;
+    // fall back to bill_items.modality which is always populated at billing time.
     const modalityQuery = `
-      SELECT 
-        sm.modality,
+      SELECT
+        COALESCE(sm.modality, bi.modality, 'Unknown') AS modality,
         COUNT(s.id) as studies_reported,
         COUNT(DISTINCT s.radiologist_code) as radiologists_count,
         COALESCE(SUM(s.reporting_rate), 0) as total_earnings
       FROM studies s
-      LEFT JOIN study_master sm ON s.study_code = sm.study_code
-      WHERE s.active = true AND s.radiologist_code IS NOT NULL ${centerFilter} ${dateFilter}
-      GROUP BY sm.modality
+      LEFT JOIN patient_bills pb ON pb.study_id = s.id AND pb.active = true
+      LEFT JOIN bill_items bi    ON bi.bill_id = pb.id  AND bi.active = true
+      LEFT JOIN study_master sm  ON sm.study_code = s.study_code AND sm.active = true
+      WHERE s.active = true AND s.radiologist_code IS NOT NULL ${centerFilterStudy} ${dateFilter}
+      GROUP BY COALESCE(sm.modality, bi.modality, 'Unknown')
       ORDER BY total_earnings DESC
     `;
 

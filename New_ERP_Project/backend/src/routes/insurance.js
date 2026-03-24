@@ -1,20 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/insurance.log' })
-  ]
-});
+router.use(authorizePermission('INSURANCE_VIEW'));
 
 // INSURANCE MANAGEMENT (Optimized for Low Volume)
 
@@ -39,9 +30,9 @@ router.get('/providers', async (req, res) => {
       SELECT 
         ip.*,
         COUNT(p.id) as patient_count,
-        COUNT(CASE WHEN p.payment_type = 'insurance' THEN 1 END) as insurance_patient_count,
-        COUNT(CASE WHEN p.payment_type = 'insurance' AND p.status = 'completed' THEN 1 END) as completed_insurance_count,
-        COALESCE(SUM(CASE WHEN p.payment_type = 'insurance' AND p.status = 'completed' THEN pb.total_amount ELSE 0 END), 0) as total_insurance_revenue
+        COUNT(CASE WHEN p.has_insurance = true THEN 1 END) as insurance_patient_count,
+        COUNT(CASE WHEN p.has_insurance = true THEN 1 END) as completed_insurance_count,
+        COALESCE(SUM(CASE WHEN p.has_insurance = true THEN pb.total_amount ELSE 0 END), 0) as total_insurance_revenue
       FROM insurance_providers ip
       LEFT JOIN patients p ON ip.id = p.insurance_provider_id AND p.active = true
       LEFT JOIN patient_bills pb ON p.id = pb.patient_id AND pb.payment_status = 'PAID' AND pb.active = true

@@ -1,23 +1,14 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
-const puppeteer = require('puppeteer');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/bill-printing.log' })
-  ]
-});
+router.use(authorizePermission('BILL_PRINT_VIEW'));
 
 // BILL CONFIGURATION MANAGEMENT
 
@@ -526,9 +517,13 @@ router.post('/generate-bill-pdf', [
       res.setHeader('Content-Type', 'text/html');
       res.send(htmlContent);
     } else {
-      // Generate PDF using Puppeteer
+      // Generate PDF using puppeteer-core
       try {
-        const browser = await puppeteer.launch({ headless: true });
+        const browser = await puppeteer.launch({
+          executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          headless: 'new',
+          args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
         const page = await browser.newPage();
         
         await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
@@ -548,7 +543,7 @@ router.post('/generate-bill-pdf', [
         await browser.close();
 
         // Generate filename
-        const filename = `bill_${bill.invoice_number}_${new Date().toISOString().split('T')[0]}.pdf`;
+        const filename = `bill_${bill.invoice_number}_${new Date().toLocaleDateString('en-CA')}.pdf`;
         
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

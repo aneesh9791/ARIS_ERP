@@ -1,32 +1,12 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
 const axios = require('axios');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/whatsapp.log' }),
-    new winston.transports.Console({ format: winston.format.simple() })
-  ]
-});
+router.use(authorizePermission('WHATSAPP_VIEW'));
 
 // WhatsApp Integration Class
 class WhatsAppIntegration {

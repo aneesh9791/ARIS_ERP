@@ -1,24 +1,59 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
-const puppeteer = require('puppeteer');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const puppeteer = require('puppeteer-core');
 const ExcelJS = require('exceljs');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/dashboard-reports.log' })
-  ]
-});
+router.use(authorizePermission('DASHBOARD_VIEW'));
 
 // VISUALLY RICH DASHBOARD
+
+// ── GET /stats — lightweight KPI endpoint ─────────────────────────────────────
+router.get('/stats', async (req, res) => {
+  try {
+    const results = await Promise.allSettled([
+      pool.query(`SELECT COUNT(*) FROM patients WHERE DATE(created_at) = CURRENT_DATE`),
+      pool.query(`SELECT COALESCE(SUM(total_amount),0) AS revenue FROM billing WHERE DATE(created_at) = CURRENT_DATE AND payment_status != 'CANCELLED'`),
+      pool.query(`SELECT COUNT(*) FROM studies WHERE status IN ('PENDING','IN_PROGRESS') AND active = true`),
+      pool.query(`SELECT COUNT(*) FROM centers WHERE active = true`),
+      pool.query(`SELECT COUNT(*) FROM procurement_orders WHERE status IN ('DRAFT','PENDING','APPROVED','ISSUED') AND active = true`),
+      pool.query(`SELECT COUNT(*) FROM item_master WHERE item_type='STOCK' AND active=true AND current_stock <= reorder_level AND reorder_level > 0`),
+      pool.query(`SELECT COUNT(*) FROM leave_requests WHERE status = 'PENDING'`),
+      pool.query(`SELECT COALESCE(SUM(total_amount),0) AS revenue FROM billing WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE) AND payment_status != 'CANCELLED'`),
+    ]);
+
+    const safe = (r) => {
+      if (r.status === 'fulfilled' && r.value.rows[0]) {
+        return parseInt(r.value.rows[0].count || 0);
+      }
+      return 0;
+    };
+    const safeFloat = (r) => {
+      if (r.status === 'fulfilled' && r.value.rows[0]) {
+        return parseFloat(r.value.rows[0].revenue || 0);
+      }
+      return 0;
+    };
+
+    res.json({
+      success: true,
+      today_patients:  safe(results[0]),
+      revenue_today:   safeFloat(results[1]),
+      pending_reports: safe(results[2]),
+      active_centers:  safe(results[3]),
+      pending_pos:     safe(results[4]),
+      low_stock_items: safe(results[5]),
+      pending_leaves:  safe(results[6]),
+      monthly_revenue: safeFloat(results[7]),
+    });
+  } catch (error) {
+    logger.error('Dashboard stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Get dashboard data with filters
 router.get('/dashboard', async (req, res) => {
@@ -42,7 +77,7 @@ router.get('/dashboard', async (req, res) => {
       LEFT JOIN user_roles ur ON u.role = ur.role
       WHERE u.id = $1 AND u.active = true
     `;
-    const userResult = await pool.query(userQuery, [req.session.user.id]);
+    const userResult = await pool.query(userQuery, [req.user.id]);
 
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
@@ -86,29 +121,31 @@ router.get('/dashboard', async (req, res) => {
     }
 
     // Get dashboard widgets based on user role
+    // Empty / null widgets → load everything (used by the Reports page)
     const widgets = user.dashboard_widgets || [];
+    const showAll = widgets.length === 0 || widgets.includes('ALL_WIDGETS');
 
     const dashboardData = {};
 
     // Patient Statistics Widget
-    if (widgets.includes('PATIENT_COUNT') || widgets.includes('ALL_WIDGETS')) {
+    if (showAll || widgets.includes('PATIENT_COUNT')) {
       const patientQuery = `
-        SELECT 
+        SELECT
           COUNT(*) as total_patients,
           COUNT(CASE WHEN DATE(created_at) = CURRENT_DATE THEN 1 END) as today_patients,
           COUNT(CASE WHEN DATE(created_at) >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as week_patients,
           COUNT(CASE WHEN DATE(created_at) >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as month_patients,
           COUNT(CASE WHEN has_insurance = true THEN 1 END) as insured_patients,
           COUNT(CASE WHEN has_insurance = false THEN 1 END) as uninsured_patients
-        FROM patients 
-        WHERE active = true ${centerFilter ? `AND center_id = ANY(ARRAY[${centerFilter.replace('AND s.center_id = ', '')}])` : ''}
+        FROM patients
+        WHERE active = true ${centerFilter.replace(/s\.center_id/g, 'center_id')}
       `;
       const patientResult = await pool.query(patientQuery);
       dashboardData.patient_stats = patientResult.rows[0];
     }
 
     // Study Statistics Widget
-    if (widgets.includes('STUDY_COUNT') || widgets.includes('ALL_WIDGETS')) {
+    if (showAll || widgets.includes('STUDY_COUNT')) {
       const studyQuery = `
         SELECT 
           COUNT(*) as total_studies,
@@ -126,34 +163,57 @@ router.get('/dashboard', async (req, res) => {
     }
 
     // Revenue Statistics Widget
-    if (widgets.includes('REVENUE_SUMMARY') || widgets.includes('ALL_WIDGETS')) {
+    if (showAll || widgets.includes('REVENUE_SUMMARY')) {
       const revenueQuery = `
-        SELECT 
+        SELECT
           COALESCE(SUM(total_amount), 0) as total_revenue,
-          COALESCE(SUM(paid_amount), 0) as paid_amount,
-          COALESCE(SUM(pending_amount), 0) as pending_amount,
+          COALESCE(SUM(CASE WHEN payment_status = 'PAID' THEN total_amount ELSE 0 END), 0) as paid_amount,
+          COALESCE(SUM(CASE WHEN payment_status = 'BILLED' THEN total_amount ELSE 0 END), 0) as pending_amount,
           COUNT(*) as total_bills,
-          COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid_bills,
-          COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_bills
+          COUNT(CASE WHEN payment_status = 'PAID' THEN 1 END) as paid_bills,
+          COUNT(CASE WHEN payment_status = 'BILLED' THEN 1 END) as pending_bills
         FROM patient_bills pb
-        WHERE pb.active = true ${dateFilter} ${centerFilter}
+        WHERE pb.active = true
+          ${dateFilter.replace(/s\.created_at/g, 'pb.created_at')}
+          ${centerFilter.replace(/s\.center_id/g, 'pb.center_id')}
       `;
       const revenueResult = await pool.query(revenueQuery);
       dashboardData.revenue_stats = revenueResult.rows[0];
     }
 
     // Modality Breakdown Widget
-    if (widgets.includes('MODALITY_BREAKDOWN') || widgets.includes('ALL_WIDGETS')) {
+    if (showAll || widgets.includes('MODALITY_BREAKDOWN')) {
+      // Build bill-level date/center filters (patient_bills uses pb.bill_date / pb.center_id)
+      let billDateFilter = '';
+      if (date_from && date_to) {
+        billDateFilter = `AND pb.bill_date BETWEEN '${date_from}' AND '${date_to}'`;
+      } else if (period === '7') {
+        billDateFilter = "AND pb.bill_date >= CURRENT_DATE - INTERVAL '7 days'";
+      } else if (period === '30') {
+        billDateFilter = "AND pb.bill_date >= CURRENT_DATE - INTERVAL '30 days'";
+      } else if (period === '90') {
+        billDateFilter = "AND pb.bill_date >= CURRENT_DATE - INTERVAL '90 days'";
+      } else if (period === '365') {
+        billDateFilter = "AND pb.bill_date >= CURRENT_DATE - INTERVAL '365 days'";
+      }
+      let billCenterFilter = '';
+      if (center_id) {
+        billCenterFilter = `AND pb.center_id = ${center_id}`;
+      } else if (!user.is_corporate_role && !user.can_access_all_centers) {
+        billCenterFilter = `AND pb.center_id = ${user.center_id}`;
+      }
+
       const modalityQuery = `
-        SELECT 
-          sm.modality,
-          COUNT(*) as study_count,
-          COALESCE(SUM(pb.total_amount), 0) as revenue
-        FROM studies s
-        LEFT JOIN study_master sm ON s.study_code = sm.study_code
-        LEFT JOIN patient_bills pb ON s.patient_id = pb.patient_id AND pb.active = true
-        WHERE s.active = true ${dateFilter} ${centerFilter} ${radiologistFilter}
-        GROUP BY sm.modality
+        SELECT
+          COALESCE(bi.modality, 'Unknown') AS modality,
+          COUNT(*) AS study_count,
+          COALESCE(SUM(bi.amount), 0) AS revenue
+        FROM bill_items bi
+        JOIN patient_bills pb ON pb.id = bi.bill_id AND pb.active = true
+        WHERE bi.active = true
+          AND pb.payment_status = 'PAID'
+          ${billDateFilter} ${billCenterFilter}
+        GROUP BY COALESCE(bi.modality, 'Unknown')
         ORDER BY study_count DESC
       `;
       const modalityResult = await pool.query(modalityQuery);
@@ -161,10 +221,10 @@ router.get('/dashboard', async (req, res) => {
     }
 
     // Radiologist Workload Widget
-    if (widgets.includes('RADIOLOGIST_WORKLOAD') || widgets.includes('ALL_WIDGETS')) {
+    if (showAll || widgets.includes('RADIOLOGIST_WORKLOAD')) {
       const radiologistQuery = `
-        SELECT 
-          rm.name as radiologist_name,
+        SELECT
+          rm.radiologist_name,
           rm.radiologist_code,
           COUNT(*) as study_count,
           COUNT(CASE WHEN s.status = 'completed' THEN 1 END) as completed_studies,
@@ -173,7 +233,7 @@ router.get('/dashboard', async (req, res) => {
         FROM studies s
         LEFT JOIN radiologist_master rm ON s.radiologist_code = rm.radiologist_code
         WHERE s.active = true ${dateFilter} ${centerFilter} ${modalityFilter}
-        GROUP BY rm.name, rm.radiologist_code
+        GROUP BY rm.radiologist_name, rm.radiologist_code
         ORDER BY study_count DESC
         LIMIT 10
       `;
@@ -182,7 +242,7 @@ router.get('/dashboard', async (req, res) => {
     }
 
     // Center Utilization Widget
-    if (widgets.includes('CENTER_UTILIZATION') || widgets.includes('ALL_WIDGETS')) {
+    if (showAll || widgets.includes('CENTER_UTILIZATION')) {
       const centerUtilizationQuery = `
         SELECT 
           c.name as center_name,
@@ -202,7 +262,7 @@ router.get('/dashboard', async (req, res) => {
     }
 
     // Monthly Trend Widget
-    if (widgets.includes('REVENUE_CHART') || widgets.includes('ALL_WIDGETS')) {
+    if (showAll || widgets.includes('REVENUE_CHART')) {
       const trendQuery = `
         SELECT 
           DATE_TRUNC('month', s.created_at) as month,
@@ -223,7 +283,7 @@ router.get('/dashboard', async (req, res) => {
     }
 
     // Staff Attendance Widget
-    if (widgets.includes('STAFF_ATTENDANCE') || widgets.includes('ALL_WIDGETS')) {
+    if (showAll || widgets.includes('STAFF_ATTENDANCE')) {
       const attendanceQuery = `
         SELECT 
           COUNT(*) as total_employees,
@@ -233,7 +293,7 @@ router.get('/dashboard', async (req, res) => {
           COUNT(CASE WHEN a.attendance_date = CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as active_last_week
         FROM employees e
         LEFT JOIN attendance a ON e.id = a.employee_id AND a.attendance_date = CURRENT_DATE
-        WHERE e.active = true ${centerFilter}
+        WHERE e.active = true ${centerFilter.replace(/s\.center_id/g, 'e.center_id')}
       `;
       const attendanceResult = await pool.query(attendanceQuery);
       dashboardData.staff_attendance = attendanceResult.rows[0];
@@ -276,7 +336,7 @@ router.get('/dashboard/filters', async (req, res) => {
       LEFT JOIN user_roles ur ON u.role = ur.role
       WHERE u.id = $1 AND u.active = true
     `;
-    const userResult = await pool.query(userQuery, [req.session.user.id]);
+    const userResult = await pool.query(userQuery, [req.user.id]);
 
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
@@ -340,7 +400,7 @@ router.get('/reports', async (req, res) => {
       LEFT JOIN user_roles ur ON u.role = ur.role
       WHERE u.id = $1 AND u.active = true
     `;
-    const userResult = await pool.query(userQuery, [req.session.user.id]);
+    const userResult = await pool.query(userQuery, [req.user.id]);
 
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
@@ -494,7 +554,7 @@ router.post('/reports/generate', [
       LEFT JOIN user_roles ur ON u.role = ur.role
       WHERE u.id = $1 AND u.active = true
     `;
-    const userResult = await pool.query(userQuery, [req.session.user.id]);
+    const userResult = await pool.query(userQuery, [req.user.id]);
 
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
@@ -665,11 +725,11 @@ async function generateStudyReportsReport(user, filters, date_from, date_to) {
       p.name as patient_name,
       p.phone as patient_phone,
       sm.modality, sm.study_name,
-      rm.name as radiologist_name,
+      rm.radiologist_name,
       rm.type as radiologist_type,
       c.name as center_name,
       pb.total_amount as bill_amount,
-      pb.status as bill_status
+      pb.payment_status as bill_status
     FROM studies s
     LEFT JOIN patients p ON s.patient_id = p.id
     LEFT JOIN study_master sm ON s.study_code = sm.study_code
@@ -711,8 +771,8 @@ async function generateBillingReport(user, filters, date_from, date_to) {
 
   const query = `
     SELECT 
-      pb.id, pb.invoice_number, pb.patient_id, pb.total_amount, pb.paid_amount,
-      pb.pending_amount, pb.status, pb.created_at, pb.due_date,
+      pb.id, pb.invoice_number, pb.patient_id, pb.total_amount,
+      pb.payment_status, pb.created_at,
       p.name as patient_name,
       p.phone as patient_phone,
       p.has_insurance,
@@ -762,7 +822,7 @@ async function generateRadiologistPerformanceReport(user, filters, date_from, da
 
   const query = `
     SELECT 
-      rm.radiologist_code, rm.name as radiologist_name, rm.type as radiologist_type,
+      rm.radiologist_code, rm.radiologist_name, rm.type as radiologist_type,
       rm.specialty, rm.contact_phone, rm.email,
       COUNT(s.id) as total_studies,
       COUNT(CASE WHEN s.status = 'completed' THEN 1 END) as completed_studies,
@@ -778,7 +838,7 @@ async function generateRadiologistPerformanceReport(user, filters, date_from, da
     LEFT JOIN study_master sm ON s.study_code = sm.study_code
     LEFT JOIN centers c ON s.center_id = c.id
     ${whereClause}
-    GROUP BY rm.radiologist_code, rm.name, rm.type, rm.specialty, rm.contact_phone, rm.email, c.name
+    GROUP BY rm.radiologist_code, rm.radiologist_name, rm.type, rm.specialty, rm.contact_phone, rm.contact_email, c.name
     ORDER BY total_studies DESC
   `;
 
@@ -894,7 +954,11 @@ async function generateEmployeeAttendanceReport(user, filters, date_from, date_t
 }
 
 async function generatePDFReport(reportId, reportData) {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({
+    executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
   const page = await browser.newPage();
 
   const html = `
@@ -969,7 +1033,7 @@ async function generatePDFReport(reportId, reportData) {
 
   return {
     buffer: pdfBuffer,
-    fileName: `${reportData.title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
+    fileName: `${reportData.title.replace(/\s+/g, '_')}_${new Date().toLocaleDateString('en-CA')}.pdf`
   };
 }
 
@@ -1002,8 +1066,200 @@ async function generateExcelReport(reportId, reportData) {
   const buffer = await workbook.xlsx.writeBuffer();
   return {
     buffer,
-    fileName: `${reportData.title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`
+    fileName: `${reportData.title.replace(/\s+/g, '_')}_${new Date().toLocaleDateString('en-CA')}.xlsx`
   };
 }
+
+// ── GET /bi-summary — all data for the BI Dashboard in one call ───────────────
+router.get('/bi-summary', async (req, res) => {
+  try {
+    const [kpiRes, dailyRes, modalityRes, centerRes, radCostRes, alertsRes, monthStudiesRes, ebitdaRes] =
+      await Promise.all([
+
+        // 1. KPIs — revenue/patients for today, yesterday, this month, last month
+        pool.query(`
+          SELECT
+            COALESCE(SUM(CASE WHEN bill_date = CURRENT_DATE                                         THEN total_amount END), 0) AS today_revenue,
+            COALESCE(SUM(CASE WHEN bill_date = CURRENT_DATE - 1                                     THEN total_amount END), 0) AS yesterday_revenue,
+            COALESCE(SUM(CASE WHEN DATE_TRUNC('month', bill_date) = DATE_TRUNC('month', CURRENT_DATE)                          THEN total_amount END), 0) AS month_revenue,
+            COALESCE(SUM(CASE WHEN DATE_TRUNC('month', bill_date) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')     THEN total_amount END), 0) AS last_month_revenue,
+            COUNT(DISTINCT CASE WHEN bill_date = CURRENT_DATE                                       THEN patient_id END) AS today_patients,
+            COUNT(DISTINCT CASE WHEN bill_date = CURRENT_DATE - 1                                   THEN patient_id END) AS yesterday_patients,
+            COUNT(DISTINCT CASE WHEN DATE_TRUNC('month', bill_date) = DATE_TRUNC('month', CURRENT_DATE) THEN patient_id END) AS month_patients,
+            -- for collection rate: billed (PAID + BILLED) vs paid only, this month
+            COALESCE(SUM(CASE WHEN DATE_TRUNC('month', bill_date) = DATE_TRUNC('month', CURRENT_DATE) AND payment_status IN ('PAID','BILLED') THEN total_amount END), 0) AS month_total_billed
+          FROM patient_bills
+          WHERE active = true AND payment_status IN ('PAID', 'BILLED')
+        `),
+
+        // 2. Daily revenue — last 30 days
+        pool.query(`
+          SELECT
+            TO_CHAR(bill_date, 'DD Mon') AS day,
+            COALESCE(SUM(total_amount), 0) AS revenue,
+            COUNT(*)                       AS bills
+          FROM patient_bills
+          WHERE active = true AND payment_status = 'PAID'
+            AND bill_date >= CURRENT_DATE - INTERVAL '29 days'
+          GROUP BY bill_date
+          ORDER BY bill_date
+        `),
+
+        // 3. Modality mix — last 30 days
+        pool.query(`
+          SELECT
+            COALESCE(NULLIF(NULLIF(bi.modality, 'N/A'), ''), 'Other') AS modality,
+            COUNT(*)                        AS studies,
+            COALESCE(SUM(bi.amount), 0)     AS revenue
+          FROM bill_items bi
+          JOIN patient_bills pb ON pb.id = bi.bill_id AND pb.active = true
+          WHERE bi.active = true AND pb.payment_status = 'PAID'
+            AND pb.bill_date >= CURRENT_DATE - INTERVAL '29 days'
+          GROUP BY COALESCE(NULLIF(NULLIF(bi.modality, 'N/A'), ''), 'Other')
+          ORDER BY revenue DESC
+        `),
+
+        // 4. Center performance — last 30 days
+        pool.query(`
+          SELECT
+            c.name                             AS center,
+            COUNT(pb.id)                       AS bills,
+            COALESCE(SUM(pb.total_amount), 0)  AS revenue
+          FROM patient_bills pb
+          JOIN centers c ON c.id = pb.center_id
+          WHERE pb.active = true AND pb.payment_status = 'PAID'
+            AND pb.bill_date >= CURRENT_DATE - INTERVAL '29 days'
+          GROUP BY c.id, c.name
+          ORDER BY revenue DESC
+        `),
+
+        // 5. Radiologist cost — this month
+        pool.query(`
+          SELECT
+            COALESCE(SUM(CASE WHEN DATE_TRUNC('month', COALESCE(report_date, created_at::date)) = DATE_TRUNC('month', CURRENT_DATE)
+                              THEN reporting_rate END), 0) AS month_rad_cost,
+            COALESCE(SUM(reporting_rate), 0)               AS total_rad_cost
+          FROM studies
+          WHERE active = true AND reporting_rate IS NOT NULL AND reporting_rate > 0
+        `),
+
+        // 6. Alerts
+        pool.query(`
+          SELECT
+            (SELECT COUNT(*) FROM item_master         WHERE item_type='STOCK' AND active=true AND current_stock <= reorder_level AND reorder_level > 0) AS low_stock,
+            (SELECT COUNT(*) FROM procurement_orders  WHERE status IN ('DRAFT','PENDING','APPROVED','ISSUED') AND active = true) AS pending_pos,
+            (SELECT COUNT(*) FROM leave_requests      WHERE status = 'PENDING') AS pending_leaves,
+            (SELECT COUNT(*) FROM studies             WHERE active=true AND radiologist_code IS NOT NULL
+                                                        AND exam_workflow_status NOT IN ('REPORT_COMPLETED')
+                                                        AND created_at >= CURRENT_DATE - INTERVAL '14 days') AS pending_reports
+        `),
+
+        // 7. Studies this month (from bill_items — accurate count)
+        pool.query(`
+          SELECT COUNT(*) AS month_studies
+          FROM bill_items bi
+          JOIN patient_bills pb ON pb.id = bi.bill_id
+          WHERE bi.active = true AND pb.active = true AND pb.payment_status = 'PAID'
+            AND pb.bill_date >= DATE_TRUNC('month', CURRENT_DATE)
+        `),
+
+        // 8. EBITDA components — staff, overheads, consumables, depreciation (MTD)
+        pool.query(`
+          SELECT
+            -- Staff cost: approved/paid payroll this month
+            (SELECT COALESCE(SUM(gross_salary), 0) FROM payroll_register
+             WHERE pay_period_year  = EXTRACT(YEAR  FROM CURRENT_DATE)
+               AND pay_period_month = EXTRACT(MONTH FROM CURRENT_DATE)
+               AND status IN ('PAID','APPROVED')) AS staff_cost,
+
+            -- Overhead: all operational expenses this month
+            (SELECT COALESCE(SUM(total_amount), 0) FROM expenses
+             WHERE active = true
+               AND DATE_TRUNC('month', expense_date) = DATE_TRUNC('month', CURRENT_DATE)) AS overhead_cost,
+
+            -- Consumables: stock issued to studies this month (STOCK_OUT movements)
+            (SELECT COALESCE(SUM(ABS(quantity) * unit_cost), 0) FROM inventory_movements
+             WHERE movement_type = 'STOCK_OUT'
+               AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)) AS consumables_cost,
+
+            -- Depreciation: posted depreciation runs this month
+            (SELECT COALESCE(SUM(depreciation_amount), 0) FROM asset_depreciation_runs
+             WHERE period_year  = EXTRACT(YEAR  FROM CURRENT_DATE)
+               AND period_month = EXTRACT(MONTH FROM CURRENT_DATE)) AS depreciation
+        `),
+      ]);
+
+    const kpi          = kpiRes.rows[0];
+    const radCost      = radCostRes.rows[0];
+    const alerts       = alertsRes.rows[0];
+    const monthStudies = monthStudiesRes.rows[0];
+    const ebitdaComp   = ebitdaRes.rows[0];
+
+    const monthRevenue     = parseFloat(kpi.month_revenue)          || 0;
+    const lastMonthRevenue = parseFloat(kpi.last_month_revenue)     || 0;
+    const monthTotalBilled = parseFloat(kpi.month_total_billed)     || 0;
+    const todayRevenue     = parseFloat(kpi.today_revenue)          || 0;
+    const yesterdayRevenue = parseFloat(kpi.yesterday_revenue)      || 0;
+    const monthRadCost     = parseFloat(radCost.month_rad_cost)     || 0;
+    const staffCost        = parseFloat(ebitdaComp.staff_cost)      || 0;
+    const overheadCost     = parseFloat(ebitdaComp.overhead_cost)   || 0;
+    const consumablesCost  = parseFloat(ebitdaComp.consumables_cost)|| 0;
+    const depreciation     = parseFloat(ebitdaComp.depreciation)    || 0;
+
+    const grossProfit  = monthRevenue - monthRadCost;
+    const totalOpex    = monthRadCost + staffCost + overheadCost + consumablesCost;
+    const ebitda       = monthRevenue - totalOpex;
+    const ebit         = ebitda - depreciation;
+
+    const pct = (curr, prev) => prev > 0 ? Math.round(((curr - prev) / prev) * 100) : null;
+
+    res.json({
+      success: true,
+      kpis: {
+        today_revenue:        todayRevenue,
+        yesterday_revenue:    yesterdayRevenue,
+        today_revenue_change: pct(todayRevenue, yesterdayRevenue),
+        today_patients:       parseInt(kpi.today_patients)         || 0,
+        yesterday_patients:   parseInt(kpi.yesterday_patients)     || 0,
+        month_revenue:        monthRevenue,
+        last_month_revenue:   lastMonthRevenue,
+        month_revenue_change: pct(monthRevenue, lastMonthRevenue),
+        month_patients:       parseInt(kpi.month_patients)         || 0,
+        month_studies:        parseInt(monthStudies.month_studies)  || 0,
+        collection_rate:      monthTotalBilled > 0 ? Math.round((monthRevenue / monthTotalBilled) * 100) : 100,
+        gross_profit:         grossProfit,
+        gross_margin:         monthRevenue > 0 ? Math.round((grossProfit  / monthRevenue) * 100) : 0,
+        ebitda,
+        ebitda_margin:        monthRevenue > 0 ? Math.round((ebitda       / monthRevenue) * 100) : 0,
+        ebit,
+        ebit_margin:          monthRevenue > 0 ? Math.round((ebit         / monthRevenue) * 100) : 0,
+      },
+      pnl: {
+        revenue:       monthRevenue,
+        rad_cost:      monthRadCost,
+        staff_cost:    staffCost,
+        overhead_cost: overheadCost,
+        consumables:   consumablesCost,
+        total_opex:    totalOpex,
+        gross_profit:  grossProfit,
+        ebitda,
+        depreciation,
+        ebit,
+      },
+      daily_trend:        dailyRes.rows.map(r  => ({ day: r.day, revenue: parseFloat(r.revenue), bills: parseInt(r.bills) })),
+      modality_mix:       modalityRes.rows.map(r => ({ modality: r.modality, studies: parseInt(r.studies), revenue: parseFloat(r.revenue) })),
+      center_performance: centerRes.rows.map(r  => ({ center: r.center, bills: parseInt(r.bills), revenue: parseFloat(r.revenue) })),
+      alerts: {
+        low_stock:       parseInt(alerts.low_stock)       || 0,
+        pending_pos:     parseInt(alerts.pending_pos)     || 0,
+        pending_leaves:  parseInt(alerts.pending_leaves)  || 0,
+        pending_reports: parseInt(alerts.pending_reports) || 0,
+      },
+    });
+  } catch (error) {
+    logger.error('BI summary error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 module.exports = router;

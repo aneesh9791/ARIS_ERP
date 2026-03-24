@@ -1,24 +1,15 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
 const { createSecureClient } = require('../middleware/secureAPI');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/patients.log' })
-  ]
-});
+router.use(authorizePermission('PATIENT_VIEW'));
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -436,21 +427,45 @@ router.get('/stats/pid-accession', async (req, res) => {
 // Enhanced quick search to include PID
 router.get('/quick-search', async (req, res) => {
   try {
-    const { 
-      search_term, 
-      center_id, 
-      limit = 10
-    } = req.query;
+    const { search_term, center_id, limit = 10 } = req.query;
+
+    if (!search_term || !search_term.trim()) {
+      return res.json({ success: true, patients: [] });
+    }
+
+    const term = `%${search_term.trim()}%`;
+    const params = [term];
+    let centerFilter = '';
+    if (center_id) {
+      params.push(center_id);
+      centerFilter = `AND p.center_id = $${params.length}`;
+    }
+    params.push(parseInt(limit) || 10);
 
     const query = `
-      SELECT * FROM patient_quick_search($1, $2, $3)
+      SELECT
+        p.id,
+        p.pid,
+        p.name,
+        p.phone,
+        p.email,
+        p.gender,
+        p.date_of_birth
+      FROM patients p
+      WHERE p.active = true
+        AND (
+          p.name    ILIKE $1
+          OR p.phone ILIKE $1
+          OR p.pid   ILIKE $1
+          OR p.email ILIKE $1
+        )
+        ${centerFilter}
+      ORDER BY p.name
+      LIMIT $${params.length}
     `;
-    const result = await pool.query(query, [search_term, center_id || null, limit]);
 
-    res.json({
-      success: true,
-      patients: result.rows
-    });
+    const result = await pool.query(query, params);
+    res.json({ success: true, patients: result.rows });
   } catch (error) {
     logger.error('Quick patient search error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -487,18 +502,18 @@ router.post('/', [
   body('email').optional().isEmail().normalizeEmail(),
   body('phone').trim().isLength({ min: 10, max: 20 }),
   body('gender').isIn(['MALE', 'FEMALE', 'OTHER']),
-  body('date_of_birth').isISO8601().toDate(),
-  body('address').trim().isLength({ min: 5, max: 500 }),
-  body('city').trim().isLength({ min: 2, max: 100 }),
-  body('state').trim().isLength({ min: 2, max: 100 }),
-  body('postal_code').trim().isLength({ min: 6, max: 10 }),
-  body('has_insurance').isBoolean(),
+  body('date_of_birth').optional({ nullable: true }).isISO8601().toDate(),
+  body('address').optional({ nullable: true }).trim().isLength({ max: 500 }),
+  body('city').optional({ nullable: true }).trim().isLength({ max: 100 }),
+  body('state').optional({ nullable: true }).trim().isLength({ max: 100 }),
+  body('postal_code').optional({ nullable: true }).trim().isLength({ max: 10 }),
+  body('has_insurance').optional().isBoolean(),
   body('insurance_provider_id').optional().isInt(),
   body('policy_number').optional().trim().isLength({ max: 50 }),
   body('insured_name').optional().trim().isLength({ max: 100 }),
   body('relationship').optional().trim().isLength({ max: 50 }),
   body('referring_physician_code').optional().trim().isLength({ max: 20 }),
-  body('center_id').isInt(),
+  body('center_id').optional({ nullable: true }).isInt(),
   // ID proof fields
   body('id_proof_type').optional().trim().isLength({ max: 50 }),
   body('id_proof_number').optional().trim().isLength({ max: 100 }),
@@ -526,7 +541,7 @@ router.post('/', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const {
+    let {
       name, email, phone, gender, date_of_birth, address, city, state, postal_code,
       has_insurance, insurance_provider_id, policy_number, insured_name, relationship,
       referring_physician_code, center_id,
@@ -539,6 +554,12 @@ router.post('/', [
       // Consent
       consent_for_treatment, consent_for_data_sharing, privacy_preferences
     } = req.body;
+
+    // Default center_id to first available center if not provided
+    if (!center_id) {
+      const defaultCenter = await pool.query('SELECT id FROM centers WHERE active = true ORDER BY id LIMIT 1');
+      center_id = defaultCenter.rows[0]?.id || 1;
+    }
 
     // Validate ID proof format if provided
     if (id_proof_type && id_proof_number) {
@@ -573,6 +594,7 @@ router.post('/', [
 
     const query = `
       INSERT INTO patients (
+        id,
         name, email, phone, gender, date_of_birth, address, city, state, postal_code,
         has_insurance, insurance_provider_id, policy_number, insured_name, relationship,
         referring_physician_code, center_id,
@@ -582,13 +604,14 @@ router.post('/', [
         consent_for_treatment, consent_for_data_sharing, privacy_preferences,
         created_at, updated_at, active
       ) VALUES (
+        gen_random_uuid()::text,
         $1, $2, $3, $4, $5, $6, $7, $8, $9,
         $10, $11, $12, $13, $14,
         $15, $16,
         $17, $18, $19, $20, false,
         $21, $22, $23, $24,
-        $25, $26, $27, $28,
-        $29, $30, $31,
+        $25, $26, $27, $28, $29,
+        $30, $31, $32,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true
       ) RETURNING *
     `;
@@ -915,103 +938,6 @@ router.get('/:id', async (req, res) => {
 
   } catch (error) {
     logger.error('Get patient error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Create new patient
-router.post('/', [
-  body('name').trim().isLength({ min: 2, max: 100 }),
-  body('email').trim().isEmail().normalizeEmail(),
-  body('phone').trim().isLength({ min: 10, max: 20 }),
-  body('date_of_birth').isISO8601().toDate(),
-  body('gender').isIn(['male', 'female', 'other']),
-  body('address').trim().isLength({ min: 5, max: 500 }),
-  body('city').trim().isLength({ min: 2, max: 100 }),
-  body('state').trim().isLength({ min: 2, max: 100 }),
-  body('postal_code').trim().isLength({ min: 3, max: 20 }),
-  body('country').trim().isLength({ min: 2, max: 100 }),
-  body('emergency_contact').trim().isLength({ min: 10, max: 100 }),
-  body('medical_history').optional(),
-  body('allergies').optional(),
-  body('center_id').isInt(),
-  body('insurance_provider').optional(),
-  body('policy_number').optional()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const {
-      name,
-      email,
-      phone,
-      date_of_birth,
-      gender,
-      address,
-      city,
-      state,
-      postal_code,
-      country,
-      emergency_contact,
-      medical_history,
-      allergies,
-      center_id,
-      insurance_provider,
-      policy_number
-    } = req.body;
-
-    // Generate patient ID
-    const patientId = 'PAT' + Date.now().toString(36).substr(2, 9).toUpperCase();
-
-    const query = `
-      INSERT INTO patients (
-        id, name, email, phone, date_of_birth, gender, address, city, 
-        state, postal_code, country, emergency_contact, medical_history, 
-        allergies, center_id, insurance_provider, policy_number, 
-        created_at, updated_at, active
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
-        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
-        NOW(), NOW(), true
-      )
-    `;
-
-    await pool.query(query, [
-      patientId, name, email, phone, date_of_birth, gender, address, city,
-      state, postal_code, country, emergency_contact, medical_history,
-      allergies, center_id, insurance_provider, policy_number
-    ]);
-
-    logger.info(`Patient created: ${name} (${patientId})`);
-
-    res.status(201).json({
-      message: 'Patient created successfully',
-      patient: {
-        id: patientId,
-        name,
-        email,
-        phone,
-        date_of_birth,
-        gender,
-        address,
-        city,
-        state,
-        postal_code,
-        country,
-        emergency_contact,
-        medical_history,
-        allergies,
-        center_id,
-        insurance_provider,
-        policy_number
-      }
-    });
-
-  } catch (error) {
-    logger.error('Create patient error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

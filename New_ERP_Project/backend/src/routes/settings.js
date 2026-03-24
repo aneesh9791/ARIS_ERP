@@ -1,31 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/settings.log' }),
-    new winston.transports.Console({ format: winston.format.simple() })
-  ]
-});
+router.use(authorizePermission('MASTER_DATA_VIEW'));
 
 // Settings Management Class
 class SettingsManager {
@@ -60,14 +40,14 @@ class SettingsManager {
                   'description', opt.option_description,
                   'is_default', opt.is_default
                 ) ORDER BY opt.sort_order
-              )
+              )::TEXT
               FROM dropdown_options opt 
               WHERE opt.option_group = ss.setting_key AND opt.is_active = true
             )
             WHEN ss.setting_type = 'BOOLEAN' THEN 
-              CASE WHEN ss.setting_value = 'true' THEN true ELSE false END
+              CASE WHEN ss.setting_value = 'true' THEN 'true' ELSE 'false' END
             WHEN ss.setting_type = 'NUMBER' THEN 
-              CASE WHEN ss.setting_value ~ '^[0-9]+(\.[0-9]+)?$' THEN ss.setting_value::NUMERIC ELSE 0 END
+              CASE WHEN ss.setting_value ~ '^[0-9]+(\.[0-9]+)?$' THEN ss.setting_value ELSE '0' END
             ELSE ss.setting_value
           END as processed_value,
           CASE 
@@ -1119,6 +1099,200 @@ router.use((error, req, res, next) => {
     success: false,
     message: 'Internal server error'
   });
+});
+
+// ── COMPANY INFO ────────────────────────────────────────────────────────────
+const multer = require('multer');
+const path   = require('path');
+const fs     = require('fs');
+
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../../uploads/logos');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `logo${ext}`);
+  },
+});
+const uploadLogo = multer({
+  storage: logoStorage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/image\/(png|jpeg|jpg|svg\+xml|webp)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Only image files allowed'));
+  },
+});
+
+// GET company info + directors
+router.get('/company', async (req, res) => {
+  try {
+    const ci = await pool.query('SELECT * FROM company_info ORDER BY id LIMIT 1');
+    const company = ci.rows[0] || {};
+    const dirs = await pool.query(
+      'SELECT * FROM company_directors WHERE company_id=$1 AND active=true ORDER BY sort_order, id',
+      [company.id]
+    );
+    res.json({ success: true, company, directors: dirs.rows });
+  } catch (err) {
+    logger.error('Get company info error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT update company info
+router.put('/company', async (req, res) => {
+  try {
+    const {
+      company_name, tagline, address_line1, address_line2,
+      city, state, pincode, country,
+      phone, alternate_phone, email, website,
+      pan_number, gstin, cin, tan, msme_number, incorporation_date,
+      bill_header_text, bill_footer_text, terms_and_conditions,
+      po_header_text, po_footer_text, po_terms_conditions,
+    } = req.body;
+
+    const existing = await pool.query('SELECT id FROM company_info ORDER BY id LIMIT 1');
+    let result;
+    if (existing.rows.length === 0) {
+      result = await pool.query(
+        `INSERT INTO company_info
+          (company_name,tagline,address_line1,address_line2,city,state,pincode,country,
+           phone,alternate_phone,email,website,pan_number,gstin,cin,tan,msme_number,
+           incorporation_date,bill_header_text,bill_footer_text,terms_and_conditions,
+           po_header_text,po_footer_text,po_terms_conditions,updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
+         RETURNING *`,
+        [company_name,tagline,address_line1,address_line2,city,state,pincode,country,
+         phone,alternate_phone,email,website,pan_number,gstin,cin,tan,msme_number,
+         incorporation_date||null,bill_header_text,bill_footer_text,terms_and_conditions,
+         po_header_text,po_footer_text,po_terms_conditions]
+      );
+    } else {
+      result = await pool.query(
+        `UPDATE company_info SET
+          company_name=$1,tagline=$2,address_line1=$3,address_line2=$4,
+          city=$5,state=$6,pincode=$7,country=$8,
+          phone=$9,alternate_phone=$10,email=$11,website=$12,
+          pan_number=$13,gstin=$14,cin=$15,tan=$16,msme_number=$17,
+          incorporation_date=$18,bill_header_text=$19,bill_footer_text=$20,
+          terms_and_conditions=$21,po_header_text=$22,po_footer_text=$23,
+          po_terms_conditions=$24,updated_at=NOW()
+         WHERE id=$25 RETURNING *`,
+        [company_name,tagline,address_line1,address_line2,city,state,pincode,country,
+         phone,alternate_phone,email,website,pan_number,gstin,cin,tan,msme_number,
+         incorporation_date||null,bill_header_text,bill_footer_text,terms_and_conditions,
+         po_header_text,po_footer_text,po_terms_conditions,
+         existing.rows[0].id]
+      );
+    }
+    // Upsert the Corporate / Head Office center to stay in sync with company info
+    const corpName    = `${company_name} (Corporate)`;
+    const corpAddress = [address_line1, address_line2].filter(Boolean).join(', ') || null;
+    await pool.query(
+      `INSERT INTO centers (code, name, address, city, state, postal_code, phone, email, gst_number, pan_number, active)
+       VALUES ('CORP', $1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+       ON CONFLICT (code) DO UPDATE SET
+         name=$1, address=$2, city=$3, state=$4, postal_code=$5,
+         phone=$6, email=$7, gst_number=$8, pan_number=$9, active=true, updated_at=NOW()`,
+      [corpName, corpAddress, city||null, state||null, pincode||null, phone||null, email||null, gstin||null, pan_number||null]
+    );
+
+    res.json({ success: true, company: result.rows[0] });
+  } catch (err) {
+    logger.error('Update company info error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST upload logo
+router.post('/company/logo', uploadLogo.single('logo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const logoPath = `/uploads/logos/${req.file.filename}`;
+    const existing = await pool.query('SELECT id FROM company_info ORDER BY id LIMIT 1');
+    if (existing.rows.length > 0) {
+      await pool.query('UPDATE company_info SET logo_path=$1, updated_at=NOW() WHERE id=$2',
+        [logoPath, existing.rows[0].id]);
+    } else {
+      // No company_info row yet — create one so the logo is persisted
+      await pool.query('INSERT INTO company_info (logo_path, updated_at) VALUES ($1, NOW())', [logoPath]);
+    }
+    res.json({ success: true, logo_path: logoPath });
+  } catch (err) {
+    logger.error('Logo upload error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE logo
+router.delete('/company/logo', async (req, res) => {
+  try {
+    const ci = await pool.query('SELECT logo_path FROM company_info ORDER BY id LIMIT 1');
+    const p = ci.rows[0]?.logo_path;
+    if (p) {
+      const abs = path.join(__dirname, '../../', p);
+      if (fs.existsSync(abs)) fs.unlinkSync(abs);
+      await pool.query("UPDATE company_info SET logo_path=NULL, updated_at=NOW() WHERE id=(SELECT id FROM company_info ORDER BY id LIMIT 1)");
+    }
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('Logo delete error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST add director
+router.post('/company/directors', [
+  body('director_name').trim().notEmpty().withMessage('Director name is required'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const ci = await pool.query('SELECT id FROM company_info ORDER BY id LIMIT 1');
+    if (!ci.rows.length) return res.status(404).json({ error: 'Company not found' });
+    const { director_name, designation, din, email, phone } = req.body;
+    const maxOrder = await pool.query('SELECT COALESCE(MAX(sort_order),0) as mo FROM company_directors WHERE company_id=$1', [ci.rows[0].id]);
+    const result = await pool.query(
+      `INSERT INTO company_directors (company_id,director_name,designation,din,email,phone,sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [ci.rows[0].id, director_name, designation||null, din||null, email||null, phone||null, maxOrder.rows[0].mo + 1]
+    );
+    res.status(201).json({ success: true, director: result.rows[0] });
+  } catch (err) {
+    logger.error('Add director error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT update director
+router.put('/company/directors/:id', async (req, res) => {
+  try {
+    const { director_name, designation, din, email, phone } = req.body;
+    const result = await pool.query(
+      `UPDATE company_directors SET director_name=$1,designation=$2,din=$3,email=$4,phone=$5
+       WHERE id=$6 AND active=true RETURNING *`,
+      [director_name, designation||null, din||null, email||null, phone||null, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Director not found' });
+    res.json({ success: true, director: result.rows[0] });
+  } catch (err) {
+    logger.error('Update director error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE director
+router.delete('/company/directors/:id', async (req, res) => {
+  try {
+    await pool.query('UPDATE company_directors SET active=false WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('Delete director error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = router;

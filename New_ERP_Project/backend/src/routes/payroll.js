@@ -1,20 +1,14 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const financeService = require('../services/financeService');
+const { authorize } = require('../middleware/auth');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/payroll.log' })
-  ]
-});
+const HR_WRITE      = ['SUPER_ADMIN', 'CENTER_MANAGER', 'HR_MANAGER'];
+const PAYROLL_ADMIN = ['SUPER_ADMIN', 'CENTER_MANAGER'];
 
 // EMPLOYEE MASTER AND PAYROLL MODULE
 
@@ -93,13 +87,16 @@ router.get('/employees', async (req, res) => {
 });
 
 // Create new employee
-router.post('/employees', [
+router.post('/employees', authorize(HR_WRITE), [
   body('employee_code').trim().isLength({ min: 2, max: 20 }),
   body('name').trim().isLength({ min: 3, max: 100 }),
   body('email').trim().isEmail().normalizeEmail(),
   body('phone').trim().isLength({ min: 10, max: 20 }),
-  body('department').trim().isLength({ min: 2, max: 50 }),
-  body('position').trim().isLength({ min: 2, max: 100 }),
+  body('department').optional({ checkFalsy: true }).trim().isLength({ max: 50 }),
+  body('department_id').optional({ nullable: true }).isInt(),
+  body('designation_id').optional({ nullable: true }).isInt(),
+  body('employment_type').optional().isIn(['FULL_TIME','PART_TIME','CONTRACT','INTERN']),
+  body('position').optional({ checkFalsy: true }).trim().isLength({ max: 100 }),
   body('center_id').isInt(),
   body('basic_salary').isDecimal({ min: 0 }),
   body('bank_account_number').trim().isLength({ min: 10, max: 50 }),
@@ -121,25 +118,14 @@ router.post('/employees', [
     }
 
     const {
-      employee_code,
-      name,
-      email,
-      phone,
-      department,
-      position,
-      center_id,
-      basic_salary,
-      bank_account_number,
-      bank_name,
-      ifsc_code,
-      pan_number,
-      aadhaar_number,
-      date_of_birth,
-      date_of_joining,
-      address,
-      emergency_contact_name,
-      emergency_contact_phone,
-      notes
+      employee_code, name, email, phone,
+      department = null, department_id = null, designation_id = null,
+      employment_type = 'FULL_TIME', position = null,
+      center_id, basic_salary,
+      bank_account_number, bank_name, ifsc_code,
+      pan_number, aadhaar_number,
+      date_of_birth, date_of_joining, address,
+      emergency_contact_name, emergency_contact_phone, notes,
     } = req.body;
 
     // Check if employee code already exists
@@ -158,20 +144,23 @@ router.post('/employees', [
     const query = `
       INSERT INTO employees (
         employee_id, employee_code, name, email, phone, department, position,
+        department_id, designation_id, employment_type,
         center_id, basic_salary, bank_account_number, bank_name, ifsc_code,
         pan_number, aadhaar_number, date_of_birth, date_of_joining, address,
         emergency_contact_name, emergency_contact_phone, notes, created_at, updated_at, active
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-        $18, $19, $20, NOW(), NOW(), true
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
+        NOW(), NOW(), true
       )
     `;
 
     await pool.query(query, [
-      employeeId, employee_code, name, email, phone, department, position,
+      employeeId, employee_code, name, email, phone,
+      department || '', position || '',
+      department_id || null, designation_id || null, employment_type,
       center_id, basic_salary, bank_account_number, bank_name, ifsc_code,
       pan_number, aadhaar_number, date_of_birth, date_of_joining, address,
-      emergency_contact_name, emergency_contact_phone, notes
+      emergency_contact_name, emergency_contact_phone, notes,
     ]);
 
     logger.info(`Employee created: ${name} (${employee_code})`);
@@ -209,12 +198,15 @@ router.post('/employees', [
 });
 
 // Update employee
-router.put('/employees/:id', [
+router.put('/employees/:id', authorize(HR_WRITE), [
   body('name').trim().isLength({ min: 3, max: 100 }),
   body('email').trim().isEmail().normalizeEmail(),
   body('phone').trim().isLength({ min: 10, max: 20 }),
-  body('department').trim().isLength({ min: 2, max: 50 }),
-  body('position').trim().isLength({ min: 2, max: 100 }),
+  body('department').optional({ checkFalsy: true }).trim().isLength({ max: 50 }),
+  body('department_id').optional({ nullable: true }).isInt(),
+  body('designation_id').optional({ nullable: true }).isInt(),
+  body('employment_type').optional().isIn(['FULL_TIME','PART_TIME','CONTRACT','INTERN']),
+  body('position').optional({ checkFalsy: true }).trim().isLength({ max: 100 }),
   body('center_id').isInt(),
   body('basic_salary').isDecimal({ min: 0 }),
   body('bank_account_number').trim().isLength({ min: 10, max: 50 }),
@@ -237,50 +229,38 @@ router.put('/employees/:id', [
 
     const { id } = req.params;
     const {
-      name,
-      email,
-      phone,
-      department,
-      position,
-      center_id,
-      basic_salary,
-      bank_account_number,
-      bank_name,
-      ifsc_code,
-      pan_number,
-      aadhaar_number,
-      date_of_birth,
-      date_of_joining,
-      address,
-      emergency_contact_name,
-      emergency_contact_phone,
-      notes
+      name, email, phone,
+      department = null, department_id = null, designation_id = null,
+      employment_type = 'FULL_TIME', position = null,
+      center_id, basic_salary,
+      bank_account_number, bank_name, ifsc_code,
+      pan_number, aadhaar_number,
+      date_of_birth, date_of_joining, address,
+      emergency_contact_name, emergency_contact_phone, notes,
     } = req.body;
 
-    // Check if employee exists
     const existingEmployee = await pool.query(
-      'SELECT id FROM employees WHERE id = $1 AND active = true',
-      [id]
+      'SELECT id FROM employees WHERE id = $1 AND active = true', [id]
     );
-
-    if (existingEmployee.rows.length === 0) {
+    if (existingEmployee.rows.length === 0)
       return res.status(404).json({ error: 'Employee not found' });
-    }
 
-    // Update employee
     await pool.query(
-      `UPDATE employees SET 
-        name = $1, email = $2, phone = $3, department = $4, position = $5,
-        center_id = $6, basic_salary = $7, bank_account_number = $8, bank_name = $9,
-        ifsc_code = $10, pan_number = $11, aadhaar_number = $12, date_of_birth = $13,
-        date_of_joining = $14, address = $15, emergency_contact_name = $16,
-        emergency_contact_phone = $17, notes = $18, updated_at = NOW()
-      WHERE id = $19 AND active = true`,
+      `UPDATE employees SET
+        name=$1, email=$2, phone=$3, department=$4, position=$5,
+        department_id=$6, designation_id=$7, employment_type=$8,
+        center_id=$9, basic_salary=$10, bank_account_number=$11, bank_name=$12,
+        ifsc_code=$13, pan_number=$14, aadhaar_number=$15, date_of_birth=$16,
+        date_of_joining=$17, address=$18, emergency_contact_name=$19,
+        emergency_contact_phone=$20, notes=$21, updated_at=NOW()
+      WHERE id=$22 AND active=true`,
       [
-        name, email, phone, department, position, center_id, basic_salary,
-        bank_account_number, bank_name, ifsc_code, pan_number, aadhaar_number,
-        date_of_birth, date_of_joining, address, emergency_contact_name,
-        emergency_contact_phone, notes, id
+        name, email, phone, department || '', position || '',
+        department_id || null, designation_id || null, employment_type,
+        center_id, basic_salary, bank_account_number, bank_name,
+        ifsc_code, pan_number, aadhaar_number, date_of_birth,
+        date_of_joining, address, emergency_contact_name,
+        emergency_contact_phone, notes, id,
       ]
     );
 
@@ -318,7 +298,7 @@ router.put('/employees/:id', [
 });
 
 // Delete employee (soft delete)
-router.delete('/employees/:id', async (req, res) => {
+router.delete('/employees/:id', authorize(HR_WRITE), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -353,7 +333,7 @@ router.delete('/employees/:id', async (req, res) => {
 // ATTENDANCE MARKING
 
 // Mark attendance
-router.post('/attendance', [
+router.post('/attendance', authorize(HR_WRITE), [
   body('employee_id').isInt(),
   body('attendance_date').isISO8601().toDate(),
   body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY']),
@@ -423,7 +403,7 @@ router.post('/attendance', [
 });
 
 // Update attendance
-router.put('/attendance/:id', [
+router.put('/attendance/:id', authorize(HR_WRITE), [
   body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY']),
   body('notes').optional().trim().isLength({ min: 2, max: 200 })
 ], async (req, res) => {
@@ -629,7 +609,7 @@ router.get('/attendance/summary', async (req, res) => {
 // PAYROLL CALCULATION
 
 // Calculate payroll for a month
-router.post('/payroll/calculate', [
+router.post('/payroll/calculate', authorize(HR_WRITE), [
   body('center_id').isInt(),
   body('month').isInt({ min: 1, max: 12 }),
   body('year').isInt({ min: 2020, max: 2100 }),
@@ -729,32 +709,179 @@ router.post('/payroll/calculate', [
       };
     });
 
+    const summary = {
+      total_employees: payrollCalculations.length,
+      total_gross_salary: payrollCalculations.reduce((sum, emp) => sum + emp.earnings.prorated_gross_salary, 0),
+      total_deductions: payrollCalculations.reduce((sum, emp) => sum + emp.deductions.total_deductions, 0),
+      total_net_salary: payrollCalculations.reduce((sum, emp) => sum + emp.net_salary, 0)
+    };
+
+    // Persist each employee calculation to payroll_register (DRAFT)
+    for (const calc of payrollCalculations) {
+      await pool.query(
+        `INSERT INTO payroll_register
+           (employee_id, pay_period_year, pay_period_month,
+            basic_salary, hra, da, gross_salary,
+            pf_deduction, esi_deduction, professional_tax,
+            total_deductions, net_salary,
+            working_days, present_days, leave_days,
+            center_id, staff_category,
+            status, created_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'DRAFT',$18,NOW(),NOW())
+         ON CONFLICT (employee_id, pay_period_year, pay_period_month)
+         DO UPDATE SET
+           basic_salary     = EXCLUDED.basic_salary,
+           hra              = EXCLUDED.hra,
+           da               = EXCLUDED.da,
+           gross_salary     = EXCLUDED.gross_salary,
+           pf_deduction     = EXCLUDED.pf_deduction,
+           esi_deduction    = EXCLUDED.esi_deduction,
+           professional_tax = EXCLUDED.professional_tax,
+           total_deductions = EXCLUDED.total_deductions,
+           net_salary       = EXCLUDED.net_salary,
+           working_days     = EXCLUDED.working_days,
+           present_days     = EXCLUDED.present_days,
+           leave_days       = EXCLUDED.leave_days,
+           center_id        = EXCLUDED.center_id,
+           staff_category   = EXCLUDED.staff_category,
+           updated_at       = NOW()`,
+        [
+          calc.employee_id, year, month,
+          calc.earnings.basic_salary, calc.earnings.hra, calc.earnings.da,
+          calc.earnings.prorated_gross_salary,
+          calc.deductions.pf, calc.deductions.esi, calc.deductions.professional_tax,
+          calc.deductions.total_deductions, calc.net_salary,
+          22, calc.attendance_summary.present_days, calc.attendance_summary.leave_days,
+          center_id, (calc.department || '').toUpperCase() || null,
+          req.user?.id
+        ]
+      );
+    }
+
     res.json({
       success: true,
       payroll: {
-        center_id,
-        month,
-        year,
+        center_id, month, year,
         parameters: {
-          basic_salary_multiplier,
-          hra_percentage,
-          da_percentage,
-          pf_percentage,
-          esi_percentage,
-          professional_tax
+          basic_salary_multiplier, hra_percentage, da_percentage,
+          pf_percentage, esi_percentage, professional_tax
         },
         calculations: payrollCalculations,
-        summary: {
-          total_employees: payrollCalculations.length,
-          total_gross_salary: payrollCalculations.reduce((sum, emp) => sum + emp.earnings.prorated_gross_salary, 0),
-          total_deductions: payrollCalculations.reduce((sum, emp) => sum + emp.deductions.total_deductions, 0),
-          total_net_salary: payrollCalculations.reduce((sum, emp) => sum + emp.net_salary, 0)
-        }
+        summary
       }
     });
 
   } catch (error) {
     logger.error('Calculate payroll error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /payroll/approve ─ Approve payroll run and post Finance JE ───────────
+router.post('/payroll/approve', authorize(PAYROLL_ADMIN), [
+  body('center_id').isInt(),
+  body('month').isInt({ min: 1, max: 12 }),
+  body('year').isInt({ min: 2020, max: 2100 }),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { center_id, month, year } = req.body;
+
+    // Get all DRAFT payroll records for this period + center
+    const { rows } = await pool.query(
+      `SELECT pr.*, e.name AS employee_name, e.center_id,
+              COALESCE(pr.staff_category, UPPER(e.department), 'GENERAL') AS resolved_category
+       FROM payroll_register pr
+       JOIN employees e ON e.id = pr.employee_id
+       WHERE e.center_id = $1 AND pr.pay_period_year = $2 AND pr.pay_period_month = $3
+         AND pr.status = 'DRAFT'`,
+      [center_id, year, month]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, error: 'No DRAFT payroll records found for this period. Run calculation first.' });
+    }
+
+    const totalGross   = rows.reduce((s, r) => s + parseFloat(r.gross_salary),   0);
+    const totalNet     = rows.reduce((s, r) => s + parseFloat(r.net_salary),     0);
+    const employeePF   = rows.reduce((s, r) => s + parseFloat(r.pf_deduction),   0);
+    const employeeESI  = rows.reduce((s, r) => s + parseFloat(r.esi_deduction),  0);
+    const totalTDS     = rows.reduce((s, r) => s + parseFloat(r.tds_deduction || 0), 0);
+    // Employer statutory contributions mirror employee PF/ESI (12% / 3.25%)
+    const totalPF      = employeePF;
+    const totalESI     = employeeESI * (3.25 / 1.75); // employer ESI rate
+    const periodLabel  = `${year}-${String(month).padStart(2,'0')}`;
+
+    // Build per-category gross breakdown for GL segregation
+    const categoryMap = {};
+    for (const r of rows) {
+      const cat = r.resolved_category;
+      categoryMap[cat] = (categoryMap[cat] || 0) + parseFloat(r.gross_salary);
+    }
+    const byCategory = Object.entries(categoryMap).map(([category, gross]) => ({ category, gross }));
+
+    // Post finance JE
+    let jeId = null;
+    try {
+      const je = await financeService.postPayrollJE(
+        { totalGross, totalNet, totalPF, totalESI, employeePF, employeeESI, totalTDS, byCategory, periodLabel },
+        req.user?.id,
+        center_id
+      );
+      jeId = je?.id || null;
+    } catch (jeErr) {
+      logger.error('Finance JE failed for payroll approve:', { period: periodLabel, error: jeErr.message });
+    }
+
+    // Update status to APPROVED
+    await pool.query(
+      `UPDATE payroll_register
+       SET status = 'APPROVED', approved_by = $1, approved_at = NOW(),
+           journal_entry_id = COALESCE($2, journal_entry_id), updated_at = NOW()
+       WHERE employee_id IN (
+         SELECT id FROM employees WHERE center_id = $3
+       ) AND pay_period_year = $4 AND pay_period_month = $5 AND status = 'DRAFT'`,
+      [req.user?.id, jeId, center_id, year, month]
+    );
+
+    logger.info(`Payroll approved for period ${periodLabel}, center ${center_id}`);
+    res.json({
+      success: true,
+      message: `Payroll approved for ${periodLabel}`,
+      summary: { total_employees: rows.length, total_gross: totalGross, total_net: totalNet, journal_entry_id: jeId }
+    });
+
+  } catch (error) {
+    logger.error('Approve payroll error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /payroll/register ─ List persisted payroll records ───────────────────
+router.get('/payroll/register', async (req, res) => {
+  try {
+    const { center_id, month, year, status } = req.query;
+    const conditions = ['1=1'];
+    const params = [];
+    if (center_id) { params.push(center_id); conditions.push(`e.center_id = $${params.length}`); }
+    if (year)      { params.push(year);      conditions.push(`pr.pay_period_year = $${params.length}`); }
+    if (month)     { params.push(month);     conditions.push(`pr.pay_period_month = $${params.length}`); }
+    if (status)    { params.push(status);    conditions.push(`pr.status = $${params.length}`); }
+
+    const { rows } = await pool.query(
+      `SELECT pr.*, e.name AS employee_name, e.employee_code, e.department, e.position,
+              c.name AS center_name
+       FROM payroll_register pr
+       JOIN employees e ON e.id = pr.employee_id
+       LEFT JOIN centers c ON c.id = e.center_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY pr.pay_period_year DESC, pr.pay_period_month DESC, e.name`,
+      params
+    );
+    res.json({ success: true, records: rows });
+  } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -767,10 +894,15 @@ router.get('/payroll/statistics', async (req, res) => {
     const currentMonth = month || new Date().getMonth() + 1;
     const currentYear = year || new Date().getFullYear();
     
-    let centerFilter = center_id ? `AND e.center_id = ${center_id}` : '';
+    const queryParams = [];
+    let centerFilter = '';
+    if (center_id) {
+      queryParams.push(parseInt(center_id, 10));
+      centerFilter = `AND e.center_id = $${queryParams.length}`;
+    }
 
     const query = `
-      SELECT 
+      SELECT
         COUNT(e.id) as total_employees,
         COUNT(CASE WHEN a.status = 'PRESENT' THEN 1 END) as present_today,
         COUNT(CASE WHEN a.status = 'ABSENT' THEN 1 END) as absent_today,
@@ -785,7 +917,7 @@ router.get('/payroll/statistics', async (req, res) => {
       WHERE e.active = true ${centerFilter}
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, queryParams);
 
     res.json({
       success: true,
@@ -799,6 +931,285 @@ router.get('/payroll/statistics', async (req, res) => {
 
   } catch (error) {
     logger.error('Get payroll statistics error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /departments ── DB-driven department list ─────────────────────────────
+router.get('/departments', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, code FROM departments WHERE is_active = true ORDER BY name`
+    );
+    res.json({ success: true, departments: rows });
+  } catch (err) {
+    logger.error('Get departments error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /designations ─────────────────────────────────────────────────────────
+router.get('/designations', async (req, res) => {
+  try {
+    const { department_id } = req.query;
+    const params = [];
+    let where = 'active = true';
+    if (department_id) { params.push(department_id); where += ` AND (department_id = $1 OR department_id IS NULL)`; }
+    const { rows } = await pool.query(
+      `SELECT id, code, name, department_id, grade FROM designations WHERE ${where} ORDER BY sort_order, name`,
+      params
+    );
+    res.json({ success: true, designations: rows });
+  } catch (err) {
+    logger.error('Get designations error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /leave-types ──────────────────────────────────────────────────────────
+router.get('/leave-types', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, code, name, days_per_year, carry_forward, max_carry_forward,
+              paid, requires_doc, min_days, max_days
+       FROM leave_types WHERE active = true ORDER BY sort_order, name`
+    );
+    res.json({ success: true, leave_types: rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /leave-balances ───────────────────────────────────────────────────────
+router.get('/leave-balances', async (req, res) => {
+  try {
+    const { employee_id, year = new Date().getFullYear() } = req.query;
+    if (!employee_id) return res.status(400).json({ error: 'employee_id required' });
+    const { rows } = await pool.query(
+      `SELECT lb.*, lt.code, lt.name AS leave_type_name, lt.paid,
+              (lb.entitlement + lb.carried_forward - lb.used) AS balance
+       FROM leave_balances lb
+       JOIN leave_types lt ON lt.id = lb.leave_type_id
+       WHERE lb.employee_id = $1 AND lb.year = $2
+       ORDER BY lt.sort_order`,
+      [employee_id, year]
+    );
+    res.json({ success: true, balances: rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /leave-balances/init ── Initialise yearly balances for all employees ─
+router.post('/leave-balances/init', authorize(HR_WRITE), async (req, res) => {
+  try {
+    const { year = new Date().getFullYear() } = req.body;
+    const result = await pool.query(
+      `INSERT INTO leave_balances (employee_id, leave_type_id, year, entitlement, used, carried_forward)
+       SELECT e.id, lt.id, $1, lt.days_per_year, 0,
+         COALESCE((
+           SELECT LEAST(prev.entitlement + prev.carried_forward - prev.used, lt.max_carry_forward)
+           FROM leave_balances prev
+           WHERE prev.employee_id = e.id AND prev.leave_type_id = lt.id
+             AND prev.year = $1 - 1 AND lt.carry_forward = true
+         ), 0)
+       FROM employees e CROSS JOIN leave_types lt
+       WHERE e.active = true AND lt.active = true AND lt.days_per_year > 0
+       ON CONFLICT (employee_id, leave_type_id, year) DO NOTHING
+       RETURNING id`,
+      [year]
+    );
+    res.json({ success: true, created: result.rowCount, year });
+  } catch (err) {
+    logger.error('Leave balance init error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /leave-requests ───────────────────────────────────────────────────────
+router.get('/leave-requests', async (req, res) => {
+  try {
+    const { employee_id, status, center_id, from_date, to_date } = req.query;
+    const conds = ['lr.active = true'];
+    const params = [];
+    if (employee_id) { params.push(employee_id); conds.push(`lr.employee_id = $${params.length}`); }
+    if (status)      { params.push(status);      conds.push(`lr.status = $${params.length}`); }
+    if (center_id)   { params.push(center_id);   conds.push(`e.center_id = $${params.length}`); }
+    if (from_date)   { params.push(from_date);   conds.push(`lr.to_date >= $${params.length}`); }
+    if (to_date)     { params.push(to_date);     conds.push(`lr.from_date <= $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT lr.*, e.name AS employee_name, e.employee_code, e.department,
+              c.name AS center_name, lt.code AS leave_code, lt.name AS leave_type_name,
+              u.name AS approved_by_name
+       FROM leave_requests lr
+       JOIN employees e ON e.id = lr.employee_id
+       LEFT JOIN centers c ON c.id = e.center_id
+       JOIN leave_types lt ON lt.id = lr.leave_type_id
+       LEFT JOIN users u ON u.id = lr.approved_by
+       WHERE ${conds.join(' AND ')}
+       ORDER BY lr.created_at DESC`,
+      params
+    );
+    res.json({ success: true, requests: rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /leave-requests ──────────────────────────────────────────────────────
+router.post('/leave-requests', authorize(HR_WRITE), [
+  body('employee_id').isInt({ min: 1 }),
+  body('leave_type_id').isInt({ min: 1 }),
+  body('from_date').isDate(),
+  body('to_date').isDate(),
+  body('reason').optional({ checkFalsy: true }).trim().isLength({ max: 500 }),
+], async (req, res) => {
+  const errs = validationResult(req);
+  if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
+  try {
+    const { employee_id, leave_type_id, from_date, to_date, reason } = req.body;
+    const from = new Date(from_date), to = new Date(to_date);
+    if (to < from) return res.status(400).json({ error: 'to_date must be ≥ from_date' });
+
+    // Calculate days (simple calendar days, weekends excluded)
+    let days = 0, cur = new Date(from);
+    while (cur <= to) {
+      const dow = cur.getDay();
+      if (dow !== 0 && dow !== 6) days += 1;
+      cur.setDate(cur.getDate() + 1);
+    }
+    if (days === 0) return res.status(400).json({ error: 'No working days in selected range' });
+
+    // Check for overlapping approved/pending requests
+    const overlap = await pool.query(
+      `SELECT id FROM leave_requests
+       WHERE employee_id = $1 AND active = true AND status IN ('PENDING','APPROVED')
+         AND from_date <= $3 AND to_date >= $2`,
+      [employee_id, from_date, to_date]
+    );
+    if (overlap.rows.length) return res.status(409).json({ error: 'Overlapping leave request exists' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO leave_requests (employee_id, leave_type_id, from_date, to_date, days, reason, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'PENDING') RETURNING *`,
+      [employee_id, leave_type_id, from_date, to_date, days, reason || null]
+    );
+    logger.info('Leave request created', { employee_id, days, leave_type_id });
+    res.status(201).json({ success: true, request: rows[0] });
+  } catch (err) {
+    logger.error('Leave request POST error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PUT /leave-requests/:id/approve ──────────────────────────────────────────
+router.put('/leave-requests/:id/approve', authorize(HR_WRITE), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lr = await pool.query(
+      `SELECT lr.*, lt.days_per_year FROM leave_requests lr
+       JOIN leave_types lt ON lt.id = lr.leave_type_id
+       WHERE lr.id = $1 AND lr.active = true`, [id]
+    );
+    if (!lr.rows.length) return res.status(404).json({ error: 'Leave request not found' });
+    if (lr.rows[0].status !== 'PENDING') return res.status(400).json({ error: 'Only PENDING requests can be approved' });
+
+    const year = new Date(lr.rows[0].from_date).getFullYear();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE leave_requests SET status='APPROVED', approved_by=$1, approved_at=NOW(), updated_at=NOW() WHERE id=$2`,
+        [req.user?.id || null, id]
+      );
+      // Update balance
+      await client.query(
+        `INSERT INTO leave_balances (employee_id, leave_type_id, year, entitlement, used, carried_forward)
+         VALUES ($1, $2, $3, $4, $5, 0)
+         ON CONFLICT (employee_id, leave_type_id, year)
+         DO UPDATE SET used = leave_balances.used + $5, updated_at = NOW()`,
+        [lr.rows[0].employee_id, lr.rows[0].leave_type_id, year, lr.rows[0].days_per_year, lr.rows[0].days]
+      );
+      // Mark attendance as LEAVE for approved days
+      let cur = new Date(lr.rows[0].from_date), end = new Date(lr.rows[0].to_date);
+      while (cur <= end) {
+        const dow = cur.getDay();
+        if (dow !== 0 && dow !== 6) {
+          const dateStr = cur.toLocaleDateString('en-CA');
+          await client.query(
+            `INSERT INTO attendance (employee_id, attendance_date, status, notes)
+             VALUES ($1, $2, 'LEAVE', $3)
+             ON CONFLICT (employee_id, attendance_date) DO UPDATE SET status='LEAVE', notes=$3, updated_at=NOW()`,
+            [lr.rows[0].employee_id, dateStr, `Leave request #${id}`]
+          );
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+      await client.query('COMMIT');
+    } catch (e) { await client.query('ROLLBACK'); throw e; }
+    finally { client.release(); }
+
+    logger.info('Leave approved', { id, approver: req.user?.id });
+    res.json({ success: true, message: 'Leave approved' });
+  } catch (err) {
+    logger.error('Leave approve error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PUT /leave-requests/:id/reject ────────────────────────────────────────────
+router.put('/leave-requests/:id/reject', authorize(HR_WRITE), [
+  body('rejection_reason').trim().isLength({ min: 3, max: 500 }),
+], async (req, res) => {
+  const errs = validationResult(req);
+  if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
+  try {
+    const { id } = req.params;
+    const { rejection_reason } = req.body;
+    const result = await pool.query(
+      `UPDATE leave_requests SET status='REJECTED', rejection_reason=$1, approved_by=$2, approved_at=NOW(), updated_at=NOW()
+       WHERE id=$3 AND active=true AND status='PENDING' RETURNING id`,
+      [rejection_reason, req.user?.id || null, id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Pending leave request not found' });
+    res.json({ success: true, message: 'Leave rejected' });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PUT /leave-requests/:id/cancel ────────────────────────────────────────────
+router.put('/leave-requests/:id/cancel', authorize(HR_WRITE), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lr = await pool.query(
+      `SELECT * FROM leave_requests WHERE id=$1 AND active=true`, [id]
+    );
+    if (!lr.rows.length) return res.status(404).json({ error: 'Leave request not found' });
+    if (!['PENDING','APPROVED'].includes(lr.rows[0].status))
+      return res.status(400).json({ error: 'Cannot cancel this request' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE leave_requests SET status='CANCELLED', updated_at=NOW() WHERE id=$1`, [id]
+      );
+      // Reverse balance if was approved
+      if (lr.rows[0].status === 'APPROVED') {
+        const year = new Date(lr.rows[0].from_date).getFullYear();
+        await client.query(
+          `UPDATE leave_balances SET used = GREATEST(0, used - $1), updated_at=NOW()
+           WHERE employee_id=$2 AND leave_type_id=$3 AND year=$4`,
+          [lr.rows[0].days, lr.rows[0].employee_id, lr.rows[0].leave_type_id, year]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (e) { await client.query('ROLLBACK'); throw e; }
+    finally { client.release(); }
+
+    res.json({ success: true, message: 'Leave cancelled' });
+  } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });

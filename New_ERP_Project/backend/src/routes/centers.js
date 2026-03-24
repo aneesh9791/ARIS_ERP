@@ -1,29 +1,20 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/centers.log' })
-  ]
-});
+router.use(authorizePermission('CENTER_VIEW'));
 
 // Get all diagnostic centers
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = '', active_only = 'true' } = req.query;
+    const { page = 1, limit = 10, search = '', active_only = 'true', operational_only = 'false' } = req.query;
     const offset = (page - 1) * limit;
 
     let query = `
-      SELECT 
+      SELECT
         c.*,
         COUNT(p.id) as patient_count,
         COUNT(i.id) as invoice_count,
@@ -39,6 +30,10 @@ router.get('/', async (req, res) => {
       WHERE c.active = true
     `;
 
+    // operational_only=true excludes corporate entities (Feenixtech etc.)
+    // Used by patient registration, billing, study scheduling dropdowns
+    if (operational_only === 'true') query += ` AND c.is_corporate = false`;
+
     let queryParams = [];
     if (search) {
       query += ` AND (c.name ILIKE $1 OR c.city ILIKE $1 OR c.state ILIKE $1)`;
@@ -51,9 +46,10 @@ router.get('/', async (req, res) => {
     const result = await pool.query(query, queryParams);
 
     // Get total count
+    const corpFilter = operational_only === 'true' ? ' AND is_corporate = false' : '';
     const countQuery = `
-      SELECT COUNT(*) FROM centers 
-      WHERE active = true ${search ? `AND (name ILIKE $1 OR city ILIKE $1 OR state ILIKE $1)` : ''}
+      SELECT COUNT(*) FROM centers
+      WHERE active = true${corpFilter} ${search ? `AND (name ILIKE $1 OR city ILIKE $1 OR state ILIKE $1)` : ''}
     `;
     const countResult = await pool.query(countQuery, search ? [`%${search}%`] : []);
 
@@ -371,24 +367,14 @@ router.post('/:id/modalities', [
       return res.status(404).json({ error: 'Center not found' });
     }
 
-    // Check if modality already exists
-    const existingModality = await pool.query(
-      'SELECT id FROM center_modalities WHERE center_id = $1 AND modality = $2 AND active = true',
-      [id, modality]
-    );
-
-    if (existingModality.rows.length > 0) {
-      return res.status(400).json({ error: 'Modality already exists for this center' });
-    }
-
-    // Add modality
+    // Upsert: reactivate if soft-deleted row exists (UNIQUE constraint on center_id+modality)
     await pool.query(
-      `INSERT INTO center_modalities (
-        center_id, modality, description, equipment_count, created_at, updated_at, active
-      ) VALUES (
-        $1, $2, $3, $4, NOW(), NOW(), true
-      )`,
-      [id, modality, description, equipment_count]
+      `INSERT INTO center_modalities (center_id, modality, description, equipment_count, created_at, updated_at, active)
+       VALUES ($1, $2, $3, $4, NOW(), NOW(), true)
+       ON CONFLICT (center_id, modality) DO UPDATE
+         SET active = true, description = EXCLUDED.description,
+             equipment_count = EXCLUDED.equipment_count, updated_at = NOW()`,
+      [id, modality, description || '', equipment_count || 0]
     );
 
     logger.info(`Modality added to center: ${modality} to center ${id}`);
@@ -528,25 +514,16 @@ router.get('/modalities/available', async (req, res) => {
 
     const result = await pool.query(query);
 
-    // Also include all possible modalities
-    const allModalities = [
-      { modality: 'MRI', description: 'Magnetic Resonance Imaging' },
-      { modality: 'CT', description: 'Computed Tomography' },
-      { modality: 'XRAY', description: 'X-Ray Imaging' },
-      { modality: 'ULTRASOUND', description: 'Ultrasound Imaging' },
-      { modality: 'MAMMOGRAPHY', description: 'Mammography' },
-      { modality: 'PET', description: 'Positron Emission Tomography' },
-      { modality: 'SPECT', description: 'Single Photon Emission Computed Tomography' },
-      { modality: 'FLUOROSCOPY', description: 'Fluoroscopy' },
-      { modality: 'ANGIOGRAPHY', description: 'Angiography' },
-      { modality: 'INTERVENTIONAL', description: 'Interventional Radiology' }
-    ];
+    // Pull canonical list from modalities master table
+    const masterResult = await pool.query(
+      'SELECT code, name, description FROM modalities WHERE active = true ORDER BY code'
+    );
 
-    // Combine existing modalities with all possible modalities
-    const modalities = allModalities.map(mod => {
-      const existing = result.rows.find(r => r.modality === mod.modality);
+    const modalities = masterResult.rows.map(mod => {
+      const existing = result.rows.find(r => r.modality === mod.code);
       return {
-        modality: mod.modality,
+        modality: mod.code,
+        name: mod.name,
         description: mod.description,
         center_count: existing ? parseInt(existing.center_count) : 0
       };
@@ -567,16 +544,18 @@ router.get('/modalities/available', async (req, res) => {
 router.get('/:id/statistics', async (req, res) => {
   try {
     const { id } = req.params;
-    const { start_date, end_date } = req.query;
+    const { start_date, end_date, date_range } = req.query;
 
-    let dateFilter = '';
+    let dateFilter = 'CURRENT_DATE - INTERVAL \'30 days\'';
     let queryParams = [id];
     if (date_range === '7') {
-      dateFilter = 'DATE_SUBTRACT(CURRENT_DATE, INTERVAL \'7 days\')';
+      dateFilter = 'CURRENT_DATE - INTERVAL \'7 days\'';
     } else if (date_range === '30') {
-      dateFilter = 'DATE_SUBTRACT(CURRENT_DATE, INTERVAL \'30 days\')';
+      dateFilter = 'CURRENT_DATE - INTERVAL \'30 days\'';
     } else if (date_range === '90') {
-      dateFilter = 'DATE_SUBTRACT(CURRENT_DATE, INTERVAL \'90 days\')';
+      dateFilter = 'CURRENT_DATE - INTERVAL \'90 days\'';
+    } else if (start_date) {
+      dateFilter = `'${start_date}'::DATE`;
     }
 
     const query = `

@@ -1,20 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'logs/scanners.log' })
-  ]
-});
+router.use(authorizePermission('SCANNER_VIEW'));
 
 // Get all scanners/equipment
 router.get('/', async (req, res) => {
@@ -52,12 +43,11 @@ router.get('/', async (req, res) => {
     const result = await pool.query(query, queryParams);
 
     // Get total count
-    const countQuery = `
-      SELECT COUNT(*) FROM scanners 
-      WHERE active = true ${search ? `AND (name ILIKE $1 OR scanner_type ILIKE $1 OR manufacturer ILIKE $1)` : ''} 
-      ${center_id ? `AND center_id = $2` : ''}
-    `;
-    const countResult = await pool.query(countQuery, search ? [`%${search}%`, center_id] : [center_id]);
+    let countQuery = `SELECT COUNT(*) FROM scanners WHERE active = true`;
+    if (search) countQuery += ` AND (name ILIKE $1 OR scanner_type ILIKE $1 OR manufacturer ILIKE $1)`;
+    if (center_id) countQuery += ` AND center_id = $${search ? 2 : 1}`;
+    const countParams = search && center_id ? [`%${search}%`, center_id] : search ? [`%${search}%`] : center_id ? [center_id] : [];
+    const countResult = await pool.query(countQuery, countParams);
 
     const scanners = result.rows;
     const total = parseInt(countResult.rows[0].count);
@@ -332,27 +322,43 @@ router.get('/:id/utilization', async (req, res) => {
     const { id } = req.params;
     const { start_date = '', end_date = '' } = req.query;
 
-    let dateFilter = '';
+    let query;
+    let queryParams;
     if (start_date && end_date) {
-      dateFilter = `AND st.study_date >= '${start_date}' AND st.study_date <= '${end_date}'`;
+      query = `
+        SELECT
+          DATE_TRUNC('day', st.study_date) as date,
+          COUNT(*) as total_studies,
+          COUNT(CASE WHEN st.status = 'completed' THEN 1 END) as completed_studies,
+          COUNT(CASE WHEN st.status = 'cancelled' THEN 1 END) as cancelled_studies,
+          COALESCE(AVG(CASE WHEN st.status = 'completed' THEN st.duration END), 0) as avg_duration,
+          COALESCE(SUM(CASE WHEN st.status = 'completed' THEN st.duration END), 0) as total_duration
+        FROM studies st
+        WHERE st.scanner_id = $1 AND st.study_date >= $2 AND st.study_date <= $3
+        GROUP BY DATE_TRUNC('day', st.study_date)
+        ORDER BY date DESC
+        LIMIT 30
+      `;
+      queryParams = [id, start_date, end_date];
+    } else {
+      query = `
+        SELECT
+          DATE_TRUNC('day', st.study_date) as date,
+          COUNT(*) as total_studies,
+          COUNT(CASE WHEN st.status = 'completed' THEN 1 END) as completed_studies,
+          COUNT(CASE WHEN st.status = 'cancelled' THEN 1 END) as cancelled_studies,
+          COALESCE(AVG(CASE WHEN st.status = 'completed' THEN st.duration END), 0) as avg_duration,
+          COALESCE(SUM(CASE WHEN st.status = 'completed' THEN st.duration END), 0) as total_duration
+        FROM studies st
+        WHERE st.scanner_id = $1
+        GROUP BY DATE_TRUNC('day', st.study_date)
+        ORDER BY date DESC
+        LIMIT 30
+      `;
+      queryParams = [id];
     }
 
-    const query = `
-      SELECT 
-        DATE_TRUNC(study_date, 'day') as date,
-        COUNT(*) as total_studies,
-        COUNT(CASE WHEN st.status = 'completed' THEN 1 END) as completed_studies,
-        COUNT(CASE WHEN st.status = 'cancelled' THEN 1 END) as cancelled_studies,
-        COALESCE(AVG(CASE WHEN st.status = 'completed' THEN st.duration END), 0) as avg_duration,
-        COALESCE(SUM(CASE WHEN st.status = 'completed' THEN st.duration END), 0) as total_duration
-      FROM studies st
-      WHERE st.scanner_id = $1 ${dateFilter}
-      GROUP BY DATE_TRUNC(study_date, 'day')
-      ORDER BY date DESC
-      LIMIT 30
-    `;
-
-    const result = await pool.query(query, [id]);
+    const result = await pool.query(query, queryParams);
 
     res.json({
       scanner_id: id,

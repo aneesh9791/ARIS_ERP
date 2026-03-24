@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
 const crypto = require('crypto');
 const axios = require('axios');
 
@@ -15,30 +15,6 @@ const CONFIG = {
   MAX_RETRY_ATTEMPTS: 3,
   LOG_FILE: 'logs/billing.log'
 };
-
-// Database connection pool
-const pool = new Pool({
-  connectionString: CONFIG.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Logger configuration
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: CONFIG.LOG_FILE }),
-    new winston.transports.Console({
-      format: winston.format.simple()
-    })
-  ]
-});
 
 // Utility Functions
 class BillingUtils {
@@ -95,9 +71,11 @@ class BillingService {
     }
 
     const query = `
-      SELECT study_code, study_name, base_rate 
-      FROM study_master 
-      WHERE study_code = ANY($1)
+      SELECT DISTINCT ON (sd.study_code) sd.study_code, sd.study_name, COALESCE(scp.base_rate, 0) AS base_rate
+      FROM study_definitions sd
+      LEFT JOIN study_center_pricing scp ON scp.study_definition_id = sd.id
+      WHERE sd.study_code = ANY($1) AND sd.active = true
+      ORDER BY sd.study_code, scp.center_id
     `;
     const result = await pool.query(query, [studyCodes]);
     return result.rows;
@@ -706,12 +684,12 @@ router.get('/:id', handleAsyncErrors(async (req, res) => {
   
   const query = `
     SELECT pb.*, p.pid as patient_pid, p.name as patient_name,
-           c.name as center_name, sm.study_name
+           c.name as center_name, sd.study_name
     FROM patient_bills pb
     LEFT JOIN patients p ON pb.patient_id = p.id
     LEFT JOIN centers c ON pb.center_id = c.id
     LEFT JOIN studies s ON pb.study_id = s.id
-    LEFT JOIN study_master sm ON s.study_code = sm.study_code
+    LEFT JOIN study_definitions sd ON s.study_code = sd.study_code
     WHERE pb.id = $1 AND pb.active = true
   `;
   

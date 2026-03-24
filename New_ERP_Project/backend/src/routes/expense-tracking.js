@@ -1,34 +1,12 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
 const router = express.Router();
-
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/expense-tracking.log' }),
-    new winston.transports.Console({ format: winston.format.simple() })
-  ]
-});
 
 // File upload configuration for item images
 const storage = multer.diskStorage({
@@ -157,7 +135,7 @@ class ExpenseTracking {
           eim.*,
           ec.category_name,
           ec.category_type,
-          eiv.vendor_name as preferred_vendor,
+          av.vendor_name as preferred_vendor,
           eiv.unit_price as preferred_price,
           eiv.lead_time_days as preferred_lead_time,
           CASE 
@@ -176,10 +154,11 @@ class ExpenseTracking {
         FROM expense_items_master eim
         LEFT JOIN expense_categories ec ON eim.category_id = ec.id
         LEFT JOIN expense_item_vendors eiv ON eim.id = eiv.expense_item_id AND eiv.preferred_vendor = true AND eiv.active = true
+        LEFT JOIN asset_vendors av ON eiv.vendor_id = av.id
         LEFT JOIN expense_item_vendors eiv2 ON eim.id = eiv2.expense_item_id AND eiv2.active = true
         LEFT JOIN expense_consumption ec2 ON eim.id = ec2.expense_item_id AND ec2.active = true
         WHERE ${whereClause}
-        GROUP BY eim.id, ec.category_name, ec.category_type, eiv.vendor_name, eiv.unit_price, eiv.lead_time_days
+        GROUP BY eim.id, ec.category_name, ec.category_type, av.vendor_name, eiv.unit_price, eiv.lead_time_days
         ORDER BY eim.item_name
         LIMIT $${paramIndex++} OFFSET $${paramIndex++}
       `;
@@ -707,7 +686,7 @@ class ExpenseTracking {
         await client.query('BEGIN');
 
         // Generate order number
-        const orderNumber = 'PO-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + 
+        const orderNumber = 'PO-' + new Date().toLocaleDateString('en-CA').replace(/-/g, '') + '-' +
                           Math.floor(Math.random() * 1000).toString().padStart(3, '0');
 
         // Calculate totals
@@ -791,21 +770,30 @@ class ExpenseTracking {
   // Get dashboard statistics
   static async getDashboardStats(centerId = null) {
     try {
-      let centerFilter = centerId ? `WHERE center_id = ${centerId}` : '';
+      const cid = centerId ? parseInt(centerId, 10) : null;
+      if (centerId && !cid) throw new Error('Invalid centerId');
 
-      const queries = {
-        total_items: `SELECT COUNT(*) as count FROM expense_items_master WHERE active = true ${centerFilter ? `AND center_id = ${centerId}` : ''}`,
-        low_stock_items: `SELECT COUNT(*) as count FROM expense_items_master WHERE active = true AND current_stock <= minimum_stock_level ${centerFilter ? `AND center_id = ${centerId}` : ''}`,
-        out_of_stock_items: `SELECT COUNT(*) as count FROM expense_items_master WHERE active = true AND current_stock <= 0 ${centerFilter ? `AND center_id = ${centerId}` : ''}`,
-        total_stock_value: `SELECT COALESCE(SUM(current_stock * COALESCE(eiv.unit_price, 0)), 0) as count FROM expense_items_master eim LEFT JOIN expense_item_vendors eiv ON eim.id = eiv.expense_item_id AND eiv.preferred_vendor = true WHERE eim.active = true ${centerFilter ? `AND eim.center_id = ${centerId}` : ''}`,
-        active_alerts: `SELECT COUNT(*) as count FROM expense_stock_alerts WHERE active = true AND acknowledged = false ${centerFilter ? `AND center_id = ${centerId}` : ''}`,
-        pending_orders: `SELECT COUNT(*) as count FROM expense_purchase_orders WHERE active = true AND order_status IN ('PENDING', 'APPROVED', 'ORDERED') ${centerFilter ? `AND center_id = ${centerId}` : ''}`,
-        today_consumption: `SELECT COUNT(*) as count FROM expense_consumption WHERE active = true AND consumption_date = CURRENT_DATE ${centerFilter ? `AND center_id = ${centerId}` : ''}`,
-        total_vendors: `SELECT COUNT(DISTINCT vendor_id) as count FROM expense_item_vendors WHERE active = true`
+      // All queries use parameterized $1 when center filter is needed
+      const param = cid ? [cid] : [];
+      const cf = cid ? ' AND center_id = $1' : '';          // for tables with plain center_id
+      const ecf = cid ? ' AND eim.center_id = $1' : '';     // for aliased expense_items_master
+
+      const queryDefs = {
+        total_items:       `SELECT COUNT(*) as count FROM expense_items_master WHERE active = true${cf}`,
+        low_stock_items:   `SELECT COUNT(*) as count FROM expense_items_master WHERE active = true AND current_stock <= minimum_stock_level${cf}`,
+        out_of_stock_items:`SELECT COUNT(*) as count FROM expense_items_master WHERE active = true AND current_stock <= 0${cf}`,
+        total_stock_value: `SELECT COALESCE(SUM(eim.current_stock * COALESCE(eiv.unit_price, 0)), 0) as count FROM expense_items_master eim LEFT JOIN expense_item_vendors eiv ON eim.id = eiv.expense_item_id AND eiv.preferred_vendor = true WHERE eim.active = true${ecf}`,
+        active_alerts:     `SELECT COUNT(*) as count FROM expense_stock_alerts WHERE active = true AND acknowledged = false${cf}`,
+        pending_orders:    `SELECT COUNT(*) as count FROM expense_purchase_orders WHERE active = true AND order_status IN ('PENDING', 'APPROVED', 'ORDERED')${cf}`,
+        today_consumption: `SELECT COUNT(*) as count FROM expense_consumption WHERE active = true AND consumption_date = CURRENT_DATE${cf}`,
+        total_vendors:     `SELECT COUNT(DISTINCT vendor_id) as count FROM expense_item_vendors WHERE active = true`
       };
 
       const results = await Promise.all(
-        Object.entries(queries).map(([key, query]) => pool.query(query))
+        Object.entries(queryDefs).map(([key, query]) =>
+          // total_vendors has no center filter param
+          key === 'total_vendors' ? pool.query(query) : pool.query(query, param)
+        )
       );
 
       const stats = {};

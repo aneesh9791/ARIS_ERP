@@ -1,29 +1,40 @@
-/* Tailwind CSS - Modern Healthcare Theme */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Basic Styles */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Simple animations */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
 /* Custom CSS Variables for ARIS ERP Theme */
 :root {
-  --primary-color: #3b82f6;
-  --secondary-color: #22c55e;
-  --accent-color: #a855f7;
-  --success-color: #10b981;
-  --warning-color: #f59e0b;
-  --error-color: #ef4444;
-  --info-color: #06b6d4;
-  
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
-  
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
-  
-  --border-primary: #e2e8f0;
-  --border-secondary: #cbd5e1;
-  
+  --primary: #14b8a6;
+  --secondary: #06b6d4;
+  --accent: #8b5cf6;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #3b82f6;
+  --dark: #1f2937;
+  --light: #f9fafb;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --border: #e5e7eb;
+  --background: #ffffff;
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -54,26 +65,6 @@
   
   --border-primary: #334155;
   --border-secondary: #475569;
-}
-
-/* Base Styles */
-* {
-  box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-}
-
-body {
-  font-family: 'Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  background-color: var(--bg-primary);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
 }
 
 /* Custom Components */

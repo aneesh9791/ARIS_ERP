@@ -1,31 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/loaner-asset-tracking.log' }),
-    new winston.transports.Console({ format: winston.format.simple() })
-  ]
-});
+router.use(authorizePermission('LOANER_ASSET_VIEW'));
 
 // Loaner Asset Tracking Class
 class LoanerAssetTracking {
@@ -359,15 +339,15 @@ class LoanerAssetTracking {
           assigned_user.email as assigned_to_email,
           assigned_user.phone as assigned_to_phone,
           assigning_user.name as assigned_by_name,
-          DATEDIFF(CURRENT_DATE, laa.expected_return_date) as days_overdue,
+          (CURRENT_DATE - laa.expected_return_date) as days_overdue,
           CASE 
-            WHEN DATEDIFF(CURRENT_DATE, laa.expected_return_date) > 0 THEN 'OVERDUE'
-            WHEN DATEDIFF(CURRENT_DATE, laa.expected_return_date) >= -3 THEN 'DUE_SOON'
+            WHEN (CURRENT_DATE - laa.expected_return_date) > 0 THEN 'OVERDUE'
+            WHEN (CURRENT_DATE - laa.expected_return_date) >= -3 THEN 'DUE_SOON'
             ELSE 'NORMAL'
           END as urgency_status,
           CASE 
-            WHEN DATEDIFF(CURRENT_DATE, laa.expected_return_date) > 0 THEN 'danger'
-            WHEN DATEDIFF(CURRENT_DATE, laa.expected_return_date) >= -3 THEN 'warning'
+            WHEN (CURRENT_DATE - laa.expected_return_date) > 0 THEN 'danger'
+            WHEN (CURRENT_DATE - laa.expected_return_date) >= -3 THEN 'warning'
             ELSE 'success'
           END as urgency_class
         FROM loaner_asset_assignments laa
@@ -401,7 +381,7 @@ class LoanerAssetTracking {
           am.asset_name,
           laa.assigned_to_person,
           laa.expected_return_date,
-          DATEDIFF(CURRENT_DATE, laa.expected_return_date) as days_overdue,
+          (CURRENT_DATE - laa.expected_return_date) as days_overdue,
           laa.deposit_amount,
           u.email,
           u.phone,
@@ -525,7 +505,7 @@ class LoanerAssetTracking {
         await client.query('BEGIN');
 
         // Generate agreement number
-        const agreementNumber = 'LA-AGREEMENT-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + 
+        const agreementNumber = 'LA-AGREEMENT-' + new Date().toLocaleDateString('en-CA').replace(/-/g, '') + '-' +
                               Math.floor(Math.random() * 1000).toString().padStart(3, '0');
 
         // Insert agreement

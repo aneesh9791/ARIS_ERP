@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
 const crypto = require('crypto');
 const axios = require('axios');
 
@@ -81,30 +81,6 @@ const ACCOUNTING_CONFIG = {
     TDS: 'TDS'
   }
 };
-
-// Database connection pool
-const pool = new Pool({
-  connectionString: ACCOUNTING_CONFIG.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Logger configuration
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: ACCOUNTING_CONFIG.LOG_FILE }),
-    new winston.transports.Console({
-      format: winston.format.simple()
-    })
-  ]
-});
 
 // Accounting Utility Functions
 class AccountingUtils {

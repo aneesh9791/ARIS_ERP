@@ -1,67 +1,34 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
 const crypto = require('crypto');
 
 const router = express.Router();
 
-// Role-based Access Control Configuration
-const ROLES = {
-  SUPER_ADMIN: 'SUPER_ADMIN',
-  ADMIN: 'ADMIN',
-  MANAGER: 'MANAGER',
-  ACCOUNTANT: 'ACCOUNTANT',
-  BILLING_CLERK: 'BILLING_CLERK',
-  RECEPTIONIST: 'RECEPTIONIST',
-  VIEWER: 'VIEWER'
-};
-
-// Permission Matrix
+// Role-based Access Control — aligned with system user_roles table
 const PERMISSIONS = {
   // Bill Operations
-  EDIT_BILL: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.BILLING_CLERK],
-  DELETE_BILL: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
-  CANCEL_BILL: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT],
-  
+  EDIT_BILL:        ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'RECEPTIONIST'],
+  DELETE_BILL:      ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'],
+  CANCEL_BILL:      ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'],
+
   // Discount Operations
-  APPLY_DISCOUNT: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT],
-  APPROVE_DISCOUNT: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
-  
+  APPLY_DISCOUNT:   ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'],
+  APPROVE_DISCOUNT: ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'],
+
   // Refund Operations
-  PROCESS_REFUND: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT],
-  APPROVE_REFUND: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
-  
+  PROCESS_REFUND:   ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'],
+  APPROVE_REFUND:   ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'],
+
   // Payment Operations
-  EDIT_PAYMENT: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT],
-  DELETE_PAYMENT: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
-  
+  EDIT_PAYMENT:     ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'],
+  DELETE_PAYMENT:   ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'],
+
   // View Operations
-  VIEW_BILL: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.BILLING_CLERK, ROLES.RECEPTIONIST, ROLES.VIEWER],
-  VIEW_FINANCIALS: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT]
+  VIEW_BILL:        ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'RECEPTIONIST', 'TECHNICIAN', 'LAB_TECHNICIAN'],
+  VIEW_FINANCIALS:  ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'],
 };
-
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/billing-operations.log' }),
-    new winston.transports.Console({ format: winston.format.simple() })
-  ]
-});
 
 // Utility Functions
 class BillingOperationsUtils {
@@ -131,7 +98,7 @@ class BillingOperationsUtils {
 // Middleware for Role-based Access Control
 const checkPermission = (permission) => {
   return (req, res, next) => {
-    const userRole = req.user?.role || 'VIEWER';
+    const userRole = req.user?.role || 'RECEPTIONIST';
     
     if (!BillingOperationsUtils.checkPermission(userRole, permission)) {
       return res.status(403).json({
@@ -286,12 +253,17 @@ router.put('/bills/:billId/edit',
         if (study_codes && Array.isArray(study_codes)) {
           // Get study details
           const studyDetailsQuery = `
-            SELECT study_code, study_name, base_rate, hsn_code, sac_code, gst_rate,
-                   is_taxable, cess_rate, category
-            FROM study_master 
-            WHERE study_code = ANY($1)
+            SELECT sd.study_code, sd.study_name,
+                   COALESCE(scp.base_rate, 0) AS base_rate,
+                   sd.hsn_code, sd.sac_code, sd.gst_rate,
+                   sd.gst_applicable AS is_taxable,
+                   0::numeric AS cess_rate,
+                   NULL AS category
+            FROM study_definitions sd
+            LEFT JOIN study_center_pricing scp ON scp.study_definition_id = sd.id AND scp.center_id = $2
+            WHERE sd.study_code = ANY($1) AND sd.active = true
           `;
-          const studyDetailsResult = await pool.query(studyDetailsQuery, [study_codes]);
+          const studyDetailsResult = await pool.query(studyDetailsQuery, [study_codes, center_id || null]);
           
           // Delete existing items
           await pool.query(
@@ -840,50 +812,49 @@ router.post('/bills/:billId/refund',
       // Generate refund number
       const refundNumber = BillingOperationsUtils.generateRefundNumber(currentBill.center_id);
 
-      // Create refund record
-      const refundQuery = `
-        INSERT INTO accounting_payments (
-          receipt_number, bill_id, payment_date, payment_method, payment_type,
-          amount, payment_status, reference_number, created_by, created_at, active
-        ) VALUES ($1, $2, CURRENT_DATE, $3, 'REFUND', $4, 'COMPLETED', $5, $6, CURRENT_TIMESTAMP, true)
-        RETURNING *
-      `;
+      // Wrap refund record + bill update in a transaction — prevents orphaned refunds
+      const refundClient = await pool.connect();
+      let refundRecord, newAmountPaid, newBalanceAmount, newBillingStatus, updatedBill;
+      try {
+        await refundClient.query('BEGIN');
 
-      const refundValues = [
-        refundNumber,
-        billId,
-        refund_method,
-        requestedRefundAmount,
-        refund_reference || `REFUND-${billId}`,
-        userId
-      ];
+        const refundResult = await refundClient.query(`
+          INSERT INTO accounting_payments (
+            receipt_number, bill_id, payment_date, payment_method, payment_type,
+            amount, payment_status, reference_number, created_by, created_at, active
+          ) VALUES ($1, $2, CURRENT_DATE, $3, 'REFUND', $4, 'COMPLETED', $5, $6, CURRENT_TIMESTAMP, true)
+          RETURNING *
+        `, [refundNumber, billId, refund_method, requestedRefundAmount,
+            refund_reference || `REFUND-${billId}`, userId]);
+        refundRecord = refundResult.rows[0];
 
-      const refundResult = await pool.query(refundQuery, refundValues);
-      const refundRecord = refundResult.rows[0];
+        newAmountPaid    = parseFloat(currentBill.amount_paid) - requestedRefundAmount;
+        newBalanceAmount = parseFloat(currentBill.total_amount) - newAmountPaid;
+        newBillingStatus = currentBill.billing_status;
+        if (newBalanceAmount <= 0) {
+          newBillingStatus = 'FULLY_PAID';
+        } else if (newBalanceAmount < parseFloat(currentBill.total_amount)) {
+          newBillingStatus = 'PARTIALLY_PAID';
+        }
 
-      // Update bill amounts
-      const newAmountPaid = parseFloat(currentBill.amount_paid) - requestedRefundAmount;
-      const newBalanceAmount = parseFloat(currentBill.total_amount) - newAmountPaid;
-      
-      // Update bill status based on new balance
-      let newBillingStatus = currentBill.billing_status;
-      if (newBalanceAmount <= 0) {
-        newBillingStatus = 'FULLY_PAID';
-      } else if (newBalanceAmount < parseFloat(currentBill.total_amount)) {
-        newBillingStatus = 'PARTIALLY_PAID';
+        await refundClient.query(`
+          UPDATE accounting_bills
+          SET amount_paid = $1, balance_amount = $2, billing_status = $3, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $4
+        `, [newAmountPaid, newBalanceAmount, newBillingStatus, billId]);
+
+        const updatedBillResult = await refundClient.query(currentBillQuery, [billId]);
+        updatedBill = updatedBillResult.rows[0];
+
+        await refundClient.query('COMMIT');
+      } catch (txErr) {
+        await refundClient.query('ROLLBACK');
+        refundClient.release();
+        throw txErr;
       }
+      refundClient.release();
 
-      await pool.query(`
-        UPDATE accounting_bills 
-        SET amount_paid = $1, balance_amount = $2, billing_status = $3, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $4
-      `, [newAmountPaid, newBalanceAmount, newBillingStatus, billId]);
-
-      // Get updated bill
-      const updatedBillResult = await pool.query(currentBillQuery, [billId]);
-      const updatedBill = updatedBillResult.rows[0];
-
-      // Create audit trail
+      // Create audit trail (outside transaction — audit failure should not undo the refund)
       const auditData = BillingOperationsUtils.createAuditTrail(
         userId, 'PROCESS_REFUND', 'ACCOUNTING_BILL', billId,
         oldValues, {

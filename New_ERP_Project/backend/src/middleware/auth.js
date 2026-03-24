@@ -1,37 +1,18 @@
-const jwt = require('jsonwebtoken');
-const { Pool } = require('pg');
-const winston = require('winston');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
 
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS) || 12;
 
-// Logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/auth.log' }),
-    new winston.transports.Console({ format: winston.format.simple() })
-  ]
-});
-
-// JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
 // Authentication middleware
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
+  // If app.js already authenticated this request, skip
+  if (req.user) return next();
+
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
     return res.status(401).json({
@@ -41,73 +22,76 @@ const authenticateToken = (req, res, next) => {
     });
   }
 
-  // Validate session token using database function
-  pool.query('SELECT * FROM validate_session_token($1)', [token])
-    .then(result => {
-      if (!result.rows[0].valid) {
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid or expired session',
-          error: 'TOKEN_INVALID'
-        });
-      }
+  try {
+    const result = await pool.query('SELECT validate_session_token($1) AS session', [token]);
+    const session = result.rows[0]?.session;
 
-      // Get user details
-      return pool.query(
-        'SELECT id, username, email, role, center_id, department_id, is_active FROM users WHERE id = $1',
-        [result.rows[0].user_id]
-      );
-    })
-    .then(userResult => {
-      if (!userResult.rows.length || !userResult.rows[0].is_active) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not found or inactive',
-          error: 'USER_INACTIVE'
-        });
-      }
-
-      const user = userResult.rows[0];
-      req.user = user;
-      next();
-    })
-    .catch(error => {
-      logger.error('Authentication error:', error);
-      return res.status(500).json({
+    if (!session || !session.valid) {
+      return res.status(401).json({
         success: false,
-        message: 'Authentication failed',
-        error: 'INTERNAL_ERROR'
+        message: 'Invalid or expired session',
+        error: 'TOKEN_INVALID'
       });
+    }
+
+    const userResult = await pool.query(
+      `SELECT u.id, u.username, u.email, u.role, u.center_id, u.department_id,
+              u.active AS is_active,
+              COALESCE(ur.permissions, '[]'::jsonb) AS permissions
+       FROM users u
+       LEFT JOIN user_roles ur ON ur.role = u.role AND ur.active = true
+       WHERE u.id = $1`,
+      [session.user_id]
+    );
+
+    if (!userResult.rows.length || !userResult.rows[0].is_active) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found or inactive',
+        error: 'USER_INACTIVE'
+      });
+    }
+
+    req.user = userResult.rows[0];
+    next();
+  } catch (error) {
+    logger.error('Authentication error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Authentication failed',
+      error: 'INTERNAL_ERROR'
     });
+  }
 };
 
 // Role-based authorization middleware
 const authorize = (roles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required',
-        error: 'AUTH_REQUIRED'
-      });
+      return res.status(401).json({ success: false, message: 'Authentication required', error: 'AUTH_REQUIRED' });
     }
-
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Insufficient permissions',
-        error: 'INSUFFICIENT_PERMISSIONS',
-        required_roles: roles,
-        user_role: req.user.role
-      });
+      return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS', required_roles: roles, user_role: req.user.role });
     }
-
     next();
   };
 };
 
+// Permission-based authorization middleware
+// Passes if user has ALL_ACCESS or any one of the listed permissions
+const authorizePermission = (...perms) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication required', error: 'AUTH_REQUIRED' });
+    }
+    const userPerms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+    if (userPerms.includes('ALL_ACCESS') || perms.some(p => userPerms.includes(p))) return next();
+    return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS', required_permissions: perms });
+  };
+};
+
 // Center-based authorization middleware
-const authorizeCenter = (centerIds) => {
+const authorizeCenter = (_centerIds) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -143,32 +127,66 @@ const authorizeCenter = (centerIds) => {
 // Login function
 const login = async (email, password, ipAddress) => {
   try {
-    const result = await pool.query('SELECT * FROM check_user_login($1, $2)', [email, password]);
-    const loginResult = result.rows[0];
-
-    if (!loginResult.success) {
-      logger.warn(`Login failed for email: ${email} from IP: ${ipAddress}`);
-      return loginResult;
-    }
-
-    // Generate session token
-    const token = await pool.query(
-      'SELECT * FROM generate_session_token($1, $2)',
-      [loginResult.user_id, ipAddress]
+    const userResult = await pool.query(
+      `SELECT u.*, ur.is_corporate_role, ur.permissions AS role_permissions
+       FROM users u
+       LEFT JOIN user_roles ur ON ur.role = u.role
+       WHERE u.email = $1 AND u.active = true`,
+      [email]
     );
 
-    logger.info(`User logged in: ${email} from IP: ${ipAddress}`);
+    if (!userResult.rows.length) {
+      logger.warn('Login failed (user not found)', { email, ip: ipAddress });
+      return { success: false, message: 'Invalid credentials' };
+    }
+
+    const user = userResult.rows[0];
+
+    if (user.locked_until && user.locked_until > new Date()) {
+      return { success: false, message: 'Account locked. Try again later.' };
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+
+    if (!valid) {
+      await pool.query(
+        `UPDATE users SET
+          failed_login_attempts = failed_login_attempts + 1,
+          locked_until = CASE WHEN failed_login_attempts + 1 >= 5
+            THEN NOW() + INTERVAL '30 minutes' ELSE NULL END
+        WHERE id = $1`,
+        [user.id]
+      );
+      logger.warn('Login failed (wrong password)', { email, ip: ipAddress });
+      return { success: false, message: 'Invalid credentials' };
+    }
+
+    await pool.query(
+      'UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_login = NOW() WHERE id = $1',
+      [user.id]
+    );
+
+    const token = crypto.randomBytes(32).toString('hex');
+    await pool.query(
+      `INSERT INTO user_sessions (user_id, session_token, expires_at, ip_address)
+       VALUES ($1, $2, NOW() + INTERVAL '24 hours', $3)`,
+      [user.id, token, ipAddress]
+    );
+
+    logger.info('User logged in', { email, ip: ipAddress });
 
     return {
       success: true,
-      token: token.rows[0].generate_session_token,
+      token,
       user: {
-        id: loginResult.user_id,
-        username: loginResult.username,
-        email: email,
-        role: loginResult.role,
-        center_id: loginResult.center_id,
-        department_id: loginResult.department_id
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        center_id: user.center_id,
+        department_id: user.department_id,
+        is_corporate_role: user.is_corporate_role || false,
+        permissions: user.role_permissions || []
       }
     };
   } catch (error) {
@@ -197,18 +215,18 @@ const logout = async (token) => {
 // Change password function
 const changePassword = async (userId, currentPassword, newPassword) => {
   try {
-    // Verify current password
-    const userResult = await pool.query(
-      'SELECT * FROM check_user_login(email, $1)',
-      [currentPassword]
-    );
+    // Fetch user's email first
+    const userResult = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
+    const email = userResult.rows[0]?.email;
+    if (!email) throw new Error('User not found');
 
-    if (!userResult.rows[0].success) {
-      throw new Error('Current password is incorrect');
-    }
+    // Verify current password
+    const userRow = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    const valid = await bcrypt.compare(currentPassword, userRow.rows[0]?.password_hash || '');
+    if (!valid) throw new Error('Current password is incorrect');
 
     // Update password
-    const hashedPassword = newPassword; // In production, use bcrypt
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await pool.query(
       'UPDATE users SET password_hash = $1, password_changed_at = CURRENT_TIMESTAMP WHERE id = $2',
       [hashedPassword, userId]
@@ -226,25 +244,25 @@ const changePassword = async (userId, currentPassword, newPassword) => {
 const refreshToken = async (token) => {
   try {
     // Validate current token
-    const validationResult = await pool.query('SELECT * FROM validate_session_token($1)', [token]);
-    
-    if (!validationResult.rows[0].valid) {
+    const validationResult = await pool.query('SELECT validate_session_token($1) AS session', [token]);
+    const session = validationResult.rows[0]?.session;
+
+    if (!session?.valid) {
       throw new Error('Invalid session token');
     }
 
-    // Generate new token
-    const newTokenResult = await pool.query(
-      'SELECT * FROM generate_session_token($1)',
-      [validationResult.rows[0].user_id]
+    const userId = session.user_id;
+    const newToken = crypto.randomBytes(32).toString('hex');
+
+    await pool.query(
+      `INSERT INTO user_sessions (user_id, session_token, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '24 hours')`,
+      [userId, newToken]
     );
 
-    // Invalidate old token
-    await pool.query('SELECT * FROM logout_user($1)', [token]);
+    await pool.query('SELECT logout_user($1)', [token]);
 
-    return {
-      success: true,
-      token: newTokenResult.rows[0].generate_session_token
-    };
+    return { success: true, token: newToken };
   } catch (error) {
     logger.error('Token refresh error:', error);
     throw error;
@@ -262,7 +280,7 @@ const getUserPermissions = async (userId) => {
       FROM users u
       LEFT JOIN centers c ON u.center_id = c.id
       LEFT JOIN departments d ON u.department_id = d.id
-      WHERE u.id = $1 AND u.is_active = true`,
+      WHERE u.id = $1 AND u.active = true`,
       [userId]
     );
 
@@ -307,7 +325,7 @@ const getUserPermissions = async (userId) => {
 // Rate limiting for login attempts
 const loginAttempts = new Map();
 
-const rateLimiter = (maxAttempts = 5, windowMs = 15 * 60 * 1000) => {
+const rateLimiter = (maxAttempts = 20, windowMs = 15 * 60 * 1000) => {
   return (req, res, next) => {
     const ip = req.ip || req.connection.remoteAddress;
     const now = Date.now();
@@ -349,7 +367,7 @@ const rateLimiter = (maxAttempts = 5, windowMs = 15 * 60 * 1000) => {
 };
 
 // Security headers middleware
-const securityHeaders = (req, res, next) => {
+const securityHeaders = (_req, res, next) => {
   // Security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -393,6 +411,7 @@ const requestLogger = (req, res, next) => {
 module.exports = {
   authenticateToken,
   authorize,
+  authorizePermission,
   authorizeCenter,
   login,
   logout,
@@ -401,5 +420,6 @@ module.exports = {
   getUserPermissions,
   rateLimiter,
   securityHeaders,
-  requestLogger
+  requestLogger,
+  clearLoginAttempts: () => loginAttempts.clear()
 };

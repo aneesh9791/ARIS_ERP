@@ -23,7 +23,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import ResponsiveCard from '../Common/ResponsiveCard';
-import '../styles/theme.css';
+import '../../styles/theme.css';
 
 const SettingsLayout = ({ children }) => {
   const location = useLocation();

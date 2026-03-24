@@ -1,31 +1,13 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Pool } = require('pg');
-const winston = require('winston');
+const pool = require('../config/db');
+const { logger } = require('../config/logger');
+const { authorize } = require('../middleware/auth');
+
+// Roles allowed to mutate the Chart of Accounts
+const COA_WRITE_ROLES = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
 
 const router = express.Router();
-
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/chart-of-accounts.log' }),
-    new winston.transports.Console({ format: winston.format.simple() })
-  ]
-});
 
 // Chart of Accounts Management Class
 class ChartOfAccounts {
@@ -307,7 +289,7 @@ class ChartOfAccounts {
         }
 
         // Generate entry number
-        const entryNumber = `JE-${entry_date.toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+        const entryNumber = `JE-${new Date(entry_date).toLocaleDateString('en-CA').replace(/-/g, '')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
 
         // Create journal entry
         const entryQuery = `
@@ -926,7 +908,7 @@ router.get('/accounts', async (req, res) => {
 });
 
 // Create account
-router.post('/accounts', [
+router.post('/accounts', authorize(COA_WRITE_ROLES), [
   body('account_code').trim().isLength({ min: 2, max: 20 }),
   body('account_name').trim().isLength({ min: 3, max: 100 }),
   body('account_type').isIn(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE']),
@@ -984,7 +966,7 @@ router.get('/transaction-types', async (req, res) => {
 });
 
 // Create journal entry
-router.post('/journal-entries', [
+router.post('/journal-entries', authorize(['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']), [
   body('entry_date').isISO8601().toDate(),
   body('transaction_type_id').isInt(),
   body('description').trim().isLength({ min: 5, max: 500 }),
@@ -1191,7 +1173,7 @@ router.get('/reconciliation/:account_id', async (req, res) => {
 });
 
 // Create account reconciliation
-router.post('/reconciliation', [
+router.post('/reconciliation', authorize(['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']), [
   body('account_id').isInt(),
   body('reconciliation_date').isISO8601().toDate(),
   body('statement_balance').isFloat(),
