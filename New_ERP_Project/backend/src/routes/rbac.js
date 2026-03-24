@@ -1056,5 +1056,41 @@ router.delete('/users/:id', async (req, res) => {
   }
 });
 
+// ── GET /api/rbac/audit-trail ─────────────────────────────────────────────────
+router.get('/audit-trail', async (req, res) => {
+  try {
+    const { entity_type, entity_id, user_id, action, days = 30, limit = 200, offset = 0 } = req.query;
+    const conds = [`at.timestamp > NOW() - ($1 || ' days')::INTERVAL`];
+    const params = [parseInt(days) || 30];
+
+    if (entity_type) { conds.push(`at.entity_type = $${params.length + 1}`); params.push(entity_type); }
+    if (entity_id)   { conds.push(`at.entity_id   = $${params.length + 1}`); params.push(parseInt(entity_id)); }
+    if (user_id)     { conds.push(`at.user_id     = $${params.length + 1}`); params.push(parseInt(user_id)); }
+    if (action)      { conds.push(`at.action      = $${params.length + 1}`); params.push(action); }
+
+    const { rows } = await pool.query(
+      `SELECT at.id, at.entity_type, at.entity_id, at.action,
+              at.user_id, u.name AS user_name, u.username,
+              at.old_values, at.new_values, at.ip_address, at.timestamp
+         FROM audit_trail at
+         LEFT JOIN users u ON u.id = at.user_id
+         WHERE ${conds.join(' AND ')}
+         ORDER BY at.timestamp DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, parseInt(limit) || 200, parseInt(offset) || 0]
+    );
+
+    const { rows: countRows } = await pool.query(
+      `SELECT COUNT(*) AS total FROM audit_trail at WHERE ${conds.join(' AND ')}`,
+      params
+    );
+
+    res.json({ success: true, records: rows, total: parseInt(countRows[0].total) });
+  } catch (err) {
+    logger.error('audit-trail GET error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
 module.exports.checkPermission = checkPermission;
