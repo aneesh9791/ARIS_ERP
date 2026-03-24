@@ -742,8 +742,45 @@ const StudyCatalogFull = ({ studyDefs, onDefCreate, onDefUpdate, onDefDelete, on
   );
 };
 
+// ── StudyRow — memoized so only the changed row re-renders on price input ─────
+const StudyRow = React.memo(({ sd, price, onSetPrice, onRemove }) => {
+  const p = price || { value: '', dirty: false, existingId: null };
+  const hasPrice = p.existingId && !p.dirty;
+  const isNew    = !p.existingId && p.value !== '';
+  return (
+    <div className={`flex items-center gap-4 px-5 py-2.5 transition-colors ${p.dirty ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-slate-800 truncate">{sd.study_name}</div>
+        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{sd.study_code}</div>
+      </div>
+      <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${TYPE_BADGE[sd.study_type] || TYPE_BADGE.Plain}`}>
+        {sd.study_type || 'Plain'}
+      </span>
+      <span className={`flex-shrink-0 text-[10px] font-medium w-16 text-right ${p.dirty ? 'text-amber-600' : hasPrice ? 'text-teal-600' : 'text-slate-300'}`}>
+        {p.dirty ? (isNew ? 'New' : 'Edited') : hasPrice ? 'Priced' : 'Not set'}
+      </span>
+      <div className="flex-shrink-0 relative">
+        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">₹</span>
+        <input type="number" min="0" step="1" value={p.value}
+          onChange={e => onSetPrice(sd.id, e.target.value)} placeholder="—"
+          className={`w-28 pl-6 pr-2 py-1.5 text-sm rounded-lg border text-right font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors ${
+            p.dirty ? 'border-amber-400 bg-amber-50 text-amber-800'
+              : hasPrice ? 'border-teal-200 bg-teal-50 text-teal-800'
+              : 'border-slate-200 bg-white text-slate-600'}`} />
+      </div>
+      <button onClick={() => onRemove(p.existingId, sd.id)}
+        className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors ${p.value !== '' ? 'text-slate-300 hover:text-red-400' : 'invisible'}`}
+        title="Clear">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  );
+});
+
 // ── StudyPricing — center × study pricing screen ─────────────────────────────
-const StudyPricing = ({ studyDefs, studyPricing, centers, onPricingBatch, onPricingCreate, onPricingUpdate, onPricingDelete }) => {
+const StudyPricing = ({ studyDefs, studyPricing, centers, centerModMap, onPricingBatch, onPricingCreate, onPricingUpdate, onPricingDelete }) => {
   const activeCenters = useMemo(() => (centers || []).filter(c => c.active !== false && c.corporate_entity_id != null), [centers]);
   const [selectedCenter, setSelectedCenter] = useState('');
   const [filterModality, setFilterModality] = useState('');
@@ -751,26 +788,18 @@ const StudyPricing = ({ studyDefs, studyPricing, centers, onPricingBatch, onPric
   const [prices, setPrices]                 = useState({});
   const [saving, setSaving]                 = useState(false);
   const [saveMsg, setSaveMsg]               = useState('');
-  // modalities enabled at the selected center
-  const [centerModCodes, setCenterModCodes] = useState(new Set());
-  const [modsLoading, setModsLoading]       = useState(false);
+
+  // Use pre-loaded modality map from parent; fall back to empty set
+  const centerModCodes = useMemo(
+    () => (centerModMap && selectedCenter && centerModMap[selectedCenter]) ? centerModMap[selectedCenter] : new Set(),
+    [centerModMap, selectedCenter]
+  );
+  const modsLoading = false; // data is pre-loaded by parent
 
   // initialise selected center once centers load
   useEffect(() => {
     if (!selectedCenter && activeCenters.length) setSelectedCenter(String(activeCenters[0].id));
   }, [activeCenters, selectedCenter]);
-
-  // fetch active modalities for selected center
-  useEffect(() => {
-    if (!selectedCenter) return;
-    setCenterModCodes(new Set()); // reset before fetch
-    setModsLoading(true);
-    fetch(`/api/centers/${selectedCenter}/modalities`, { headers: AUTH_HEADER() })
-      .then(r => r.ok ? r.json() : { modalities: [] })
-      .then(d => setCenterModCodes(new Set((d.modalities || []).map(m => m.modality))))
-      .catch(() => setCenterModCodes(new Set()))
-      .finally(() => setModsLoading(false));
-  }, [selectedCenter]);
 
   // rebuild price map when center or pricing data changes
   useEffect(() => {
@@ -785,8 +814,15 @@ const StudyPricing = ({ studyDefs, studyPricing, centers, onPricingBatch, onPric
     setPrices(map);
   }, [selectedCenter, studyPricing, studyDefs]);
 
-  const setPrice = (defId, val) =>
-    setPrices(p => ({ ...p, [defId]: { ...p[defId], value: val, dirty: true } }));
+  const setPrice = useCallback((defId, val) =>
+    setPrices(p => ({ ...p, [defId]: { ...p[defId], value: val, dirty: true } })), []);
+
+  const removePricingCb = useCallback((existingId, defId) => {
+    if (!window.confirm('Remove pricing for this study at this centre?')) return;
+    onPricingDelete(existingId)
+      .then(() => setPrices(p => ({ ...p, [defId]: { value: '', dirty: false, existingId: null } })))
+      .catch(err => alert(err.message));
+  }, [onPricingDelete]);
 
   const saveAll = async () => {
     const dirty = Object.entries(prices)
@@ -804,13 +840,6 @@ const StudyPricing = ({ studyDefs, studyPricing, centers, onPricingBatch, onPric
     setSaving(false);
   };
 
-  const removePricing = async (existingId, defId) => {
-    if (!window.confirm('Remove pricing for this study at this centre?')) return;
-    try {
-      await onPricingDelete(existingId);
-      setPrices(p => ({ ...p, [defId]: { value: '', dirty: false, existingId: null } }));
-    } catch (err) { alert(err.message); }
-  };
 
   // only show studies for modalities enabled at this center; apply search + filter on top
   const grouped = useMemo(() => {
@@ -930,67 +959,10 @@ const StudyPricing = ({ studyDefs, studyPricing, centers, onPricingBatch, onPric
                   <span className="text-[10px] text-slate-400">{groupPriced} priced</span>
                 </div>
 
-                {/* Study rows */}
-                {group.studies.map(sd => {
-                  const p = prices[sd.id] || { value: '', dirty: false, existingId: null };
-                  const hasPrice = p.existingId && !p.dirty;
-                  const isNew    = !p.existingId && p.value !== '';
-                  return (
-                    <div key={sd.id}
-                      className={`flex items-center gap-4 px-5 py-2.5 transition-colors ${
-                        p.dirty ? 'bg-amber-50' : 'hover:bg-slate-50'
-                      }`}>
-
-                      {/* Study name */}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-800 truncate">{sd.study_name}</div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{sd.study_code}</div>
-                      </div>
-
-                      {/* Type badge */}
-                      <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${TYPE_BADGE[sd.study_type] || TYPE_BADGE.Plain}`}>
-                        {sd.study_type || 'Plain'}
-                      </span>
-
-                      {/* Status indicator */}
-                      <span className={`flex-shrink-0 text-[10px] font-medium w-16 text-right ${
-                        p.dirty ? 'text-amber-600' : hasPrice ? 'text-teal-600' : 'text-slate-300'
-                      }`}>
-                        {p.dirty ? (isNew ? 'New' : 'Edited') : hasPrice ? 'Priced' : 'Not set'}
-                      </span>
-
-                      {/* Price input */}
-                      <div className="flex-shrink-0 relative">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">₹</span>
-                        <input
-                          type="number" min="0" step="1"
-                          value={p.value}
-                          onChange={e => setPrice(sd.id, e.target.value)}
-                          placeholder="—"
-                          className={`w-28 pl-6 pr-2 py-1.5 text-sm rounded-lg border text-right font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors ${
-                            p.dirty
-                              ? 'border-amber-400 bg-amber-50 text-amber-800'
-                              : hasPrice
-                              ? 'border-teal-200 bg-teal-50 text-teal-800'
-                              : 'border-slate-200 bg-white text-slate-600'
-                          }`}
-                        />
-                      </div>
-
-                      {/* Remove button — only for priced entries */}
-                      <button
-                        onClick={() => p.existingId ? removePricing(p.existingId, sd.id) : setPrice(sd.id, '')}
-                        className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors ${
-                          p.value !== '' ? 'text-slate-300 hover:text-red-400' : 'invisible'
-                        }`}
-                        title="Clear">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                      </button>
-                    </div>
-                  );
-                })}
+                {/* Study rows — memoized to only re-render changed rows */}
+                {group.studies.map(sd => (
+                  <StudyRow key={sd.id} sd={sd} price={prices[sd.id]} onSetPrice={setPrice} onRemove={removePricingCb} />
+                ))}
               </div>
             );
           })}
@@ -3988,6 +3960,7 @@ const MasterDataSettings = () => {
   const [studyList, setStudyList] = useState([]);
   const [centers, setCenters] = useState([]);
   const [modalities, setModalities] = useState([]);
+  const [centerModMap, setCenterModMap] = useState({}); // pre-loaded: centerId → Set of modality codes
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
   const [physicians, setPhysicians] = useState([]);
@@ -4048,12 +4021,14 @@ const MasterDataSettings = () => {
       if (res.ok) {
         const data = await res.json();
         setCenters(data.centers || []);
+        return data.centers || [];
       } else {
         setError('Failed to fetch centers');
       }
     } catch (err) {
       setError('Network error');
     }
+    return [];
   }, []);
 
   const fetchRoles = useCallback(async () => {
@@ -4110,7 +4085,22 @@ const MasterDataSettings = () => {
       if (activeTab === 'study-catalog') {
         await fetchStudyDefs();
       } else if (activeTab === 'study-pricing') {
-        await Promise.all([fetchStudyDefs(), fetchStudyPricing(), fetchCenters()]);
+        // Load core data first, then pre-fetch modalities for every center in parallel
+        const [, , centersData] = await Promise.all([fetchStudyDefs(), fetchStudyPricing(), fetchCenters()]);
+        const activeCenterIds = (centersData || centers)
+          .filter(c => c.active !== false && c.corporate_entity_id != null)
+          .map(c => c.id);
+        if (activeCenterIds.length) {
+          const modResults = await Promise.all(
+            activeCenterIds.map(id =>
+              fetch(`/api/centers/${id}/modalities`, { headers: AUTH_HEADER() })
+                .then(r => r.ok ? r.json() : { modalities: [] })
+                .then(d => [id, new Set((d.modalities || []).map(m => m.modality))])
+                .catch(() => [id, new Set()])
+            )
+          );
+          setCenterModMap(Object.fromEntries(modResults));
+        }
       } else if (activeTab === 'radiologist') {
         await Promise.all([fetchReporters(), fetchStudyList()]);
       } else if (activeTab === 'physician') {
@@ -4424,7 +4414,7 @@ const MasterDataSettings = () => {
           <div className="p-3 sm:p-6">
             {activeTab === 'service-master' && <ServiceMaster embedded />}
             {activeTab === 'study-catalog' && <StudyCatalogFull studyDefs={studyDefs} onDefCreate={handleDefCreate} onDefUpdate={handleDefUpdate} onDefDelete={handleDefDelete} onRegisterAdd={fn => setCatalogAddHandler(() => fn)} onSelectionChange={setCatalogHasSelection} />}
-            {activeTab === 'study-pricing' && <StudyPricing studyDefs={studyDefs} studyPricing={studyPricing} centers={centers} onPricingBatch={handlePricingBatch} onPricingCreate={handlePricingCreate} onPricingUpdate={handlePricingUpdate} onPricingDelete={handlePricingDelete} />}
+            {activeTab === 'study-pricing' && <StudyPricing studyDefs={studyDefs} studyPricing={studyPricing} centers={centers} centerModMap={centerModMap} onPricingBatch={handlePricingBatch} onPricingCreate={handlePricingCreate} onPricingUpdate={handlePricingUpdate} onPricingDelete={handlePricingDelete} />}
             {activeTab === 'radiologist' && <RadReportingMaster reporters={reporters} studies={studyList} onReporterCreate={handleReporterCreate} onReporterUpdate={handleReporterUpdate} onReporterDelete={handleReporterDelete} />}
             {activeTab === 'physician' && <PhysicianMaster physicians={physicians} onPhysicianCreate={handlePhysicianCreate} onPhysicianUpdate={handlePhysicianUpdate} onPhysicianDelete={handlePhysicianDelete} />}
             {activeTab === 'center' && <CenterMaster centers={centers} onCenterCreate={handleCenterCreate} onCenterUpdate={handleCenterUpdate} onCenterDelete={handleCenterDelete} />}
