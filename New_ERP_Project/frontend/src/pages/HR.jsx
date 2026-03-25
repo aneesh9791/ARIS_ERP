@@ -1079,7 +1079,11 @@ function PayrollTab({ centerId = '' }) {
       } else {
         const d = await res.json();
         setApprovalResult(d.summary || d);
-        showToast('Payroll approved and posted to Finance', 'success');
+        if (d.je_warning) {
+          showToast(`Approved — ${d.je_warning}`, 'info');
+        } else {
+          showToast('Payroll approved and posted to Finance', 'success');
+        }
         loadRegister();
       }
     } catch (_) { showToast('Network error', 'error'); }

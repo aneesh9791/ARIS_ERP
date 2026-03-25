@@ -755,11 +755,11 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
         `INSERT INTO payroll_register
            (employee_id, pay_period_year, pay_period_month,
             basic_salary, hra, da, gross_salary,
-            pf_deduction, esi_deduction, professional_tax,
+            pf_deduction, esi_deduction, professional_tax, tds_deduction,
             total_deductions, net_salary,
             working_days, present_days, leave_days,
             status, created_by, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'DRAFT',$16,NOW(),NOW())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'DRAFT',$17,NOW(),NOW())
          ON CONFLICT (employee_id, pay_period_year, pay_period_month)
          DO UPDATE SET
            basic_salary     = EXCLUDED.basic_salary,
@@ -769,6 +769,7 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
            pf_deduction     = EXCLUDED.pf_deduction,
            esi_deduction    = EXCLUDED.esi_deduction,
            professional_tax = EXCLUDED.professional_tax,
+           tds_deduction    = EXCLUDED.tds_deduction,
            total_deductions = EXCLUDED.total_deductions,
            net_salary       = EXCLUDED.net_salary,
            working_days     = EXCLUDED.working_days,
@@ -779,7 +780,7 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
           calc.employee_id, year, month,
           calc.earnings.basic_salary, calc.earnings.hra, calc.earnings.da,
           calc.earnings.prorated_gross_salary,
-          calc.deductions.pf, calc.deductions.esi, calc.deductions.professional_tax,
+          calc.deductions.pf, calc.deductions.esi, calc.deductions.professional_tax, 0,
           calc.deductions.total_deductions, calc.net_salary,
           workingDaysInMonth, calc.attendance_summary.present_days, calc.attendance_summary.leave_days,
           req.user?.id
@@ -855,6 +856,7 @@ router.post('/payroll/approve', authorize(PAYROLL_ADMIN), [
 
     // Post finance JE
     let jeId = null;
+    let jeWarning = null;
     try {
       const je = await financeService.postPayrollJE(
         { totalGross, totalNet, totalPF, totalESI, employeePF, employeeESI, totalTDS, totalProfTax, byCategory, periodLabel },
@@ -862,11 +864,13 @@ router.post('/payroll/approve', authorize(PAYROLL_ADMIN), [
         center_id
       );
       jeId = je?.id || null;
+      if (!jeId) jeWarning = 'Finance JE was not posted (GL mappings may be missing). Payroll is approved but accounting entry is pending.';
     } catch (jeErr) {
       logger.error('Finance JE failed for payroll approve:', { period: periodLabel, error: jeErr.message });
+      jeWarning = `Finance JE failed: ${jeErr.message}. Payroll is approved but accounting entry is pending.`;
     }
 
-    // Update status to APPROVED
+    // Update status to APPROVED regardless — payroll ops are independent of Finance JE
     await pool.query(
       `UPDATE payroll_register
        SET status = 'APPROVED', approved_by = $1, approved_at = NOW(),
@@ -877,10 +881,11 @@ router.post('/payroll/approve', authorize(PAYROLL_ADMIN), [
       [req.user?.id, jeId, center_id, year, month]
     );
 
-    logger.info(`Payroll approved for period ${periodLabel}, center ${center_id}`);
+    logger.info(`Payroll approved for period ${periodLabel}, center ${center_id}${jeWarning ? ' (JE pending)' : ''}`);
     res.json({
       success: true,
       message: `Payroll approved for ${periodLabel}`,
+      je_warning: jeWarning || null,
       summary: { total_employees: rows.length, total_gross: totalGross, total_net: totalNet, journal_entry_id: jeId }
     });
 
