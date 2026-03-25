@@ -5,7 +5,14 @@ const { logger } = require('../config/logger');
 const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authorizePermission('CENTER_VIEW'));
+// GET endpoints are open to any authenticated user (centers are needed as
+// dropdowns in billing, stock, studies, etc. across all operational roles).
+// CENTER_VIEW is only required for write/management operations.
+router.post('/', authorizePermission('CENTER_WRITE'));
+router.delete('/:id', authorizePermission('CENTER_WRITE'));
+router.post('/:id/modalities', authorizePermission('CENTER_WRITE'));
+router.put('/:id/modalities/:modality_id', authorizePermission('CENTER_WRITE'));
+router.delete('/:id/modalities/:modality_id', authorizePermission('CENTER_WRITE'));
 
 // Get all diagnostic centers
 router.get('/', async (req, res) => {
