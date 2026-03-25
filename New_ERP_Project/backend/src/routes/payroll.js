@@ -11,19 +11,14 @@ const HR_WRITE      = ['SUPER_ADMIN', 'CENTER_MANAGER', 'HR_MANAGER'];
 const PAYROLL_ADMIN = ['SUPER_ADMIN', 'CENTER_MANAGER'];
 
 /**
- * Compute contractual working days in a given month for an employee.
- * weeklyOffs: 0 = all 7 days work, 1 = Sunday off, 2 = Saturday+Sunday off
+ * Compute contractual working days in a given month.
+ * weeklyOffs = number of off days per week (any day — not tied to Sat/Sun).
+ * Uses proportional formula: daysInMonth × (7 - weeklyOffs) / 7, rounded.
  */
 function computeWorkingDays(year, month, weeklyOffs = 1) {
-  let count = 0;
-  const d = new Date(year, month - 1, 1);
-  while (d.getMonth() === month - 1) {
-    const dow = d.getDay(); // 0=Sun, 6=Sat
-    const isOff = (weeklyOffs >= 1 && dow === 0) || (weeklyOffs >= 2 && dow === 6);
-    if (!isOff) count++;
-    d.setDate(d.getDate() + 1);
-  }
-  return count || 26;
+  const daysInMonth = new Date(year, month, 0).getDate(); // day 0 of next month = last day of this month
+  const workPerWeek = Math.max(1, 7 - Math.min(weeklyOffs, 6));
+  return Math.round(daysInMonth * workPerWeek / 7) || 1;
 }
 
 // Allows HR_WRITE roles OR users with LEAVE_APPLY permission

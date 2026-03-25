@@ -404,11 +404,10 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
           </div>
           <div>
             <label className={labelCls}>Weekly Off Days (Contract)</label>
-            <select value={form.weekly_offs ?? 1} onChange={e => set('weekly_offs', +e.target.value)} className={inputCls}>
-              <option value={0}>0 — Works all 7 days</option>
-              <option value={1}>1 — Sunday off (6-day week)</option>
-              <option value={2}>2 — Saturday + Sunday off (5-day week)</option>
-            </select>
+            <input type="number" min={0} max={6} step={1}
+              value={form.weekly_offs ?? 1}
+              onChange={e => set('weekly_offs', +e.target.value)}
+              className={inputCls} placeholder="e.g. 1" />
           </div>
           <div>
             <label className={labelCls}>Center *</label>
