@@ -199,27 +199,10 @@ const Layout = () => {
     } catch { return {}; }
   });
 
-  // User info — initialised from localStorage, refreshed live from server
-  const [user, setUser] = useState(() => {
+  // User info — loaded from localStorage (permissions are fetched from DB at login time)
+  const [user] = useState(() => {
     try { return JSON.parse(localStorage.getItem('user')) || {}; } catch { return {}; }
   });
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.user?.permissions) {
-          setUser(prev => {
-            const updated = { ...prev, permissions: data.user.permissions };
-            localStorage.setItem('user', JSON.stringify(updated));
-            return updated;
-          });
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   // Permission check — ALL_ACCESS bypasses everything (SUPER_ADMIN)
   // perm can be a string or array of strings (any match = allowed)

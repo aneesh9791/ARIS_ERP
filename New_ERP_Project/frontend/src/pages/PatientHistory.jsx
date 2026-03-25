@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getPermissions } from '../utils/permissions';
 
-const hasPermission = p => (getPermissions() || []).includes(p);
+const hasPermission = p => getPermissions().has(p);
 
 const token = () => localStorage.getItem('token');
 const api = (path, opts = {}) => fetch(path, {
