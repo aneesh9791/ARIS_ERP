@@ -4,10 +4,7 @@ const { body, validationResult } = require('express-validator');
 const pool    = require('../config/db');
 const { logger } = require('../config/logger');
 const financeService = require('../services/financeService');
-const { authorize } = require('../middleware/auth');
-
-const FINANCE_WRITE  = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
-const FINANCE_ADMIN  = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
 const ok  = (res, data)        => res.json({ success: true, ...data });
@@ -87,7 +84,7 @@ router.get('/accounts', async (req, res) => {
 });
 
 // POST /api/finance/accounts
-router.post('/accounts', authorize(FINANCE_ADMIN), async (req, res) => {
+router.post('/accounts', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const {
       account_code, account_name, account_type, account_category,
@@ -123,7 +120,7 @@ router.post('/accounts', authorize(FINANCE_ADMIN), async (req, res) => {
 });
 
 // PUT /api/finance/accounts/:id
-router.put('/accounts/:id', authorize(FINANCE_ADMIN), async (req, res) => {
+router.put('/accounts/:id', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { account_name, description, opening_balance, is_active } = req.body;
     const { rows } = await pool.query(
@@ -138,7 +135,7 @@ router.put('/accounts/:id', authorize(FINANCE_ADMIN), async (req, res) => {
 });
 
 // DELETE /api/finance/accounts/:id (soft)
-router.delete('/accounts/:id', authorize(FINANCE_ADMIN), async (req, res) => {
+router.delete('/accounts/:id', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE chart_of_accounts SET is_active=false, updated_at=NOW() WHERE id=$1 RETURNING id`,
@@ -175,7 +172,7 @@ router.get('/accounts/:id/depreciation-config', async (req, res) => {
 
 // PUT /api/finance/accounts/:id/depreciation-config
 router.put('/accounts/:id/depreciation-config',
-  authorize(FINANCE_ADMIN),
+  authorizePermission('COA_WRITE', 'JE_APPROVE'),
   body('useful_life_years').isInt({ min: 1, max: 50 }),
   body('accum_depr_account_id').isInt().optional({ nullable: true }),
   body('depr_expense_account_id').isInt().optional({ nullable: true }),
@@ -267,7 +264,7 @@ router.get('/journals/:id', async (req, res) => {
 });
 
 // POST /api/finance/journals  — create with lines
-router.post('/journals', authorize(FINANCE_WRITE), async (req, res) => {
+router.post('/journals', authorizePermission('JE_WRITE', 'COA_WRITE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -316,7 +313,7 @@ router.post('/journals', authorize(FINANCE_WRITE), async (req, res) => {
 });
 
 // PUT /api/finance/journals/:id  — update DRAFT
-router.put('/journals/:id', authorize(FINANCE_WRITE), async (req, res) => {
+router.put('/journals/:id', authorizePermission('JE_WRITE', 'COA_WRITE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -356,7 +353,7 @@ router.put('/journals/:id', authorize(FINANCE_WRITE), async (req, res) => {
 });
 
 // POST /api/finance/journals/:id/post
-router.post('/journals/:id/post', authorize(FINANCE_ADMIN), async (req, res) => {
+router.post('/journals/:id/post', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -399,7 +396,7 @@ router.post('/journals/:id/post', authorize(FINANCE_ADMIN), async (req, res) => 
 });
 
 // POST /api/finance/journals/:id/reverse
-router.post('/journals/:id/reverse', authorize(FINANCE_ADMIN), async (req, res) => {
+router.post('/journals/:id/reverse', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -643,7 +640,7 @@ router.get('/mappings', async (req, res) => {
 });
 
 // PUT /api/finance/mappings/:id
-router.put('/mappings/:id', authorize(FINANCE_ADMIN), async (req, res) => {
+router.put('/mappings/:id', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { debit_account_id, credit_account_id, description, is_active } = req.body;
     const updated = await financeService.updateMapping(req.params.id, {
@@ -907,7 +904,7 @@ router.get('/bank-accounts', async (req, res) => {
 });
 
 // POST /api/finance/bank-accounts
-router.post('/bank-accounts', authorize(FINANCE_ADMIN), async (req, res) => {
+router.post('/bank-accounts', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { account_name, account_number, bank_name, branch_name, ifsc_code,
             account_type = 'CURRENT', center_id, opening_balance = 0, notes } = req.body;
@@ -928,7 +925,7 @@ router.post('/bank-accounts', authorize(FINANCE_ADMIN), async (req, res) => {
 });
 
 // PUT /api/finance/bank-accounts/:id
-router.put('/bank-accounts/:id', authorize(FINANCE_ADMIN), async (req, res) => {
+router.put('/bank-accounts/:id', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { account_name, bank_name, branch_name, ifsc_code,
             account_type, center_id, notes, active, gl_account_id } = req.body;
@@ -949,7 +946,7 @@ router.put('/bank-accounts/:id', authorize(FINANCE_ADMIN), async (req, res) => {
 });
 
 // DELETE /api/finance/bank-accounts/:id  (soft delete)
-router.delete('/bank-accounts/:id', authorize(FINANCE_ADMIN), async (req, res) => {
+router.delete('/bank-accounts/:id', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE bank_accounts SET active=false, updated_at=NOW() WHERE id=$1 RETURNING id`,
@@ -978,7 +975,7 @@ router.get('/company-cards', async (req, res) => {
 });
 
 // POST /api/finance/company-cards
-router.post('/company-cards', authorize(FINANCE_ADMIN), async (req, res) => {
+router.post('/company-cards', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { card_name, last_four, card_type = 'CREDIT', network = 'VISA',
             bank_name, expiry_month, expiry_year, credit_limit = 0,
@@ -1000,7 +997,7 @@ router.post('/company-cards', authorize(FINANCE_ADMIN), async (req, res) => {
 });
 
 // PUT /api/finance/company-cards/:id
-router.put('/company-cards/:id', authorize(FINANCE_ADMIN), async (req, res) => {
+router.put('/company-cards/:id', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { card_name, card_type, network, bank_name, expiry_month, expiry_year,
             credit_limit, center_id, cardholder_name, notes, active } = req.body;
@@ -1022,7 +1019,7 @@ router.put('/company-cards/:id', authorize(FINANCE_ADMIN), async (req, res) => {
 });
 
 // DELETE /api/finance/company-cards/:id  (soft delete)
-router.delete('/company-cards/:id', authorize(FINANCE_ADMIN), async (req, res) => {
+router.delete('/company-cards/:id', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE company_cards SET active=false, updated_at=NOW() WHERE id=$1 RETURNING id`,
@@ -1058,7 +1055,7 @@ router.get('/bank-statement', async (req, res) => {
 });
 
 // POST /api/finance/bank-statement  — add statement line
-router.post('/bank-statement', authorize(FINANCE_WRITE), async (req, res) => {
+router.post('/bank-statement', authorizePermission('JE_WRITE', 'COA_WRITE'), async (req, res) => {
   try {
     const { bank_account_id, transaction_date, value_date, description,
             cheque_number, debit_amount = 0, credit_amount = 0, notes } = req.body;
@@ -1077,7 +1074,7 @@ router.post('/bank-statement', authorize(FINANCE_WRITE), async (req, res) => {
 });
 
 // PUT /api/finance/bank-statement/:id/reconcile  — match to JE
-router.put('/bank-statement/:id/reconcile', authorize(FINANCE_WRITE), async (req, res) => {
+router.put('/bank-statement/:id/reconcile', authorizePermission('JE_WRITE', 'COA_WRITE'), async (req, res) => {
   try {
     const { je_id } = req.body;
     const { rows } = await pool.query(
@@ -1092,7 +1089,7 @@ router.put('/bank-statement/:id/reconcile', authorize(FINANCE_WRITE), async (req
 });
 
 // PUT /api/finance/bank-statement/:id/unmatch
-router.put('/bank-statement/:id/unmatch', authorize(FINANCE_WRITE), async (req, res) => {
+router.put('/bank-statement/:id/unmatch', authorizePermission('JE_WRITE', 'COA_WRITE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE bank_statement_lines
@@ -1106,7 +1103,7 @@ router.put('/bank-statement/:id/unmatch', authorize(FINANCE_WRITE), async (req, 
 });
 
 // DELETE /api/finance/bank-statement/:id
-router.delete('/bank-statement/:id', authorize(FINANCE_ADMIN), async (req, res) => {
+router.delete('/bank-statement/:id', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     await pool.query('DELETE FROM bank_statement_lines WHERE id=$1 AND is_reconciled=false', [req.params.id]);
     ok(res, { id: parseInt(req.params.id) });
@@ -1216,7 +1213,7 @@ router.get('/depreciation/assets', async (req, res) => {
 });
 
 // POST /api/finance/depreciation/run  — run depreciation for a month
-router.post('/depreciation/run', authorize(FINANCE_ADMIN), async (req, res) => {
+router.post('/depreciation/run', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1380,7 +1377,7 @@ router.get('/expenses/summary', async (req, res) => {
 
 // ── POST /api/finance/center-settlement ───────────────────────────────────────
 // Trigger center contract settlement for a period
-router.post('/center-settlement', authorize(FINANCE_ADMIN), async (req, res) => {
+router.post('/center-settlement', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { center_id, period_start, period_end } = req.body;
     if (!center_id || !period_start || !period_end)
@@ -1425,7 +1422,7 @@ router.get('/center-settlement/history', async (req, res) => {
 // Save opening balances for a go-live date and post a single balanced JE.
 // Body: { balance_date, center_id (optional), entries: [{ account_id, debit, credit, notes }] }
 // Idempotent per account+center+date: re-posting the same account just updates the row.
-router.post('/opening-balances', authorize(FINANCE_ADMIN), async (req, res) => {
+router.post('/opening-balances', authorizePermission('COA_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { balance_date, center_id, entries } = req.body;
     if (!balance_date || !Array.isArray(entries) || !entries.length)
@@ -1629,7 +1626,7 @@ router.get('/rcm-liability', async (req, res) => {
 
 // ── POST /api/finance/rcm-liability/pay ──────────────────────────────────────
 // Record RCM GST payment to government: DR IGST Payable (2123) / CR Bank
-router.post('/rcm-liability/pay', authorize(FINANCE_WRITE), [
+router.post('/rcm-liability/pay', authorizePermission('JE_WRITE', 'COA_WRITE'), [
   body('amount').isFloat({ min: 0.01 }).withMessage('Amount required'),
   body('payment_date').isDate().withMessage('Valid date required'),
   body('bank_account_id').isInt({ min: 1 }).withMessage('Bank account required'),

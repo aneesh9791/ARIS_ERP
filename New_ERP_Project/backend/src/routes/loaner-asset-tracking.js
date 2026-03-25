@@ -5,7 +5,7 @@ const { logger } = require('../config/logger');
 const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authorizePermission('LOANER_ASSET_VIEW'));
+router.use(authorizePermission('LOANER_VIEW'));
 
 // Loaner Asset Tracking Class
 class LoanerAssetTracking {

@@ -4,12 +4,8 @@ const { body, validationResult } = require('express-validator');
 const pool = require('../config/db');
 const { logger } = require('../config/logger');
 const financeService = require('../services/financeService');
-const { authorize } = require('../middleware/auth');
+const { authorizePermission } = require('../middleware/auth');
 const router = express.Router();
-
-const VENDOR_WRITE = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'INVENTORY_MANAGER', 'PROCUREMENT_MANAGER'];
-const VENDOR_ADMIN = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
-const AP_ADMIN     = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
 
 // ── GL Accounts for AP/Expense dropdowns ────────────────────────────────────
 
@@ -66,7 +62,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/vendors
-router.post('/', authorize(VENDOR_WRITE), [
+router.post('/', authorizePermission('VENDOR_WRITE'), [
   body('vendor_code').trim().notEmpty(),
   body('vendor_name').trim().isLength({ min: 2 }),
   body('vendor_type').isIn(['SUPPLIER','SERVICE','CONTRACTOR','UTILITY','OTHER']),
@@ -115,7 +111,7 @@ router.post('/', authorize(VENDOR_WRITE), [
 });
 
 // PUT /api/vendors/:id
-router.put('/:id', authorize(VENDOR_WRITE), async (req, res) => {
+router.put('/:id', authorizePermission('VENDOR_WRITE'), async (req, res) => {
   try {
     const { vendor_name, vendor_type, gst_number, pan_number, phone, email,
             address, city, state, postal_code, contact_person, payment_terms,
@@ -148,7 +144,7 @@ router.put('/:id', authorize(VENDOR_WRITE), async (req, res) => {
 });
 
 // DELETE /api/vendors/:id
-router.delete('/:id', authorize(VENDOR_ADMIN), async (req, res) => {
+router.delete('/:id', authorizePermission('VENDOR_WRITE'), async (req, res) => {
   try {
     const { rows: [v] } = await pool.query(
       `UPDATE vendor_master SET active=false, updated_at=NOW() WHERE id=$1 AND active=true RETURNING id`,
@@ -217,7 +213,7 @@ router.get('/bills/:id', async (req, res) => {
 });
 
 // POST /api/vendors/bills
-router.post('/bills', authorize(VENDOR_WRITE), [
+router.post('/bills', authorizePermission('VENDOR_WRITE'), [
   body('vendor_code').trim().notEmpty(),
   body('bill_number').trim().notEmpty(),
   body('bill_date').isDate(),
@@ -297,7 +293,7 @@ router.post('/bills', authorize(VENDOR_WRITE), [
 // ── Vendor Payments ───────────────────────────────────────────────────────────
 
 // POST /api/vendors/bills/:id/pay
-router.post('/bills/:id/pay', authorize(AP_ADMIN), [
+router.post('/bills/:id/pay', authorizePermission('VENDOR_WRITE', 'JE_APPROVE'), [
   body('payment_mode').isIn(['CASH','CHEQUE','NEFT','RTGS','UPI']),
   body('amount_paid').isFloat({ min: 0.01 }),
   body('payment_date').isDate(),
@@ -562,7 +558,7 @@ async function _postVendorBillJE(client, bill, items, vendor) {
 }
 
 // POST /api/vendors/bills/:id/submit  — DRAFT → SUBMITTED
-router.post('/bills/:id/submit', authorize(VENDOR_WRITE), async (req, res) => {
+router.post('/bills/:id/submit', authorizePermission('VENDOR_WRITE'), async (req, res) => {
   try {
     const { rows: [bill] } = await pool.query(
       `UPDATE vendor_bills SET approval_status='SUBMITTED', updated_at=NOW()
@@ -574,7 +570,7 @@ router.post('/bills/:id/submit', authorize(VENDOR_WRITE), async (req, res) => {
 });
 
 // POST /api/vendors/bills/:id/approve  — SUBMITTED → APPROVED + post JE
-router.post('/bills/:id/approve', authorize(AP_ADMIN), async (req, res) => {
+router.post('/bills/:id/approve', authorizePermission('VENDOR_WRITE', 'JE_APPROVE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -615,7 +611,7 @@ router.post('/bills/:id/approve', authorize(AP_ADMIN), async (req, res) => {
 });
 
 // POST /api/vendors/bills/:id/reject  — SUBMITTED → REJECTED
-router.post('/bills/:id/reject', authorize(AP_ADMIN), async (req, res) => {
+router.post('/bills/:id/reject', authorizePermission('VENDOR_WRITE', 'JE_APPROVE'), async (req, res) => {
   try {
     const { reason } = req.body;
     if (!reason?.trim()) return res.status(400).json({ error: 'Rejection reason required' });
@@ -631,7 +627,7 @@ router.post('/bills/:id/reject', authorize(AP_ADMIN), async (req, res) => {
 });
 
 // POST /api/vendors/bills/:id/resubmit  — REJECTED → SUBMITTED
-router.post('/bills/:id/resubmit', authorize(VENDOR_WRITE), async (req, res) => {
+router.post('/bills/:id/resubmit', authorizePermission('VENDOR_WRITE'), async (req, res) => {
   try {
     const { rows: [bill] } = await pool.query(
       `UPDATE vendor_bills SET approval_status='SUBMITTED', rejection_reason=NULL,

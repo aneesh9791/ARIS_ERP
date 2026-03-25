@@ -695,11 +695,13 @@ function EmployeesTab({ openAdd, onAddHandled, centerId = '' }) {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex gap-2">
-                        <button onClick={() => { setEditEmp(emp); setShowModal(true); }}
-                          className="px-3 py-1 text-xs font-semibold rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors">
-                          Edit
-                        </button>
-                        {emp.active !== false && (
+                        {has('EMPLOYEE_WRITE') && (
+                          <button onClick={() => { setEditEmp(emp); setShowModal(true); }}
+                            className="px-3 py-1 text-xs font-semibold rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors">
+                            Edit
+                          </button>
+                        )}
+                        {has('EMPLOYEE_WRITE') && emp.active !== false && (
                           <button onClick={() => deactivate(emp)}
                             className="px-3 py-1 text-xs font-semibold rounded-lg text-red-600 bg-red-50 hover:bg-red-100 transition-colors">
                             Deactivate

@@ -3,6 +3,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const pool   = require('../config/db');
 const { logger } = require('../config/logger');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -178,7 +179,7 @@ const voucherValidators = [
   body('description').trim().isLength({ min: 3 }).withMessage('Description required'),
 ];
 
-router.post('/', voucherValidators, async (req, res) => {
+router.post('/', authorizePermission('PETTY_CASH_WRITE'), voucherValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
 
@@ -229,7 +230,7 @@ router.post('/', voucherValidators, async (req, res) => {
 // PUT /api/petty-cash/:id/approve
 // Finance role approves → posts journal entry automatically
 // ═══════════════════════════════════════════════════════════════
-router.put('/:id/approve', async (req, res) => {
+router.put('/:id/approve', authorizePermission('PETTY_CASH_APPROVE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -337,7 +338,7 @@ router.put('/:id/approve', async (req, res) => {
 // PUT /api/petty-cash/:id/reject
 // Finance role rejects with reason
 // ═══════════════════════════════════════════════════════════════
-router.put('/:id/reject', async (req, res) => {
+router.put('/:id/reject', authorizePermission('PETTY_CASH_APPROVE'), async (req, res) => {
   try {
     const { reason } = req.body;
     if (!reason?.trim()) return res.status(400).json({ error: 'Rejection reason required' });
@@ -367,7 +368,7 @@ router.put('/:id/reject', async (req, res) => {
 // DELETE /api/petty-cash/:id
 // Creator can delete their own SUBMITTED voucher
 // ═══════════════════════════════════════════════════════════════
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authorizePermission('PETTY_CASH_WRITE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `DELETE FROM expense_records WHERE id=$1 AND status='SUBMITTED' AND created_by=$2 RETURNING id`,

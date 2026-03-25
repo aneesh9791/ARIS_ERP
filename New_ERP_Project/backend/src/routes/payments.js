@@ -4,13 +4,9 @@ const { body, validationResult } = require('express-validator');
 const pool   = require('../config/db');
 const { logger } = require('../config/logger');
 const financeService = require('../services/financeService');
-const { authorize } = require('../middleware/auth');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-const AP_WRITE  = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
-const AP_ADMIN  = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
-const PROC_WRITE = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'INVENTORY_MANAGER', 'PROCUREMENT_MANAGER'];
 
 // ── GET /api/payments/bank-options ────────────────────────────────────────────
 // Returns active bank accounts with their linked COA GL account id/code/name
@@ -229,7 +225,7 @@ router.get('/history', async (req, res) => {
 // ── POST /api/payments/payable/:id/pay ────────────────────────────────────────
 // Pay a `payables` record (radiologist or service provider)
 // GL: DR ap_account → CR bank/cash
-router.post('/payable/:id/pay', authorize(AP_WRITE), [
+router.post('/payable/:id/pay', authorizePermission('VENDOR_WRITE', 'JE_WRITE'), [
   body('payment_mode').isIn(['CASH','CHEQUE','NEFT','RTGS','UPI']),
   body('amount_paid').isFloat({ min: 0.01 }),
   body('payment_date').isDate(),
@@ -378,7 +374,7 @@ router.post('/payable/:id/pay', authorize(AP_WRITE), [
 // ── POST /api/payments/vendor-bill/:id/pay ────────────────────────────────────
 // Thin wrapper — delegates to vendors.js logic by calling it directly here
 // (avoids internal HTTP call)
-router.post('/vendor-bill/:id/pay', authorize(AP_WRITE), [
+router.post('/vendor-bill/:id/pay', authorizePermission('VENDOR_WRITE', 'JE_WRITE'), [
   body('payment_mode').isIn(['CASH','CHEQUE','NEFT','RTGS','UPI']),
   body('amount_paid').isFloat({ min: 0.01 }),
   body('payment_date').isDate(),
@@ -639,7 +635,7 @@ router.post('/vendor-bill/:id/pay', authorize(AP_WRITE), [
 // ── POST /api/payments/grn/:id/pay ───────────────────────────────────────────
 // Pay a GRN-based payable (procurement workflow — no vendor_bill)
 // GL: DR ap_account (from vendor_master) → CR bank/cash
-router.post('/grn/:id/pay', authorize(AP_WRITE), [
+router.post('/grn/:id/pay', authorizePermission('VENDOR_WRITE', 'JE_WRITE'), [
   body('payment_mode').isIn(['CASH','CHEQUE','NEFT','RTGS','UPI']),
   body('amount_paid').isFloat({ min: 0.01 }),
   body('payment_date').isDate(),
@@ -863,7 +859,7 @@ router.get('/vendor-bills/:id/advance-info', async (req, res) => {
 // Knock off paid advance against this regular vendor bill.
 // Creates JE: DR AP / CR Advance to Suppliers (1131)
 // Uses bill.ap_account_id with fallback to COA code '2111'
-router.post('/vendor-bills/:id/apply-advance', authorize(AP_WRITE), async (req, res) => {
+router.post('/vendor-bills/:id/apply-advance', authorizePermission('VENDOR_WRITE', 'JE_WRITE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1164,7 +1160,7 @@ router.get('/vendor-bills', async (req, res) => {
 });
 
 // ── POST /api/payments/vendor-bills — create DRAFT ────────────────────────────
-router.post('/vendor-bills', authorize(PROC_WRITE), [
+router.post('/vendor-bills', authorizePermission('PO_WRITE', 'VENDOR_WRITE'), [
   body('vendor_invoice_number').trim().notEmpty().withMessage('Vendor invoice number is required'),
   body('bill_date').isDate().withMessage('Valid bill date required'),
   body('due_date').isDate().withMessage('Valid due date required'),
@@ -1244,7 +1240,7 @@ router.post('/vendor-bills', authorize(PROC_WRITE), [
 });
 
 // ── PUT /api/payments/vendor-bills/:id — update DRAFT ─────────────────────────
-router.put('/vendor-bills/:id', authorize(PROC_WRITE), [
+router.put('/vendor-bills/:id', authorizePermission('PO_WRITE', 'VENDOR_WRITE'), [
   body('vendor_invoice_number').optional().trim().notEmpty(),
   body('bill_date').optional().isDate(),
   body('due_date').optional().isDate(),
@@ -1298,7 +1294,7 @@ router.put('/vendor-bills/:id', authorize(PROC_WRITE), [
 });
 
 // ── POST /api/payments/vendor-bills/:id/submit ────────────────────────────────
-router.post('/vendor-bills/:id/submit', authorize(PROC_WRITE), async (req, res) => {
+router.post('/vendor-bills/:id/submit', authorizePermission('PO_WRITE', 'VENDOR_WRITE'), async (req, res) => {
   try {
     const { rows: [bill] } = await pool.query(
       `UPDATE vendor_bills
@@ -1319,7 +1315,7 @@ router.post('/vendor-bills/:id/submit', authorize(PROC_WRITE), async (req, res) 
 // ── POST /api/payments/vendor-bills/:id/approve ───────────────────────────────
 // Approves the bill and posts the AP Journal Entry:
 //   DR Expense/Purchase account  →  CR Vendor AP account
-router.post('/vendor-bills/:id/approve', authorize(AP_ADMIN), async (req, res) => {
+router.post('/vendor-bills/:id/approve', authorizePermission('JE_APPROVE', 'VENDOR_WRITE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1463,7 +1459,7 @@ router.post('/vendor-bills/:id/approve', authorize(AP_ADMIN), async (req, res) =
 });
 
 // ── POST /api/payments/vendor-bills/:id/reject ────────────────────────────────
-router.post('/vendor-bills/:id/reject', authorize(AP_ADMIN), [
+router.post('/vendor-bills/:id/reject', authorizePermission('JE_APPROVE', 'VENDOR_WRITE'), [
   body('reason').trim().notEmpty().withMessage('Rejection reason is required'),
 ], async (req, res) => {
   const errs = validationResult(req);
@@ -1487,7 +1483,7 @@ router.post('/vendor-bills/:id/reject', authorize(AP_ADMIN), [
 
 // ── PUT /api/payments/vendor-bills/:id/repost ─────────────────────────────────
 // Correct vendor_invoice_number and/or due_date on a REJECTED bill and resubmit
-router.put('/vendor-bills/:id/repost', authorize(PROC_WRITE), async (req, res) => {
+router.put('/vendor-bills/:id/repost', authorizePermission('PO_WRITE', 'VENDOR_WRITE'), async (req, res) => {
   try {
     const { vendor_invoice_number, due_date } = req.body;
     const { rows: [bill] } = await pool.query(
@@ -1580,7 +1576,7 @@ router.get('/tele-rad/accruals', async (req, res) => {
 
 // ── POST /api/payments/tele-rad/consolidate ───────────────────────────────────
 // Consolidate all pending accruals for a tele-rad reporter into one vendor bill
-router.post('/tele-rad/consolidate', authorize(AP_ADMIN), [
+router.post('/tele-rad/consolidate', authorizePermission('JE_APPROVE', 'VENDOR_WRITE'), [
   body('reporter_id').isInt({ min: 1 }),
 ], async (req, res) => {
   const errs = validationResult(req);
@@ -1730,7 +1726,7 @@ router.post('/tele-rad/consolidate', authorize(AP_ADMIN), [
 // Pay multiple vendor bills in one transaction / one JE.
 // Body: { bill_ids: [int], payment_mode, payment_date, bank_account_id,
 //         transaction_reference, notes }
-router.post('/vendor-bulk-pay', authorize(AP_WRITE), [
+router.post('/vendor-bulk-pay', authorizePermission('VENDOR_WRITE', 'JE_WRITE'), [
   body('bill_ids').isArray({ min: 1 }).withMessage('Select at least one bill'),
   body('bill_ids.*').isInt({ min: 1 }),
   body('payment_mode').isIn(['CASH','CHEQUE','NEFT','RTGS','UPI']),

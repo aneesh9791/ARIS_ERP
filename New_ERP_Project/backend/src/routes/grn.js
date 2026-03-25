@@ -3,12 +3,9 @@ const { body, validationResult } = require('express-validator');
 const pool = require('../config/db');
 const { logger } = require('../config/logger');
 const financeService = require('../services/financeService');
-const { authorize } = require('../middleware/auth');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-const GRN_WRITE = ['SUPER_ADMIN', 'CENTER_MANAGER', 'INVENTORY_MANAGER', 'PROCUREMENT_MANAGER'];
-const GRN_ADMIN = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
 
 // ── GET /api/grn?po_id=&status=&center_id= ────────────────────────────────────
 router.get('/', async (req, res) => {
@@ -125,7 +122,7 @@ router.get('/po/:po_id/pending-items', async (req, res) => {
 });
 
 // ── POST /api/grn — Create + auto-approve GRN in one step ────────────────────
-router.post('/', authorize(GRN_WRITE), [
+router.post('/', authorizePermission('GRN_WRITE'), [
   body('po_id').isInt({ min: 1 }),
   body('receipt_date').isDate(),
   body('items').isArray({ min: 1 }).withMessage('At least one item required'),
@@ -383,7 +380,7 @@ router.post('/', authorize(GRN_WRITE), [
 });
 
 // ── POST /api/grn/:id/post — Post GRN (update stock + PO) ────────────────────
-router.post('/:id/post', authorize(GRN_WRITE), async (req, res) => {
+router.post('/:id/post', authorizePermission('GRN_WRITE'), async (req, res) => {
   try {
     const warnings = [];
     const client = await pool.connect();
@@ -632,7 +629,7 @@ router.post('/:id/post', authorize(GRN_WRITE), async (req, res) => {
 });
 
 // ── POST /api/grn/:id/approve — Approve GRN: update stock + PO + post JE ──────
-router.post('/:id/approve', authorize(GRN_WRITE), async (req, res) => {
+router.post('/:id/approve', authorizePermission('GRN_WRITE'), async (req, res) => {
   try {
     const warnings = [];
     const client = await pool.connect();
@@ -825,7 +822,7 @@ router.post('/:id/approve', authorize(GRN_WRITE), async (req, res) => {
 });
 
 // ── PUT /api/grn/:id/cancel ───────────────────────────────────────────────────
-router.put('/:id/cancel', authorize(GRN_ADMIN), async (req, res) => {
+router.put('/:id/cancel', authorizePermission('GRN_WRITE', 'PO_APPROVE'), async (req, res) => {
   try {
     const { rows: [r] } = await pool.query(
       `SELECT status FROM purchase_receipts WHERE id=$1 AND active=true`, [req.params.id]

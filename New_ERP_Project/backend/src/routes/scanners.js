@@ -5,7 +5,7 @@ const { logger } = require('../config/logger');
 const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authorizePermission('SCANNER_VIEW'));
+router.use(authorizePermission('MWL_VIEW'));
 
 // Get all scanners/equipment
 router.get('/', async (req, res) => {
