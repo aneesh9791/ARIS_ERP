@@ -265,6 +265,44 @@ router.delete('/study-definitions/:id', authenticateToken, async (req, res) => {
 // Uses study_center_pricing table (true per-center rates, unique on study_definition_id + center_id)
 // ════════════════════════════════════════════════════════════
 
+// Bundle endpoint: returns study definitions + pricing + centers + their modalities in one round trip
+router.get('/study-pricing-bundle', authenticateToken, async (req, res) => {
+  try {
+    const [defsRes, pricingRes, centersRes, modRes] = await Promise.all([
+      pool.query(
+        `SELECT id, study_code, study_name, study_type, modality, active
+         FROM study_definitions WHERE active = true ORDER BY modality, study_name`
+      ),
+      pool.query(
+        `SELECT scp.id, scp.study_definition_id, scp.center_id, scp.base_rate, scp.active
+         FROM study_center_pricing scp WHERE scp.active = true`
+      ),
+      pool.query(`SELECT id, name, city, code, active, corporate_entity_id FROM centers ORDER BY name`),
+      pool.query(
+        `SELECT center_id, modality FROM center_modalities WHERE active = true`
+      ),
+    ]);
+
+    // Build center → modality set map
+    const centerModalities = {};
+    modRes.rows.forEach(({ center_id, modality }) => {
+      if (!centerModalities[center_id]) centerModalities[center_id] = [];
+      centerModalities[center_id].push(modality);
+    });
+
+    res.json({
+      success: true,
+      studies: defsRes.rows,
+      pricing: pricingRes.rows,
+      centers: centersRes.rows,
+      centerModalities,
+    });
+  } catch (err) {
+    logger.error('study-pricing-bundle GET:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.get('/study-pricing', authenticateToken, async (req, res) => {
   try {
     const { center_id, modality, active_only = 'true' } = req.query;

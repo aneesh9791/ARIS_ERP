@@ -50,7 +50,7 @@ router.get('/patient/:patient_id', validateApiKey, async (req, res) => {
       SELECT 
         p.id,
         p.name,
-        p.dob,
+        p.date_of_birth AS dob,
         p.gender,
         p.phone,
         p.email,
@@ -352,7 +352,7 @@ router.post('/search/patients', validateApiKey, [
       SELECT 
         p.id,
         p.name,
-        p.dob,
+        p.date_of_birth AS dob,
         p.gender,
         p.phone,
         p.email,
@@ -396,7 +396,7 @@ router.get('/study/:study_id', validateApiKey, async (req, res) => {
       SELECT 
         s.*,
         p.name as patient_name,
-        p.dob as patient_dob,
+        p.date_of_birth as patient_dob,
         p.gender as patient_gender,
         p.phone as patient_phone,
         p.email as patient_email,

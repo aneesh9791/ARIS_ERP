@@ -311,10 +311,35 @@ router.post('/bills/:id/pay', authorize(AP_ADMIN), [
       `SELECT vb.*,
               COALESCE(vm.vendor_name, vb.vendor_name_text) AS vendor_name,
               (SELECT id FROM parties WHERE vendor_id = vm.id LIMIT 1) AS party_id,
-              -- AP account from bill's own posted JE (credit side) — item category driven
-              (SELECT jel.account_id FROM journal_entry_lines jel
-               WHERE jel.journal_entry_id = vb.journal_entry_id AND jel.credit_amount > 0
-               ORDER BY jel.id LIMIT 1) AS ap_account_id
+              COALESCE(
+                -- 1. Bill's own posted JE credit line (self-consistent)
+                (SELECT jel.account_id FROM journal_entry_lines jel
+                 WHERE jel.journal_entry_id = vb.journal_entry_id AND jel.credit_amount > 0
+                 ORDER BY jel.id LIMIT 1),
+                -- 2. GRN-linked bill: use GRN JE credit line
+                (SELECT jel.account_id FROM journal_entry_lines jel
+                 JOIN purchase_receipts pr ON pr.journal_entry_id = jel.journal_entry_id
+                 WHERE pr.id = vb.source_grn_id AND jel.credit_amount > 0
+                 ORDER BY jel.id LIMIT 1),
+                -- 3. PO item category drives AP account
+                (SELECT ic.ap_account_id
+                 FROM procurement_order_items poi
+                 JOIN item_master im ON im.id = poi.item_master_id
+                 JOIN item_categories ic ON ic.id = im.category_id
+                 WHERE poi.po_id = vb.source_po_id AND ic.ap_account_id IS NOT NULL
+                 LIMIT 1),
+                -- 4. Consolidated reporter bill: use linked payable's ap_account_id
+                (SELECT p.ap_account_id FROM payables p
+                 WHERE p.vendor_bill_id = vb.id AND p.ap_account_id IS NOT NULL
+                 LIMIT 1),
+                -- 5. Smart fallback: reporter bills → 2113, equipment/GRN bills → 2112
+                (SELECT id FROM chart_of_accounts
+                 WHERE account_code = CASE
+                   WHEN vb.vendor_code IS NULL AND vb.source_grn_id IS NULL THEN '2113'
+                   ELSE '2112'
+                 END
+                 AND is_active = true LIMIT 1)
+              ) AS ap_account_id
        FROM vendor_bills vb
        LEFT JOIN vendor_master vm ON vm.vendor_code = vb.vendor_code AND vm.active = true
        WHERE vb.id=$1 AND vb.active=true FOR UPDATE`,

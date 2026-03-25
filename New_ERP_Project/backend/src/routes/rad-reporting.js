@@ -100,6 +100,16 @@ router.post('/', validators, async (req, res) => {
       ? `${first_name} ${last_name}`.trim()
       : name;
 
+    // Check for duplicate name
+    const dupCheck = await client.query(
+      `SELECT id FROM radiologist_master WHERE LOWER(radiologist_name) = LOWER($1) AND reporter_type = $2`,
+      [fullName, reporter_type]
+    );
+    if (dupCheck.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `${reporter_type === 'TELERADIOLOGY' ? 'Company' : 'Radiologist'} "${fullName}" already exists` });
+    }
+
     // Auto-generate code
     const prefix = reporter_type === 'TELERADIOLOGY' ? 'TELE' : 'RAD';
     const seqRes = await client.query(
@@ -532,7 +542,7 @@ router.put('/:id/report-complete', async (req, res) => {
     if (!bill?.study_id) return res.status(404).json({ error: 'No study linked. Complete exam first.' });
 
     const { rows: [study] } = await pool.query(
-      `SELECT s.*, rm.radiologist_name,
+      `SELECT s.*, rm.radiologist_name, rm.gst_number AS reporter_gst_number,
               CASE WHEN rm.type = 'TELERADIOLOGY_COMPANY' OR rm.reporter_type = 'TELERADIOLOGY'
                    THEN 'TELERADIOLOGY' ELSE COALESCE(rm.reporter_type, 'RADIOLOGIST') END AS reporter_type
        FROM studies s
@@ -564,6 +574,7 @@ router.put('/:id/report-complete', async (req, res) => {
         radiologist_code: study.radiologist_code,
         radiologist_name: study.radiologist_name,
         reporter_type:    study.reporter_type,
+        gst_number:       study.reporter_gst_number || null,
       };
       const jeResult = await financeService.postReporterPayableJE(
         { reporter, rate, bill, studyId: bill.study_id, examDate: new Date() },

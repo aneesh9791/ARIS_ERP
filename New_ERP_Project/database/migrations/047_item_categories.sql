@@ -39,41 +39,65 @@ DELETE FROM finance_account_mappings WHERE event_type IN ('PO_COMPLETED','EXPENS
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- FIXED_ASSET L1
-INSERT INTO item_categories (code, name, item_type, level, sort_order) VALUES
-  ('FA_MEDICAL_EQUIP', 'Medical Equipment',        'FIXED_ASSET', 1, 10),
-  ('FA_IT',            'IT Assets',                'FIXED_ASSET', 1, 20),
-  ('FA_FURNITURE',     'Furniture & Fixtures',     'FIXED_ASSET', 1, 30),
-  ('FA_VEHICLE',       'Vehicles',                 'FIXED_ASSET', 1, 40),
-  ('FA_CIVIL',         'Civil & Infrastructure',   'FIXED_ASSET', 1, 50),
-  ('FA_SOFTWARE',      'Software & Licences',      'FIXED_ASSET', 1, 60)
-ON CONFLICT (code) DO NOTHING;
+-- Uses DO UPDATE so GL accounts are applied on both fresh installs and re-runs
+INSERT INTO item_categories (code, name, item_type, level, sort_order, asset_gl_id, ap_account_id)
+SELECT v.code, v.name, 'FIXED_ASSET', 1, v.sort_order,
+  (SELECT id FROM chart_of_accounts WHERE account_code = v.asset_coa AND is_active = true LIMIT 1),
+  (SELECT id FROM chart_of_accounts WHERE account_code = v.ap_coa    AND is_active = true LIMIT 1)
+FROM (VALUES
+  ('FA_MEDICAL_EQUIP', 'Medical Equipment',        10, '1210', '2112'),
+  ('FA_IT',            'IT Assets',                20, '1220', '2112'),
+  ('FA_FURNITURE',     'Furniture & Fixtures',     30, '1230', '2112'),
+  ('FA_VEHICLE',       'Vehicles',                 40, '1240', '2112'),
+  ('FA_CIVIL',         'Civil & Infrastructure',   50, '1250', '2115'),
+  ('FA_SOFTWARE',      'Software & Licences',      60, '1310', '2112')
+) AS v(code, name, sort_order, asset_coa, ap_coa)
+ON CONFLICT (code) DO UPDATE SET
+  asset_gl_id   = EXCLUDED.asset_gl_id,
+  ap_account_id = EXCLUDED.ap_account_id;
 
 -- STOCK L1
-INSERT INTO item_categories (code, name, item_type, level, sort_order) VALUES
-  ('ST_CLINICAL', 'Clinical Consumables',    'STOCK', 1, 10),
-  ('ST_DRUGS',    'Drugs & Pharmaceuticals', 'STOCK', 1, 20),
-  ('ST_IMAGING',  'Imaging Media',           'STOCK', 1, 30),
-  ('ST_OFFICE',   'Office & Stationery',     'STOCK', 1, 40),
-  ('ST_SPARE',    'Spare Parts',             'STOCK', 1, 50)
-ON CONFLICT (code) DO NOTHING;
+INSERT INTO item_categories (code, name, item_type, level, sort_order, asset_gl_id, expense_gl_id, ap_account_id)
+SELECT v.code, v.name, 'STOCK', 1, v.sort_order,
+  (SELECT id FROM chart_of_accounts WHERE account_code = v.asset_coa   AND is_active = true LIMIT 1),
+  (SELECT id FROM chart_of_accounts WHERE account_code = v.expense_coa AND is_active = true LIMIT 1),
+  (SELECT id FROM chart_of_accounts WHERE account_code = v.ap_coa      AND is_active = true LIMIT 1)
+FROM (VALUES
+  ('ST_CLINICAL', 'Clinical Consumables',    10, '1151', '5112', '2111'),
+  ('ST_DRUGS',    'Drugs & Pharmaceuticals', 20, '1155', '5114', '2111'),
+  ('ST_IMAGING',  'Imaging Media',           30, '1153', '5113', '2111'),
+  ('ST_OFFICE',   'Office & Stationery',     40, '1154', '5410', '2113'),
+  ('ST_SPARE',    'Spare Parts',             50, '1151', '5132', '2112')
+) AS v(code, name, sort_order, asset_coa, expense_coa, ap_coa)
+ON CONFLICT (code) DO UPDATE SET
+  asset_gl_id   = EXCLUDED.asset_gl_id,
+  expense_gl_id = EXCLUDED.expense_gl_id,
+  ap_account_id = EXCLUDED.ap_account_id;
 
 -- EXPENSE L1
-INSERT INTO item_categories (code, name, item_type, level, sort_order) VALUES
-  ('EX_CLINICAL',       'Medical & Clinical',            'EXPENSE', 1, 10),
-  ('EX_PROF_SVC',       'Professional Services',         'EXPENSE', 1, 20),
-  ('EX_EQUIP_AMC',      'Equipment & AMC',               'EXPENSE', 1, 30),
-  ('EX_FACILITY',       'Facility & Lease',              'EXPENSE', 1, 40),
-  ('EX_UTILITIES',      'Utilities',                     'EXPENSE', 1, 50),
-  ('EX_FACILITY_MGMT',  'Facility Management',           'EXPENSE', 1, 60),
-  ('EX_ADMIN',          'Admin & Office',                'EXPENSE', 1, 70),
-  ('EX_MARKETING',      'Marketing & Business Dev',      'EXPENSE', 1, 80),
-  ('EX_PATIENT_ACQ',    'Patient Acquisition',           'EXPENSE', 1, 90),
-  ('EX_IT',             'IT & Technology',               'EXPENSE', 1, 100),
-  ('EX_PROFESSIONAL',   'Professional & Compliance',     'EXPENSE', 1, 110),
-  ('EX_FINANCE_COST',   'Finance Costs',                 'EXPENSE', 1, 120),
-  ('EX_PAYROLL',        'Payroll & HR',                  'EXPENSE', 1, 130),
-  ('EX_MISC',           'Miscellaneous',                 'EXPENSE', 1, 140)
-ON CONFLICT (code) DO NOTHING;
+INSERT INTO item_categories (code, name, item_type, level, sort_order, expense_gl_id, ap_account_id)
+SELECT v.code, v.name, 'EXPENSE', 1, v.sort_order,
+  (SELECT id FROM chart_of_accounts WHERE account_code = v.expense_coa AND is_active = true LIMIT 1),
+  (SELECT id FROM chart_of_accounts WHERE account_code = v.ap_coa      AND is_active = true LIMIT 1)
+FROM (VALUES
+  ('EX_CLINICAL',       'Medical & Clinical',            10, '5115', '2111'),
+  ('EX_PROF_SVC',       'Professional Services',         20, '5121', '2113'),
+  ('EX_EQUIP_AMC',      'Equipment & AMC',               30, '5132', '2112'),
+  ('EX_FACILITY',       'Facility & Lease',              40, '5310', '2113'),
+  ('EX_UTILITIES',      'Utilities',                     50, '5320', '2114'),
+  ('EX_FACILITY_MGMT',  'Facility Management',           60, '5360', '2113'),
+  ('EX_ADMIN',          'Admin & Office',                70, '5410', '2113'),
+  ('EX_MARKETING',      'Marketing & Business Dev',      80, '5510', '2113'),
+  ('EX_PATIENT_ACQ',    'Patient Acquisition',           90, '5520', '2113'),
+  ('EX_IT',             'IT & Technology',              100, '5710', '2112'),
+  ('EX_PROFESSIONAL',   'Professional & Compliance',    110, '5610', '2113'),
+  ('EX_FINANCE_COST',   'Finance Costs',                120, '5810', '2113'),
+  ('EX_PAYROLL',        'Payroll & HR',                 130, '5210', '2131'),
+  ('EX_MISC',           'Miscellaneous',                140, '5994', '2113')
+) AS v(code, name, sort_order, expense_coa, ap_coa)
+ON CONFLICT (code) DO UPDATE SET
+  expense_gl_id = EXCLUDED.expense_gl_id,
+  ap_account_id = EXCLUDED.ap_account_id;
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- 5. Seed FIXED_ASSET L2 Categories

@@ -641,7 +641,7 @@ const StudyConsumablesModal = ({ study, onClose }) => {
   );
 };
 
-// ── Study Row ──────────────────────────────────────────────────────────────────
+// ── Study Row — desktop table row ──────────────────────────────────────────────
 const StudyRow = ({ study, onAction, showRate }) => (
   <tr className="hover:bg-teal-50 border-b border-slate-100 transition-colors">
     <td className="px-4 py-3">
@@ -707,6 +707,63 @@ const StudyRow = ({ study, onAction, showRate }) => (
       </div>
     </td>
   </tr>
+);
+
+// ── Study Card — mobile card view ───────────────────────────────────────────────
+const StudyCard = ({ study, onAction, showRate }) => (
+  <div className="p-4 border-b border-slate-100 last:border-0">
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <p className="font-semibold text-slate-800 text-sm truncate">{study.patient_name}</p>
+        <p className="text-xs text-slate-400 mt-0.5">{study.accession_number}</p>
+      </div>
+      <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[study.exam_workflow_status] || 'bg-slate-100 text-slate-600'}`}>
+        {STATUS_LABEL[study.exam_workflow_status] || study.exam_workflow_status}
+      </span>
+    </div>
+
+    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-500">
+      <div><span className="text-slate-400">Study: </span>{study.study_name || study.study_code || '—'}</div>
+      <div><span className="text-slate-400">Modality: </span>{study.modality || '—'}</div>
+      <div><span className="text-slate-400">Center: </span>{study.center_name || '—'}</div>
+      <div><span className="text-slate-400">Date: </span>{new Date(study.created_at).toLocaleDateString('en-GB')}</div>
+      {study.reporter_name && (
+        <div className="col-span-2">
+          <span className="text-slate-400">Reporter: </span>
+          {study.reporter_type === 'TELERADIOLOGY' || study.reporter_type === 'TELERADIOLOGY_COMPANY'
+            ? study.reporter_name : `Dr. ${study.reporter_name}`}
+        </div>
+      )}
+      {showRate && (study.rate_snapshot || study.reporting_rate) && (
+        <div className="col-span-2"><span className="text-slate-400">Rate: </span>
+          <span className="font-medium text-slate-700">{fmtINR(study.rate_snapshot || study.reporting_rate)}</span>
+        </div>
+      )}
+    </div>
+
+    <div className="mt-3">
+      {study.exam_workflow_status === 'EXAM_SCHEDULED' && (
+        <button onClick={() => onAction('exam-complete', study)}
+          className="w-full text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 px-3 py-2 rounded-lg transition-colors">
+          Mark Exam Completed
+        </button>
+      )}
+      {study.exam_workflow_status === 'EXAM_COMPLETED' && (
+        <button onClick={() => onAction('report-complete', study)}
+          className="w-full text-xs font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-3 py-2 rounded-lg transition-colors">
+          Mark Report Completed
+        </button>
+      )}
+      {study.exam_workflow_status === 'REPORT_COMPLETED' && (
+        <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Payout generated
+        </span>
+      )}
+    </div>
+  </div>
 );
 
 // ── Main Component ─────────────────────────────────────────────────────────────
@@ -819,9 +876,9 @@ const StudyReporting = () => {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Worklist</h1>
           <p className="text-sm text-slate-500 mt-0.5">Track exam and reporting workflow for all paid studies</p>
@@ -830,7 +887,7 @@ const StudyReporting = () => {
           <select
             value={centerId}
             onChange={e => setCenterId(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 min-w-[180px]">
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 w-full sm:w-auto sm:min-w-[180px]">
             <option value="">All Centers</option>
             {centers.filter(c => c.active !== false).map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -839,19 +896,19 @@ const StudyReporting = () => {
         )}
       </div>
 
-      {/* KPI row — always shows totals across all statuses */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <p className="text-2xl font-bold text-blue-700">{kpis.scheduled}</p>
-          <p className="text-sm text-slate-500 mt-1">Awaiting Exam</p>
+      {/* KPI row */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5">
+          <p className="text-xl sm:text-2xl font-bold text-blue-700">{kpis.scheduled}</p>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">Awaiting Exam</p>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <p className="text-2xl font-bold text-amber-700">{kpis.examDone}</p>
-          <p className="text-sm text-slate-500 mt-1">Awaiting Report</p>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5">
+          <p className="text-xl sm:text-2xl font-bold text-amber-700">{kpis.examDone}</p>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">Awaiting Report</p>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <p className="text-2xl font-bold text-emerald-700">{kpis.reportDone}</p>
-          <p className="text-sm text-slate-500 mt-1">Reports Completed</p>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5">
+          <p className="text-xl sm:text-2xl font-bold text-emerald-700">{kpis.reportDone}</p>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">Reports Done</p>
         </div>
       </div>
 
@@ -864,7 +921,7 @@ const StudyReporting = () => {
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by patient name, phone, bill#, study, modality, center…"
+          placeholder="Search patient, accession, study…"
           className="w-full pl-9 pr-9 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
         />
         {search && (
@@ -877,14 +934,14 @@ const StudyReporting = () => {
         )}
       </div>
 
-      {/* Table */}
+      {/* Table / Cards */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         {/* Tab bar */}
-        <div className="border-b border-slate-200">
-          <nav className="flex px-4 -mb-px gap-6">
+        <div className="border-b border-slate-200 overflow-x-auto">
+          <nav className="flex px-2 sm:px-4 -mb-px min-w-max">
             {TABS.map(t => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
-                className={`py-3.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                className={`py-3 sm:py-3.5 px-2 sm:px-0 sm:mr-6 text-xs sm:text-sm font-medium border-b-2 transition-colors flex items-center gap-1 sm:gap-1.5 whitespace-nowrap ${
                   activeTab === t.id
                     ? 'border-teal-600 text-teal-600'
                     : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -898,7 +955,7 @@ const StudyReporting = () => {
               </button>
             ))}
             <button onClick={() => load()}
-              className="ml-auto py-3.5 text-xs text-slate-400 hover:text-teal-600 flex items-center gap-1">
+              className="ml-auto py-3.5 px-2 text-xs text-slate-400 hover:text-teal-600 flex items-center gap-1 whitespace-nowrap">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
@@ -919,32 +976,41 @@ const StudyReporting = () => {
             {search && <button onClick={() => setSearch('')} className="mt-2 text-xs text-teal-600 hover:underline">Clear search</button>}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  <th className="px-4 py-3 text-left">Patient</th>
-                  <th className="px-4 py-3 text-left">Study</th>
-                  <th className="px-4 py-3 text-left">Center</th>
-                  <th className="px-4 py-3 text-left">Date</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Reporter</th>
-                  {activeTab !== 'scheduled' && <th className="px-4 py-3 text-right">Rate</th>}
-                  <th className="px-4 py-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredStudies.map(s => (
-                  <StudyRow key={s.id} study={s} onAction={handleAction} showRate={activeTab !== 'scheduled'} />
-                ))}
-              </tbody>
-            </table>
+          <>
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-slate-100">
+              {filteredStudies.map(s => (
+                <StudyCard key={s.id} study={s} onAction={handleAction} showRate={activeTab !== 'scheduled'} />
+              ))}
+            </div>
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left">Patient</th>
+                    <th className="px-4 py-3 text-left">Study</th>
+                    <th className="px-4 py-3 text-left">Center</th>
+                    <th className="px-4 py-3 text-left">Date</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left">Reporter</th>
+                    {activeTab !== 'scheduled' && <th className="px-4 py-3 text-right">Rate</th>}
+                    <th className="px-4 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredStudies.map(s => (
+                    <StudyRow key={s.id} study={s} onAction={handleAction} showRate={activeTab !== 'scheduled'} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
             {search && (
               <div className="px-4 py-2 border-t border-slate-100 text-xs text-slate-400">
                 Showing {filteredStudies.length} of {studies.length} records
               </div>
             )}
-          </div>
+          </>
         )}
       </div>
 

@@ -13,5 +13,8 @@ const pool = new Pool({
   keepAlive: true,                   // TCP keepalive to prevent OS dropping idle connections
   keepAliveInitialDelayMillis: 10000,
 });
-pool.on('error', (err) => require('./logger').logger.error('Unexpected DB pool error', err));
+pool.on('error', (err) => {
+  try { require('./logger').logger.error('Unexpected DB pool error', err); }
+  catch (_) { console.error('Unexpected DB pool error', err.message); }
+});
 module.exports = pool;

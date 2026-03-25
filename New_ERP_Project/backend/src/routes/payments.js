@@ -398,21 +398,35 @@ router.post('/vendor-bill/:id/pay', authorize(AP_WRITE), [
               -- 3. Item category on the bill's PO items (item type drives AP, not vendor)
               -- 4. Fallback: 2112 Equipment AP
               COALESCE(
+                -- 1. Bill's own posted JE credit line (self-consistent)
                 (SELECT jel.account_id FROM journal_entry_lines jel
                  WHERE jel.journal_entry_id = vb.journal_entry_id
                    AND jel.credit_amount > 0
                  ORDER BY jel.id LIMIT 1),
+                -- 2. GRN-linked bill: use GRN JE credit line
                 (SELECT jel.account_id FROM journal_entry_lines jel
                  JOIN purchase_receipts pr ON pr.journal_entry_id = jel.journal_entry_id
                  WHERE pr.id = vb.source_grn_id AND jel.credit_amount > 0
                  ORDER BY jel.id LIMIT 1),
+                -- 3. PO item category drives AP account
                 (SELECT ic.ap_account_id
                  FROM procurement_order_items poi
                  JOIN item_master im ON im.id = poi.item_master_id
                  JOIN item_categories ic ON ic.id = im.category_id
                  WHERE poi.po_id = vb.source_po_id AND ic.ap_account_id IS NOT NULL
                  LIMIT 1),
-                (SELECT id FROM chart_of_accounts WHERE account_code='2112' AND is_active=true LIMIT 1)
+                -- 4. Consolidated reporter bill: use the linked payable's ap_account_id
+                (SELECT p.ap_account_id FROM payables p
+                 WHERE p.vendor_bill_id = vb.id AND p.ap_account_id IS NOT NULL
+                 LIMIT 1),
+                -- 5. Fallback by bill type: reporter bills → 2113 (Service Providers),
+                --    equipment/GRN bills → 2112 (Equipment & IT)
+                (SELECT id FROM chart_of_accounts
+                 WHERE account_code = CASE
+                   WHEN vb.vendor_code IS NULL AND vb.source_grn_id IS NULL THEN '2113'
+                   ELSE '2112'
+                 END
+                 AND is_active = true LIMIT 1)
               ) AS ap_account_id,
               COALESCE(vm.vendor_name, vb.vendor_name_text) AS vendor_name,
               (SELECT p.id FROM parties p JOIN vendor_master vm2 ON vm2.id = p.vendor_id

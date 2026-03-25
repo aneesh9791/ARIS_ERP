@@ -1581,8 +1581,7 @@ router.get('/rcm-liability', async (req, res) => {
         AND je.status = 'POSTED' AND je.source_module = 'REPORTING'
       JOIN chart_of_accounts coa ON coa.id = jel.account_id AND coa.account_code = '2123'
       LEFT JOIN studies s ON je.source_ref IS NOT NULL
-        AND je.source_ref ~ '^[0-9]+$'
-        AND s.id = je.source_ref::integer
+        AND s.id = je.source_ref
       LEFT JOIN radiologist_master rm ON rm.id = s.reporter_radiologist_id
       GROUP BY rm.id, rm.radiologist_name
       ORDER BY outstanding DESC

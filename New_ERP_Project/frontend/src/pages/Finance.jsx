@@ -372,109 +372,120 @@ function AccountsTab() {
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {loading ? <Spin /> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide w-32">Code</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">Account Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide w-28">Category</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wide w-28">Normal Bal</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wide w-32">Opening Bal</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wide w-32">Current Bal</th>
-                  <th className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wide w-20">Status</th>
-                  <th className="px-4 py-3 w-20"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.filter(isVisible).map(acc => {
-                  const indent = (acc.account_level - 1) * 16;
-                  const catCfg = CAT_CFG[acc.account_category] || {};
-                  const hasKids = hasChildren(acc);
-                  const isOpen = expanded.has(acc.account_code);
-                  const isGroup = acc.account_level <= 2;
-                  return (
-                    <tr key={acc.id}
-                      className={`hover:bg-blue-50/40 transition-colors ${isGroup ? 'bg-slate-50/60' : ''} ${!acc.is_active ? 'opacity-40' : ''}`}>
-                      <td className="px-4 py-2.5">
-                        <span className="font-mono text-xs font-bold text-slate-600">{acc.account_code}</span>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2" style={{ paddingLeft: indent }}>
-                          {hasKids && !search && catFilter === 'ALL' ? (
-                            <button onClick={() => toggleExpand(acc.account_code)}
-                              className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-blue-600 flex-shrink-0">
-                              <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                              </svg>
-                            </button>
-                          ) : (
-                            <span className="w-4 flex-shrink-0" />
-                          )}
-                          <span className={`${isGroup ? 'font-semibold text-slate-800' : 'text-slate-700'}`}>
-                            {acc.account_name}
-                          </span>
-                          {acc.journal_only && (
-                            <span
-                              title="This GL account is linked only to journal-only (non-item-master) categories — it will not appear in purchase or item dropdowns"
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 whitespace-nowrap flex-shrink-0">
-                              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                              </svg>
-                              Non Item Master
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-bold"
-                          style={{ background: catCfg.bg, color: catCfg.color }}>
-                          {catCfg.label || acc.account_category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
-                        <span className={`text-xs font-semibold ${acc.normal_balance === 'debit' ? 'text-blue-600' : 'text-emerald-600'}`}>
-                          {acc.normal_balance === 'debit' ? 'Dr' : 'Cr'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-sm font-mono text-slate-600">
-                        {acc.opening_balance != 0 ? fmt(acc.opening_balance) : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-sm font-mono font-semibold text-slate-800">
-                        {acc.current_balance != 0 ? fmt(acc.current_balance) : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${acc.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
-                          {acc.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => openEdit(acc)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
+          <>
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-slate-100">
+              {filtered.filter(isVisible).map(acc => {
+                const catCfg = CAT_CFG[acc.account_category] || {};
+                const isGroup = acc.account_level <= 2;
+                return (
+                  <div key={acc.id} className={`p-3 ${isGroup ? 'bg-slate-50' : ''} ${!acc.is_active ? 'opacity-40' : ''}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="font-mono text-xs font-bold text-slate-500">{acc.account_code}</span>
+                        <p className={`text-sm mt-0.5 ${isGroup ? 'font-semibold text-slate-800' : 'text-slate-700'}`}>{acc.account_name}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => openEdit(acc)} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        </button>
+                        {acc.is_active && (
+                          <button onClick={() => handleDeactivate(acc.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                           </button>
-                          {acc.is_active && (
-                            <button onClick={() => handleDeactivate(acc.id)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <div className="px-4 py-2 border-t border-slate-100 text-xs text-slate-400">
-              {filtered.length} accounts
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
+                      <span className="px-2 py-0.5 rounded-full font-bold" style={{ background: catCfg.bg, color: catCfg.color }}>{catCfg.label || acc.account_category}</span>
+                      <span className={`px-2 py-0.5 rounded-full font-semibold ${acc.normal_balance === 'debit' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>{acc.normal_balance === 'debit' ? 'Dr' : 'Cr'}</span>
+                      {acc.current_balance != 0 && <span className="font-mono font-semibold text-slate-700">{fmt(acc.current_balance)}</span>}
+                      {!acc.is_active && <span className="bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Inactive</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide w-32">Code</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">Account Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide w-28">Category</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wide w-28">Normal Bal</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wide w-32">Opening Bal</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wide w-32">Current Bal</th>
+                    <th className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wide w-20">Status</th>
+                    <th className="px-4 py-3 w-20"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filtered.filter(isVisible).map(acc => {
+                    const indent = (acc.account_level - 1) * 16;
+                    const catCfg = CAT_CFG[acc.account_category] || {};
+                    const hasKids = hasChildren(acc);
+                    const isOpen = expanded.has(acc.account_code);
+                    const isGroup = acc.account_level <= 2;
+                    return (
+                      <tr key={acc.id}
+                        className={`hover:bg-blue-50/40 transition-colors ${isGroup ? 'bg-slate-50/60' : ''} ${!acc.is_active ? 'opacity-40' : ''}`}>
+                        <td className="px-4 py-2.5">
+                          <span className="font-mono text-xs font-bold text-slate-600">{acc.account_code}</span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2" style={{ paddingLeft: indent }}>
+                            {hasKids && !search && catFilter === 'ALL' ? (
+                              <button onClick={() => toggleExpand(acc.account_code)}
+                                className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-blue-600 flex-shrink-0">
+                                <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            ) : (
+                              <span className="w-4 flex-shrink-0" />
+                            )}
+                            <span className={`${isGroup ? 'font-semibold text-slate-800' : 'text-slate-700'}`}>{acc.account_name}</span>
+                            {acc.journal_only && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 whitespace-nowrap flex-shrink-0">
+                                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                                Non Item Master
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: catCfg.bg, color: catCfg.color }}>{catCfg.label || acc.account_category}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <span className={`text-xs font-semibold ${acc.normal_balance === 'debit' ? 'text-blue-600' : 'text-emerald-600'}`}>{acc.normal_balance === 'debit' ? 'Dr' : 'Cr'}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-sm font-mono text-slate-600">{acc.opening_balance != 0 ? fmt(acc.opening_balance) : '—'}</td>
+                        <td className="px-4 py-2.5 text-right text-sm font-mono font-semibold text-slate-800">{acc.current_balance != 0 ? fmt(acc.current_balance) : '—'}</td>
+                        <td className="px-4 py-2.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${acc.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>{acc.is_active ? 'Active' : 'Inactive'}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => openEdit(acc)} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            </button>
+                            {acc.is_active && (
+                              <button onClick={() => handleDeactivate(acc.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="px-4 py-2 border-t border-slate-100 text-xs text-slate-400">{filtered.length} accounts</div>
+            </div>
+          </>
         )}
       </div>
 
@@ -3483,7 +3494,7 @@ function BankAccountsTab() {
   const [cards,     setCards]     = useState([]);
   const [centers,   setCenters]   = useState([]);
   const [coaAccts,  setCoaAccts]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
+  const [loading,   setLoading]   = useState(false);
   const [modal,     setModal]     = useState(null);   // 'bank-add'|'bank-edit'|'card-add'|'card-edit'
   const [form,      setForm]      = useState({});
   const [saving,    setSaving]    = useState(false);
@@ -3495,7 +3506,7 @@ function BankAccountsTab() {
       api('/api/finance/bank-accounts?all=true').then(r => r.json()),
       api('/api/finance/company-cards?all=true').then(r => r.json()),
       api('/api/centers').then(r => r.json()),
-      api('/api/chart-of-accounts').then(r => r.json()).catch(() => ({ accounts: [] })),
+      api('/api/chart-of-accounts/accounts').then(r => r.json()).catch(() => ({ accounts: [] })),
     ]);
     setAccounts(ba.accounts || []);
     setCards(cc.cards || []);
@@ -3596,8 +3607,6 @@ function BankAccountsTab() {
   const selCls = `${inputCls} w-full`;
   const reqStar = <span className="text-red-500 ml-0.5">*</span>;
 
-  if (loading) return <Spin />;
-
   const theadStyle = { background: 'linear-gradient(to right, #f1f5f9, #e2e8f0)' };
   const thStyle    = { border: '1px solid #cbd5e1', padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569' };
 
@@ -3609,6 +3618,7 @@ function BankAccountsTab() {
           ['cards','Payment Cards','M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z']
         ].map(([key, label, icon]) => (
           <button key={key} onClick={() => setSubTab(key)}
+            disabled={loading}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all border ${
               subTab === key ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
             }`}>
@@ -3620,8 +3630,11 @@ function BankAccountsTab() {
         ))}
       </div>
 
+      {/* Inline loading spinner */}
+      {loading && <Spin />}
+
       {/* ── Bank Accounts panel ── */}
-      {subTab === 'banks' && (
+      {!loading && subTab === 'banks' && (
         <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-blue-700 to-blue-500">
             <div>
@@ -3677,7 +3690,7 @@ function BankAccountsTab() {
       )}
 
       {/* ── Cards panel ── */}
-      {subTab === 'cards' && (
+      {!loading && subTab === 'cards' && (
         <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-violet-700 to-violet-500">
             <div>
@@ -3932,7 +3945,7 @@ function CenterContractsTab({ centerId = '', centerName = 'All Centers' }) {
   // Load reference data on mount
   useEffect(() => {
     api('/api/parties').then(r => r.json()).then(d => setParties(d.parties || []));
-    api('/api/chart-of-accounts?account_type=EXPENSE').then(r => r.json())
+    api('/api/chart-of-accounts/accounts?account_type=EXPENSE').then(r => r.json())
       .then(d => setExpAccts(d.accounts || []));
   }, []);
 
@@ -6878,22 +6891,22 @@ export default function Finance() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Page Header */}
-      <div className="px-6 pt-6 pb-0"
+      <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-0"
         style={{ background: 'linear-gradient(135deg,#1e3a5f 0%,#0f766e 60%,#0d9488 100%)' }}>
         <div className="max-w-screen-xl mx-auto">
 
           {/* Title row + Entity/Center selector */}
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white tracking-tight">Finance</h1>
-                <p className="text-teal-200 text-sm mt-0.5">
+                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Finance</h1>
+                <p className="text-teal-200 text-xs sm:text-sm mt-0.5">
                   Feenixtech &nbsp;·&nbsp;
                   <span className="text-white font-semibold">{selectedCenterName}</span>
                 </p>
@@ -6901,15 +6914,15 @@ export default function Finance() {
             </div>
 
             {/* Entity / Center selector */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <svg className="w-4 h-4 text-teal-200 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-teal-200 flex-shrink-0 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
               <select
                 value={centerId}
                 onChange={e => setCenterId(e.target.value)}
-                className="bg-white/15 text-white border border-white/30 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-white/40 min-w-[200px] cursor-pointer"
+                className="w-full sm:w-auto bg-white/15 text-white border border-white/30 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-white/40 sm:min-w-[200px] cursor-pointer"
               >
                 <option value="" style={{ color: '#1e3a5f', background: 'white', fontWeight: 700 }}>
                   Feenixtech — All Centers
@@ -6927,7 +6940,7 @@ export default function Finance() {
           <div className="flex gap-0.5 overflow-x-auto no-scrollbar" style={{ scrollbarWidth: 'none' }}>
             {TABS.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className="px-3.5 py-2 text-sm font-semibold rounded-t-xl transition-all whitespace-nowrap flex-shrink-0"
+                className="px-2.5 sm:px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-t-xl transition-all whitespace-nowrap flex-shrink-0"
                 style={tab === t.key
                   ? { background: '#f8fafc', color: '#0d9488' }
                   : { background: 'transparent', color: 'rgba(255,255,255,0.75)' }}>
@@ -6939,7 +6952,7 @@ export default function Finance() {
       </div>
 
       {/* Tab content */}
-      <div className="max-w-screen-xl mx-auto px-6 py-6">
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
         {tab === 'overview'      && <OverviewTab      centerId={centerId} centerName={selectedCenterName} />}
         {tab === 'accounts'      && <AccountsTab />}
         {tab === 'journals'      && <JournalsTab      centerId={centerId} centerName={selectedCenterName} />}

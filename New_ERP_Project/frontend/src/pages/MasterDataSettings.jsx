@@ -804,11 +804,12 @@ const StudyPricing = ({ studyDefs, studyPricing, centers, centerModMap, onPricin
   // rebuild price map when center or pricing data changes
   useEffect(() => {
     if (!selectedCenter) return;
+    // Build O(1) lookup keyed by "studyDefId|centerId" to avoid O(n²) nested scan
+    const lookup = {};
+    (studyPricing || []).forEach(p => { lookup[`${p.study_definition_id}|${p.center_id}`] = p; });
     const map = {};
     (studyDefs || []).forEach(sd => {
-      const existing = (studyPricing || []).find(
-        p => String(p.study_definition_id) === String(sd.id) && String(p.center_id) === String(selectedCenter)
-      );
+      const existing = lookup[`${sd.id}|${selectedCenter}`];
       map[sd.id] = { value: existing ? String(existing.base_rate) : '', dirty: false, existingId: existing?.id || null };
     });
     setPrices(map);
@@ -860,8 +861,8 @@ const StudyPricing = ({ studyDefs, studyPricing, centers, centerModMap, onPricin
     [centerModCodes]
   );
 
-  const dirtyCount  = Object.values(prices).filter(v => v.dirty && v.value !== '').length;
-  const pricedCount = Object.values(prices).filter(v => v.existingId).length;
+  const dirtyCount  = useMemo(() => Object.values(prices).filter(v => v.dirty && v.value !== '').length, [prices]);
+  const pricedCount = useMemo(() => Object.values(prices).filter(v => v.existingId).length, [prices]);
   const centerName  = activeCenters.find(c => String(c.id) === String(selectedCenter))?.name || '';
 
   return (
@@ -1016,6 +1017,45 @@ const EMPTY_REPORTER_FORM = {
   status: 'active',
 };
 
+const EMPTY_OTHERS = [];
+
+// Memoized row — only re-renders when this specific study's rate changes
+const StudyRateRow = React.memo(({ sd, val, dirty, saved, others, onSetRate }) => (
+  <div className={`flex items-start gap-3 px-4 py-2 transition-colors ${dirty ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
+    <div className="flex-1 min-w-0 pt-0.5">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+        <span className="truncate">{sd.study_name}</span>
+        {sd.is_contrast && <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">Contrast</span>}
+      </p>
+      {others.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {others.slice(0, 4).map(o => (
+            <span key={o.id} title={drName(o.name, o.reporter_type)}
+              className={`inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                o.reporter_type === 'TELERADIOLOGY' ? 'bg-indigo-50 text-indigo-600' : 'bg-teal-50 text-teal-600'
+              }`}>
+              {o.reporter_type === 'RADIOLOGIST' ? `Dr. ${o.name.split(' ')[0]}` : o.name.split(' ')[0]} · ₹{Number(o.rate).toLocaleString('en-IN')}
+            </span>
+          ))}
+          {others.length > 4 && <span className="text-[9px] text-slate-400">+{others.length - 4} more</span>}
+        </div>
+      )}
+    </div>
+    <span className={`text-[9px] font-semibold w-10 text-right flex-shrink-0 mt-1 ${dirty ? 'text-amber-600' : saved ? 'text-teal-600' : 'text-slate-300'}`}>
+      {dirty ? 'edited' : saved ? 'set' : '—'}
+    </span>
+    <div className="relative flex-shrink-0">
+      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">₹</span>
+      <input type="number" min="0" step="1" value={val}
+        onChange={e => onSetRate(sd.id, e.target.value)}
+        placeholder="—"
+        className={`w-24 pl-5 pr-2 py-1 text-xs rounded-lg border text-right font-semibold focus:outline-none focus:ring-1 focus:ring-teal-500 transition-colors ${
+          dirty ? 'border-amber-400 bg-amber-50 text-amber-800' : saved ? 'border-teal-200 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-600'
+        }`} />
+    </div>
+  </div>
+));
+
 const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUpdate, onReporterDelete }) => {
   const [selected, setSelected]       = useState(null);   // reporter being viewed
   const [mode, setMode]               = useState('view'); // 'view' | 'edit' | 'add'
@@ -1146,8 +1186,8 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
   };
 
   // ── Study rates inline save ──────────────────────────────────────────────
-  const setStudyRate = (studyId, val) =>
-    setRateDirty(p => ({ ...p, [studyId]: val }));
+  const setStudyRate = useCallback((studyId, val) =>
+    setRateDirty(p => ({ ...p, [studyId]: val })), []);
 
   const saveStudyRates = () => {
     if (!selected && mode !== 'edit') return;
@@ -1195,7 +1235,7 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
       .filter(g => g.studies.length > 0);
   }, [studies, rateSearch, rateFilter]);
 
-  const dirtyCount = Object.keys(rateDirty).length;
+  const dirtyCount = useMemo(() => Object.keys(rateDirty).length, [rateDirty]);
   const ratedCount = displayRates.length;
 
   // ── Other reporters with rates for each study (excluding current) ────────
@@ -1222,10 +1262,10 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
   );
 
   return (
-    <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden flex" style={{ minHeight: 600 }}>
+    <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row" style={{ minHeight: 600 }}>
 
       {/* ══ LEFT — Reporter List ══════════════════════════════════════════════ */}
-      <div className="w-72 flex-shrink-0 border-r border-slate-200 flex flex-col bg-slate-50">
+      <div className={`md:w-72 md:flex-shrink-0 border-b md:border-b-0 md:border-r border-slate-200 flex flex-col bg-slate-50 ${selected || mode === 'add' ? 'hidden md:flex' : 'flex'}`}>
 
         {/* List header */}
         <div className="px-4 py-3 bg-gradient-to-r from-teal-600 to-teal-500 flex items-center justify-between">
@@ -1286,6 +1326,17 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
       {/* ══ RIGHT — Detail / Form panel ══════════════════════════════════════ */}
       <div className="flex-1 flex flex-col overflow-hidden">
 
+        {/* ── Mobile back button ── */}
+        {(selected || mode === 'add') && (
+          <button onClick={() => { setSelected(null); setMode('view'); resetVendorSearch(); }}
+            className="md:hidden flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-teal-700 bg-teal-50 border-b border-teal-100 hover:bg-teal-100">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to Reporters
+          </button>
+        )}
+
         {/* ── Empty state ── */}
         {!selected && mode !== 'add' && (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
@@ -1330,10 +1381,10 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              <div className="grid grid-cols-2 divide-x divide-slate-100">
+              <div className="grid grid-cols-1 md:grid-cols-2 md:divide-x divide-slate-100">
 
                 {/* Left col: profile + payment */}
-                <div className="p-6 space-y-5">
+                <div className="p-4 sm:p-6 space-y-5">
                   <div>
                     <SectionLabel>Contact</SectionLabel>
                     <div className="space-y-2 text-sm text-slate-700">
@@ -1353,7 +1404,7 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
 
                   <div>
                     <SectionLabel>Payment Terms</SectionLabel>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="bg-amber-50 rounded-xl p-3 text-center">
                         <p className="text-2xl font-bold text-amber-700">{selected.credit_days ?? 30}</p>
                         <p className="text-[10px] text-amber-600 font-medium mt-0.5">Credit Days</p>
@@ -1445,10 +1496,10 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              <div className="grid grid-cols-2 divide-x divide-slate-100">
+              <div className="grid grid-cols-1 md:grid-cols-2 md:divide-x divide-slate-100">
 
                 {/* ── Left: Profile + Payment ── */}
-                <div className="p-6 space-y-4">
+                <div className="p-4 sm:p-6 space-y-4">
 
                   {/* Type selector */}
                   <div>
@@ -1467,7 +1518,7 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
                   <div>
                     <SectionLabel>{form.reporter_type === 'RADIOLOGIST' ? 'Name' : 'Company Details'}</SectionLabel>
                     {form.reporter_type === 'RADIOLOGIST' ? (
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-xs font-medium text-slate-600 mb-1">First Name <span className="text-red-500">*</span></label>
                           <input value={form.first_name} onChange={set('first_name')} className={ic('first_name')} placeholder="Anitha" autoFocus />
@@ -1547,7 +1598,7 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
                   <div>
                     <SectionLabel>Contact</SectionLabel>
                     <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
                           <input type="tel" value={form.contact_phone} onChange={set('contact_phone')} className={ic('contact_phone')} placeholder="+91 98000 00000" />
@@ -1567,7 +1618,7 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
                   {/* Payment Terms */}
                   <div>
                     <SectionLabel>Payment Terms</SectionLabel>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Credit Days</label>
                         <input type="number" min="0" max="365" value={form.credit_days}
@@ -1590,7 +1641,7 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
                     <div>
                       <SectionLabel>Banking & Tax</SectionLabel>
                       <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">PAN Number</label>
                             <input value={form.pan_number}
@@ -1610,7 +1661,7 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
                             {INDIAN_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
                           </select>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Account Number</label>
                             <input value={form.bank_account_number} onChange={set('bank_account_number')}
@@ -1682,46 +1733,9 @@ const RadReportingMaster = ({ reporters, studies, onReporterCreate, onReporterUp
                             const saved  = rateMap[sd.id] !== undefined;
                             const dirty  = rateDirty[sd.id] !== undefined;
                             const val    = dirty ? rateDirty[sd.id] : (rateMap[sd.id] !== undefined ? String(rateMap[sd.id]) : '');
-                            const others = otherReporterMap[sd.id] || [];
+                            const others = otherReporterMap[sd.id] ?? EMPTY_OTHERS;
                             return (
-                              <div key={sd.id}
-                                className={`flex items-start gap-3 px-4 py-2 transition-colors ${dirty ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
-                                <div className="flex-1 min-w-0 pt-0.5">
-                                  <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
-                                    <span className="truncate">{sd.study_name}</span>
-                                    {sd.is_contrast && <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">Contrast</span>}
-                                  </p>
-                                  {others.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-1">
-                                      {others.slice(0, 4).map(o => (
-                                        <span key={o.id} title={drName(o.name, o.reporter_type)}
-                                          className={`inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
-                                            o.reporter_type === 'TELERADIOLOGY'
-                                              ? 'bg-indigo-50 text-indigo-600'
-                                              : 'bg-teal-50 text-teal-600'
-                                          }`}>
-                                          {o.reporter_type === 'RADIOLOGIST' ? `Dr. ${o.name.split(' ')[0]}` : o.name.split(' ')[0]} · ₹{Number(o.rate).toLocaleString('en-IN')}
-                                        </span>
-                                      ))}
-                                      {others.length > 4 && (
-                                        <span className="text-[9px] text-slate-400">+{others.length - 4} more</span>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                                <span className={`text-[9px] font-semibold w-10 text-right flex-shrink-0 mt-1 ${dirty ? 'text-amber-600' : saved ? 'text-teal-600' : 'text-slate-300'}`}>
-                                  {dirty ? 'edited' : saved ? 'set' : '—'}
-                                </span>
-                                <div className="relative flex-shrink-0">
-                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">₹</span>
-                                  <input type="number" min="0" step="1" value={val}
-                                    onChange={e => setStudyRate(sd.id, e.target.value)}
-                                    placeholder="—"
-                                    className={`w-24 pl-5 pr-2 py-1 text-xs rounded-lg border text-right font-semibold focus:outline-none focus:ring-1 focus:ring-teal-500 transition-colors ${
-                                      dirty ? 'border-amber-400 bg-amber-50 text-amber-800' : saved ? 'border-teal-200 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-600'
-                                    }`} />
-                                </div>
-                              </div>
+                              <StudyRateRow key={sd.id} sd={sd} val={val} dirty={dirty} saved={saved} others={others} onSetRate={setStudyRate} />
                             );
                           })}
                         </div>
@@ -4085,21 +4099,19 @@ const MasterDataSettings = () => {
       if (activeTab === 'study-catalog') {
         await fetchStudyDefs();
       } else if (activeTab === 'study-pricing') {
-        // Load core data first, then pre-fetch modalities for every center in parallel
-        const [, , centersData] = await Promise.all([fetchStudyDefs(), fetchStudyPricing(), fetchCenters()]);
-        const activeCenterIds = (centersData || centers)
-          .filter(c => c.active !== false && c.corporate_entity_id != null)
-          .map(c => c.id);
-        if (activeCenterIds.length) {
-          const modResults = await Promise.all(
-            activeCenterIds.map(id =>
-              fetch(`/api/centers/${id}/modalities`, { headers: AUTH_HEADER() })
-                .then(r => r.ok ? r.json() : { modalities: [] })
-                .then(d => [id, new Set((d.modalities || []).map(m => m.modality))])
-                .catch(() => [id, new Set()])
-            )
-          );
-          setCenterModMap(Object.fromEntries(modResults));
+        // Single round-trip: bundle endpoint returns studies + pricing + centers + modalities
+        const res = await fetch('/api/masters/study-pricing-bundle', { headers: AUTH_HEADER() });
+        if (res.ok) {
+          const d = await res.json();
+          setStudyDefs(d.studies || []);
+          setStudyPricing(d.pricing || []);
+          setCenters(d.centers || []);
+          // Convert centerModalities: { centerId: [modality, ...] } → { centerId: Set }
+          const modMap = {};
+          Object.entries(d.centerModalities || {}).forEach(([cid, mods]) => {
+            modMap[cid] = new Set(mods);
+          });
+          setCenterModMap(modMap);
         }
       } else if (activeTab === 'radiologist') {
         await Promise.all([fetchReporters(), fetchStudyList()]);
@@ -4115,7 +4127,7 @@ const MasterDataSettings = () => {
       setLoading(false);
     };
     load();
-  }, [activeTab, fetchStudyDefs, fetchStudyPricing, fetchReporters, fetchStudyList, fetchCenters, fetchModalities, fetchRoles, fetchUsers, fetchPhysicians]);
+  }, [activeTab, fetchStudyDefs, fetchReporters, fetchStudyList, fetchCenters, fetchModalities, fetchPhysicians]);
 
   const handleCenterCreate = async (centerData) => {
     const res = await fetch('/api/center-master', {

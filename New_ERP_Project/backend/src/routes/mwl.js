@@ -224,7 +224,7 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
         p.id                                        AS patient_id,
         p.pid                                       AS patient_pid,
         p.name                                      AS patient_name,
-        p.dob                                       AS patient_dob,
+        p.date_of_birth                             AS patient_dob,
         p.gender                                    AS patient_sex,
         p.phone                                     AS patient_phone,
         p.email                                     AS patient_email,

@@ -159,7 +159,7 @@ function DeprConfigSection({ assetGlId, accounts }) {
         {cfg && <span className="ml-2 normal-case font-normal text-purple-500">linked to {cfg.account_code} — {cfg.account_name}</span>}
       </p>
       {deprErr && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{deprErr}</p>}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label className={lbl}>
             Useful Life (years)
@@ -194,7 +194,7 @@ function DeprConfigSection({ assetGlId, accounts }) {
             placeholder="— e.g. 5910 —" />
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button onClick={handleSaveDepr} disabled={saving}
           className="px-4 py-1.5 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:opacity-60 transition-colors">
           {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save Depreciation Config'}
@@ -262,7 +262,7 @@ function EditForm({ cat, accounts, onSave, onCancel }) {
 
       <div className="border-t border-teal-200 pt-3">
         <p className="text-[10px] font-bold text-teal-700 uppercase tracking-widest mb-3">Chart of Accounts Mapping</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {!isExpense && (
             <div>
               <label className={lbl}>
@@ -297,7 +297,7 @@ function EditForm({ cat, accounts, onSave, onCancel }) {
             Useful Life Override
             <span className="ml-1.5 normal-case font-normal text-teal-500">for this category specifically</span>
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <input type="number" min="1" max="50"
               className={`${inp} w-28`}
               value={form.useful_life_years}
@@ -322,7 +322,7 @@ function EditForm({ cat, accounts, onSave, onCancel }) {
 
       <div className="border-t border-teal-200 pt-3">
         <p className="text-[10px] font-bold text-teal-700 uppercase tracking-widest mb-3">Tax Configuration</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className={lbl}>GST Rate %</label>
             <select className={inp} value={form.gst_rate}
@@ -349,7 +349,7 @@ function EditForm({ cat, accounts, onSave, onCancel }) {
         </p>
       </div>
 
-      <div className="border-t border-teal-200 pt-3 flex items-center gap-6">
+      <div className="border-t border-teal-200 pt-3 flex flex-wrap items-center gap-4">
         <div>
           <label className={lbl}>Sort Order</label>
           <input type="number" min="0" className={`${inp} w-24`} value={form.sort_order}
@@ -432,7 +432,7 @@ function AddCategoryForm({ parentL1, itemType, accounts, onSave, onCancel }) {
       </p>
       {err && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p>}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className={lbl}>Code <span className="text-red-500">*</span></label>
           <input className={`${inp} uppercase font-mono`} value={form.code}
@@ -448,7 +448,7 @@ function AddCategoryForm({ parentL1, itemType, accounts, onSave, onCancel }) {
 
       <div className="border-t border-teal-200 pt-3">
         <p className="text-[10px] font-bold text-teal-700 uppercase tracking-widest mb-3">COA Mapping</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {!isExpense && (
             <div>
               <label className={lbl}>Asset / Inventory GL</label>
@@ -471,7 +471,7 @@ function AddCategoryForm({ parentL1, itemType, accounts, onSave, onCancel }) {
       {isFixedAsset && (
         <div className="border-t border-teal-200 pt-3">
           <p className="text-[10px] font-bold text-teal-700 uppercase tracking-widest mb-2">Useful Life</p>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <input type="number" min="1" max="50"
               className={`${inp} w-28`}
               value={form.useful_life_years}
@@ -489,7 +489,7 @@ function AddCategoryForm({ parentL1, itemType, accounts, onSave, onCancel }) {
 
       <div className="border-t border-teal-200 pt-3">
         <p className="text-[10px] font-bold text-teal-700 uppercase tracking-widest mb-3">Tax Configuration</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className={lbl}>GST Rate %</label>
             <select className={inp} value={form.gst_rate}
@@ -513,7 +513,7 @@ function AddCategoryForm({ parentL1, itemType, accounts, onSave, onCancel }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-6 border-t border-teal-200 pt-3">
+      <div className="flex flex-wrap items-center gap-4 border-t border-teal-200 pt-3">
         <div>
           <label className={lbl}>Sort Order</label>
           <input type="number" min="0" className={`${inp} w-24`} value={form.sort_order}
@@ -583,17 +583,8 @@ function CategoryMappingSettings() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const handleSaveEdit = updated => {
-    setTree(prev => {
-      const next = { ...prev };
-      for (const type of Object.keys(next)) {
-        next[type] = next[type].map(l1 => {
-          if (l1.id === updated.id) return { ...l1, ...updated, children: l1.children };
-          return { ...l1, children: (l1.children || []).map(l2 => l2.id === updated.id ? { ...l2, ...updated } : l2) };
-        });
-      }
-      return next;
-    });
+  const handleSaveEdit = () => {
+    loadData();
     setEditingId(null);
     showToast('Saved successfully');
   };
@@ -617,7 +608,7 @@ function CategoryMappingSettings() {
   const l1Nodes = tree[activeType] || [];
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6">
 
       {/* Toast */}
       {toast && (
@@ -630,7 +621,7 @@ function CategoryMappingSettings() {
       )}
 
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Category &amp; COA Mapping</h1>
           <p className="text-sm text-slate-500 mt-0.5">
@@ -651,14 +642,14 @@ function CategoryMappingSettings() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">
         {TYPE_TABS.map(t => {
           const s = TAB_STYLE[t.color];
           const isActive = activeType === t.key;
           return (
             <button key={t.key}
               onClick={() => { setActiveType(t.key); setEditingId(null); setShowAddL1(false); setAddL2Parent(null); }}
-              className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap flex-shrink-0 ${
                 isActive ? `${s.active} bg-white` : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
               }`}>
               <span className={`w-2 h-2 rounded-full ${s.dot}`} />
@@ -721,9 +712,9 @@ function CategoryMappingSettings() {
               )}
 
               {/* L1 header row */}
-              <div className={`flex items-center justify-between px-4 py-3 cursor-pointer select-none ${isJournalOnly ? 'bg-slate-50' : ''}`}
+              <div className={`flex flex-wrap items-center justify-between px-4 py-3 cursor-pointer select-none gap-y-2 ${isJournalOnly ? 'bg-slate-50' : ''}`}
                 onClick={() => toggleExpand(l1.id)}>
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <svg className={`w-4 h-4 flex-shrink-0 transition-transform text-slate-400 ${expanded[l1.id] === false ? '' : 'rotate-90'}`}
                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -733,13 +724,10 @@ function CategoryMappingSettings() {
                   <span className="text-xs text-slate-400">{(l1.children || []).length} sub-categories</span>
 
                   {/* L1 GL badges */}
-                  <div className="flex items-center gap-1.5 ml-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {l1.asset_gl_code   && <GlBadge code={l1.asset_gl_code}   name={l1.asset_gl_name}   color="emerald" />}
                     {l1.expense_gl_code && <GlBadge code={l1.expense_gl_code} name={l1.expense_gl_name} color="blue"    />}
                     {l1.ap_account_code && <GlBadge code={l1.ap_account_code} name={l1.ap_account_name} color="orange"  />}
-                    {!l1.asset_gl_code && !l1.expense_gl_code && !l1.ap_account_code && (
-                      <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">no GL mapped</span>
-                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0 ml-4" onClick={e => e.stopPropagation()}>
@@ -764,7 +752,47 @@ function CategoryMappingSettings() {
               {/* L2 table */}
               {expanded[l1.id] !== false && (
                 <div className="bg-white border-t border-slate-200">
-                  <table className="w-full text-sm">
+
+                  {/* Mobile L2 cards */}
+                  <div className="sm:hidden divide-y divide-slate-100">
+                    {(l1.children || []).length === 0 && (
+                      <p className="px-4 py-4 text-slate-400 text-center text-xs italic">No sub-categories yet — add one below</p>
+                    )}
+                    {(l1.children || []).map(l2 => (
+                      editingId === l2.id ? (
+                        <div key={l2.id} className="px-3 py-3">
+                          <EditForm cat={l2} accounts={accounts} onSave={handleSaveEdit} onCancel={() => setEditingId(null)} />
+                        </div>
+                      ) : (
+                        <div key={l2.id} className={`px-3 py-3 space-y-1.5 ${!l2.active ? 'opacity-50' : ''}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-xs font-semibold text-slate-800">{l2.name}</p>
+                              <span className="font-mono text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{l2.code}</span>
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <button onClick={() => { setEditingId(l2.id); setShowAddL1(false); setAddL2Parent(null); }}
+                                className="px-2 py-1 text-[11px] font-semibold text-teal-600 border border-teal-200 bg-white hover:bg-teal-50 rounded-lg">Edit</button>
+                              <button onClick={() => handleDelete(l2)}
+                                className="px-2 py-1 text-[11px] font-semibold text-red-500 border border-red-200 bg-white hover:bg-red-50 rounded-lg">Del</button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {activeType !== 'EXPENSE'     && <GlBadge code={l2.asset_gl_code}   name={l2.asset_gl_name}   color="emerald" />}
+                            {activeType !== 'FIXED_ASSET' && <GlBadge code={l2.expense_gl_code} name={l2.expense_gl_name} color="blue"    />}
+                            <GlBadge code={l2.ap_account_code} name={l2.ap_account_name} color="orange" />
+                            {!l2.asset_gl_code && !l2.expense_gl_code && !l2.ap_account_code && (
+                              <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">no GL mapped</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    ))}
+                  </div>
+
+                  {/* Desktop L2 table */}
+                  <div className="hidden sm:block overflow-x-auto">
+                  <table className="w-full text-sm min-w-max">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-100">
                         <th className="text-left px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sub-category</th>
@@ -861,6 +889,7 @@ function CategoryMappingSettings() {
                       ))}
                     </tbody>
                   </table>
+                  </div>{/* end hidden sm:block */}
 
                   {/* Add L2 */}
                   <div className="px-4 py-3 border-t border-slate-100 bg-slate-50">
