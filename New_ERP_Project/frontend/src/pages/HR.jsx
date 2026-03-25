@@ -52,6 +52,7 @@ const STATUS_CFG = {
   ABSENT:   { bg: '#fee2e2', color: '#991b1b', label: 'Absent' },
   LEAVE:    { bg: '#fef3c7', color: '#92400e', label: 'Leave' },
   HALF_DAY: { bg: '#ffedd5', color: '#9a3412', label: 'Half Day' },
+  WEEKEND:  { bg: '#ede9fe', color: '#5b21b6', label: 'Weekend' },
   DRAFT:    { bg: '#f1f5f9', color: '#475569', label: 'Draft' },
   APPROVED: { bg: '#dbeafe', color: '#1e40af', label: 'Approved' },
   PAID:     { bg: '#ede9fe', color: '#5b21b6', label: 'Paid' },
@@ -645,7 +646,9 @@ const ATT_DOT = {
   ABSENT:   { bg: '#dc2626', title: 'Absent' },
   LEAVE:    { bg: '#d97706', title: 'Leave' },
   HALF_DAY: { bg: '#ea580c', title: 'Half Day' },
+  WEEKEND:  { bg: '#7c3aed', title: 'Weekend' },
 };
+const ATT_CYCLE = ['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY', 'WEEKEND'];
 
 function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
   const now = new Date();
@@ -659,6 +662,7 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showMarkModal, setShowMarkModal] = useState(false);
+  const [marking, setMarking] = useState({});
   const [toast, setToast] = useState({ msg: '', type: '' });
 
   const showToast = (msg, type = 'success') => {
@@ -696,25 +700,74 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const DOW = ['S','M','T','W','T','F','S'];
 
-  // Build lookup: empId -> day -> status
+  // Build lookup: empId -> day -> { status, id }
   const attLookup = {};
   attendance.forEach(a => {
     const d = new Date(a.attendance_date);
     const day = d.getDate();
     const empId = a.employee_id;
     if (!attLookup[empId]) attLookup[empId] = {};
-    attLookup[empId][day] = a.status;
+    attLookup[empId][day] = { status: a.status, id: a.id };
   });
 
-  const isWeekend = (day) => {
-    const d = new Date(year, month - 1, day);
-    return d.getDay() === 0 || d.getDay() === 6;
-  };
+  // Contracted off days per employee for this month
+  const contractedOffs = (emp) =>
+    Math.round(daysInMonth * (parseInt(emp.weekly_offs) || 1) / 7);
 
-  const isFuture = (day) => {
-    const d = new Date(year, month - 1, day);
-    return d > new Date();
+  // How many WEEKEND days already marked for this employee this month
+  const weekendCount = (empId) =>
+    Object.values(attLookup[empId] || {}).filter(v => v.status === 'WEEKEND').length;
+
+  const isFuture = (day) => new Date(year, month - 1, day) > new Date();
+
+  // Click a cell → cycle to next status; skip WEEKEND if contract limit reached
+  const markCell = async (emp, day) => {
+    const key = `${emp.id}-${day}`;
+    if (marking[key] || isFuture(day)) return;
+    const existing = attLookup[emp.id]?.[day];
+    const cur = existing?.status;
+    let idx = cur ? (ATT_CYCLE.indexOf(cur) + 1) % ATT_CYCLE.length : 0;
+    // Skip WEEKEND if at limit (only when cycling *to* WEEKEND, not when leaving it)
+    if (ATT_CYCLE[idx] === 'WEEKEND' && weekendCount(emp.id) >= contractedOffs(emp)) {
+      idx = (idx + 1) % ATT_CYCLE.length;
+    }
+    const nextSt = ATT_CYCLE[idx];
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+
+    setMarking(m => ({ ...m, [key]: true }));
+    // Optimistic update
+    setAttendance(prev =>
+      existing?.id
+        ? prev.map(a => a.id === existing.id ? { ...a, status: nextSt } : a)
+        : [...prev, { id: `tmp-${key}`, employee_id: emp.id, attendance_date: dateStr, status: nextSt }]
+    );
+    try {
+      let res;
+      if (existing?.id) {
+        res = await api(`/api/payroll/attendance/${existing.id}`, { method: 'PUT', body: JSON.stringify({ status: nextSt }) });
+      } else {
+        res = await api('/api/payroll/attendance', { method: 'POST', body: JSON.stringify({ employee_id: emp.id, attendance_date: dateStr, status: nextSt }) });
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to update', 'error');
+        load(); // revert optimistic
+      } else if (!existing?.id) {
+        // Replace tmp id with real id from server
+        const d = await res.json().catch(() => ({}));
+        if (d.attendance?.id) {
+          setAttendance(prev => prev.map(a =>
+            a.id === `tmp-${key}` ? { ...a, id: d.attendance.id } : a
+          ));
+        }
+      }
+    } catch (_) {
+      showToast('Network error', 'error');
+      load();
+    }
+    setMarking(m => ({ ...m, [key]: false }));
   };
 
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -765,9 +818,12 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
                 <table className="min-w-full text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
-                      <th className="px-4 py-3 text-left font-bold text-slate-600 sticky left-0 bg-slate-50 min-w-[160px]">Employee</th>
+                      <th className="px-4 py-2 text-left font-bold text-slate-600 sticky left-0 bg-slate-50 min-w-[170px]">Employee</th>
                       {days.map(d => (
-                        <th key={d} className={`px-1 py-3 text-center font-bold w-8 ${isWeekend(d) ? 'text-slate-300' : 'text-slate-500'}`}>{d}</th>
+                        <th key={d} className="px-0 py-2 text-center w-7 text-slate-500">
+                          <div className="font-bold text-xs">{d}</div>
+                          <div className="text-slate-300 text-xs font-normal">{DOW[new Date(year, month-1, d).getDay()]}</div>
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -775,47 +831,55 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
                     {employees.length === 0 && (
                       <tr><td colSpan={days.length + 1} className="text-center py-10 text-slate-400">No employees</td></tr>
                     )}
-                    {employees.map(emp => (
-                      <tr key={emp.id} className="hover:bg-slate-50/60">
-                        <td className="px-4 py-2 sticky left-0 bg-white font-semibold text-slate-700 whitespace-nowrap border-r border-slate-100">
-                          <div>{emp.name}</div>
-                          <div className="text-slate-400 font-normal">{emp.department}</div>
-                        </td>
-                        {days.map(d => {
-                          const status = attLookup[emp.id]?.[d];
-                          const weekend = isWeekend(d);
-                          const future = isFuture(d);
-                          return (
-                            <td key={d} className="px-1 py-2 text-center">
-                              {status ? (
-                                <span className="inline-block w-5 h-5 rounded-full cursor-default"
-                                  style={{ background: ATT_DOT[status]?.bg || '#94a3b8' }}
-                                  title={ATT_DOT[status]?.title || status} />
-                              ) : (
-                                <span className="inline-block w-5 h-5 rounded-full"
-                                  style={{ background: weekend ? '#e2e8f0' : future ? '#f8fafc' : '#fef2f2' }}
-                                  title={weekend ? 'Weekend' : future ? 'Future' : 'Not marked'} />
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                    {employees.map(emp => {
+                      const usedOffs = weekendCount(emp.id);
+                      const maxOffs  = contractedOffs(emp);
+                      return (
+                        <tr key={emp.id} className="hover:bg-slate-50/40">
+                          <td className="px-4 py-2 sticky left-0 bg-white font-semibold text-slate-700 whitespace-nowrap border-r border-slate-100">
+                            <div className="text-sm">{emp.name}</div>
+                            <div className="text-slate-400 font-normal text-xs">{emp.department}</div>
+                            <div className="text-xs mt-0.5 font-normal"
+                              style={{ color: usedOffs >= maxOffs ? '#dc2626' : '#0d9488' }}>
+                              {usedOffs}/{maxOffs} offs
+                            </div>
+                          </td>
+                          {days.map(d => {
+                            const rec    = attLookup[emp.id]?.[d];
+                            const st     = rec?.status;
+                            const future = isFuture(d);
+                            const busy   = marking[`${emp.id}-${d}`];
+                            return (
+                              <td key={d} className="px-0 py-1.5 text-center">
+                                <button
+                                  onClick={() => markCell(emp, d)}
+                                  disabled={future || busy}
+                                  title={st ? `${ATT_DOT[st]?.title} — click to change` : (future ? 'Future date' : 'Not marked — click to mark')}
+                                  className="inline-block w-6 h-6 rounded-md transition-all hover:scale-110 disabled:opacity-30 disabled:cursor-default focus:outline-none focus:ring-1 focus:ring-teal-400"
+                                  style={{ background: busy ? '#e2e8f0' : st ? ATT_DOT[st].bg : future ? '#f8fafc' : '#f1f5f9' }}
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
               {/* Legend */}
-              <div className="flex flex-wrap gap-4 px-4 py-3 border-t border-slate-100 bg-slate-50">
+              <div className="flex flex-wrap items-center gap-4 px-4 py-3 border-t border-slate-100 bg-slate-50">
                 {Object.entries(ATT_DOT).map(([k, v]) => (
                   <div key={k} className="flex items-center gap-1.5">
-                    <span className="inline-block w-4 h-4 rounded-full" style={{ background: v.bg }} />
+                    <span className="inline-block w-4 h-4 rounded-md" style={{ background: v.bg }} />
                     <span className="text-xs text-slate-500">{v.title}</span>
                   </div>
                 ))}
                 <div className="flex items-center gap-1.5">
-                  <span className="inline-block w-4 h-4 rounded-full bg-slate-200" />
-                  <span className="text-xs text-slate-500">Weekend</span>
+                  <span className="inline-block w-4 h-4 rounded-md bg-slate-100" />
+                  <span className="text-xs text-slate-400">Not marked</span>
                 </div>
+                <span className="text-xs text-slate-400 ml-2">Click any past/today cell to cycle status</span>
               </div>
             </div>
           )}

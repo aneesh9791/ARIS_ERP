@@ -366,7 +366,7 @@ router.delete('/employees/:id', authorize(HR_WRITE), async (req, res) => {
 router.post('/attendance', authorize(HR_WRITE), [
   body('employee_id').isInt(),
   body('attendance_date').isISO8601().toDate(),
-  body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY']),
+  body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY', 'WEEKEND']),
   body('notes').optional().trim().isLength({ min: 2, max: 200 })
 ], async (req, res) => {
   try {
@@ -375,21 +375,34 @@ router.post('/attendance', authorize(HR_WRITE), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const {
-      employee_id,
-      attendance_date,
-      status,
-      notes
-    } = req.body;
+    const { employee_id, attendance_date, status, notes } = req.body;
 
-    // Check if employee exists
-    const employeeQuery = await pool.query(
-      'SELECT id FROM employees WHERE id = $1 AND active = true',
+    // Fetch employee (need weekly_offs for contract enforcement)
+    const empRow = await pool.query(
+      'SELECT id, weekly_offs FROM employees WHERE id = $1 AND active = true',
       [employee_id]
     );
-
-    if (employeeQuery.rows.length === 0) {
+    if (empRow.rows.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    // Enforce WEEKEND contract limit
+    if (status === 'WEEKEND') {
+      const weeklyOffs = parseInt(empRow.rows[0].weekly_offs) || 1;
+      const d = new Date(attendance_date);
+      const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      const contractedOffDays = Math.round(daysInMonth * weeklyOffs / 7);
+      const { rows: wRows } = await pool.query(
+        `SELECT COUNT(*) FROM attendance
+         WHERE employee_id = $1 AND status = 'WEEKEND' AND active = true
+           AND DATE_TRUNC('month', attendance_date) = DATE_TRUNC('month', $2::date)`,
+        [employee_id, attendance_date]
+      );
+      if (parseInt(wRows[0].count) >= contractedOffDays) {
+        return res.status(400).json({
+          error: `Weekend limit reached — contract allows ${contractedOffDays} off day(s) this month (${wRows[0].count} already marked).`
+        });
+      }
     }
 
     // Check if attendance already marked for this date
@@ -434,7 +447,7 @@ router.post('/attendance', authorize(HR_WRITE), [
 
 // Update attendance
 router.put('/attendance/:id', authorize(HR_WRITE), [
-  body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY']),
+  body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY', 'WEEKEND']),
   body('notes').optional().trim().isLength({ min: 2, max: 200 })
 ], async (req, res) => {
   try {
@@ -673,10 +686,11 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
       SELECT 
         e.*,
         COUNT(a.id) as total_days,
-        COUNT(CASE WHEN a.status = 'PRESENT' THEN 1 END) as present_days,
-        COUNT(CASE WHEN a.status = 'ABSENT' THEN 1 END) as absent_days,
-        COUNT(CASE WHEN a.status = 'LEAVE' THEN 1 END) as leave_days,
-        COUNT(CASE WHEN a.status = 'HALF_DAY' THEN 1 END) as half_day_days
+        COUNT(CASE WHEN a.status = 'PRESENT'  THEN 1 END) as present_days,
+        COUNT(CASE WHEN a.status = 'ABSENT'   THEN 1 END) as absent_days,
+        COUNT(CASE WHEN a.status = 'LEAVE'    THEN 1 END) as leave_days,
+        COUNT(CASE WHEN a.status = 'HALF_DAY' THEN 1 END) as half_day_days,
+        COUNT(CASE WHEN a.status = 'WEEKEND'  THEN 1 END) as weekend_days
       FROM employees e
       LEFT JOIN attendance a ON e.id = a.employee_id 
         AND a.attendance_date >= DATE_TRUNC('month', MAKE_DATE($2, $1, 1))
@@ -697,10 +711,11 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
       const da = basicSalary * (da_percentage / 100);
       const grossSalary = basicSalary + hra + da;
 
-      // Prorate based on actual working days attended (present + 0.5 × half_day + leave)
+      // Prorate: present + 0.5×half_day + leave + weekend (contracted off days are paid)
       const paidDays = parseFloat(employee.present_days || 0)
                      + parseFloat(employee.half_day_days || 0) * 0.5
-                     + parseFloat(employee.leave_days || 0);
+                     + parseFloat(employee.leave_days   || 0)
+                     + parseFloat(employee.weekend_days || 0);
       const attendanceRatio = workingDaysInMonth > 0 ? Math.min(paidDays / workingDaysInMonth, 1) : 1;
 
       const proRatedGrossSalary = parseFloat((grossSalary * attendanceRatio).toFixed(2));
@@ -728,6 +743,7 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
           absent_days: employee.absent_days,
           leave_days: employee.leave_days,
           half_day_days: employee.half_day_days,
+          weekend_days: employee.weekend_days,
           attendance_percentage: Math.round((paidDays / workingDaysInMonth) * 100)
         },
         earnings: {
