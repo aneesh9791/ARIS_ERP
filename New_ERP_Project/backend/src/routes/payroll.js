@@ -758,9 +758,8 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
             pf_deduction, esi_deduction, professional_tax,
             total_deductions, net_salary,
             working_days, present_days, leave_days,
-            center_id, staff_category,
             status, created_by, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'DRAFT',$18,NOW(),NOW())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'DRAFT',$16,NOW(),NOW())
          ON CONFLICT (employee_id, pay_period_year, pay_period_month)
          DO UPDATE SET
            basic_salary     = EXCLUDED.basic_salary,
@@ -775,8 +774,6 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
            working_days     = EXCLUDED.working_days,
            present_days     = EXCLUDED.present_days,
            leave_days       = EXCLUDED.leave_days,
-           center_id        = EXCLUDED.center_id,
-           staff_category   = EXCLUDED.staff_category,
            updated_at       = NOW()`,
         [
           calc.employee_id, year, month,
@@ -785,7 +782,6 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
           calc.deductions.pf, calc.deductions.esi, calc.deductions.professional_tax,
           calc.deductions.total_deductions, calc.net_salary,
           workingDaysInMonth, calc.attendance_summary.present_days, calc.attendance_summary.leave_days,
-          center_id, calc.department ? calc.department.toUpperCase() : 'GENERAL',
           req.user?.id
         ]
       );
@@ -825,7 +821,7 @@ router.post('/payroll/approve', authorize(PAYROLL_ADMIN), [
     // Get all DRAFT payroll records for this period + center
     const { rows } = await pool.query(
       `SELECT pr.*, e.name AS employee_name, e.center_id,
-              COALESCE(pr.staff_category, UPPER(e.department), 'GENERAL') AS resolved_category
+              COALESCE(UPPER(e.department), 'GENERAL') AS resolved_category
        FROM payroll_register pr
        JOIN employees e ON e.id = pr.employee_id
        WHERE e.center_id = $1 AND pr.pay_period_year = $2 AND pr.pay_period_month = $3
