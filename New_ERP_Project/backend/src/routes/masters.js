@@ -5,7 +5,7 @@ const { logger } = require('../config/logger');
 const { authenticateToken, authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authorizePermission('MASTER_DATA_VIEW'));
+router.use(authorizePermission('MASTER_DATA_VIEW', 'STUDY_CATALOG_VIEW', 'STUDY_PRICING_VIEW', 'RAD_REPORTING_MASTER_VIEW'));
 
 // CENTER MODALITIES — derived from active SCANNER assets registered for the center
 router.get('/center-modalities', authenticateToken, async (req, res) => {

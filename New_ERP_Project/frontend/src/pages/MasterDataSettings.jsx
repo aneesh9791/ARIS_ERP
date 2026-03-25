@@ -3962,9 +3962,40 @@ const CenterModalityMap = ({ centers, modalities }) => {
   );
 };
 
+// ─── Permission helper ────────────────────────────────────────────────────────
+const getUserPerms = () => {
+  try { const u = JSON.parse(localStorage.getItem('user')); return Array.isArray(u?.permissions) ? u.permissions : []; }
+  catch { return []; }
+};
+
+const MASTER_DATA_PERMS = ['ALL_ACCESS', 'MASTER_DATA_VIEW', 'STUDY_CATALOG_VIEW', 'STUDY_PRICING_VIEW', 'RAD_REPORTING_MASTER_VIEW'];
+
+// Tab is visible if user has ALL_ACCESS, MASTER_DATA_VIEW, or the specific tab permission
+const canSeeTab = (userPerms, tabPermission) => {
+  if (userPerms.includes('ALL_ACCESS') || userPerms.includes('MASTER_DATA_VIEW')) return true;
+  return tabPermission ? userPerms.includes(tabPermission) : true;
+};
+
 // ─── Main Master Data Settings Component ─────────────────────────────────────
 const MasterDataSettings = () => {
-  const [activeTab, setActiveTab]           = useState('study-catalog');
+  const userPerms = useMemo(() => getUserPerms(), []);
+
+  // default to first tab the user is allowed to see
+  const [activeTab, setActiveTab] = useState(() => {
+    const allTabs = [
+      { id: 'study-catalog',   permission: 'STUDY_CATALOG_VIEW' },
+      { id: 'study-pricing',   permission: 'STUDY_PRICING_VIEW' },
+      { id: 'service-master',  permission: 'MASTER_DATA_VIEW' },
+      { id: 'radiologist',     permission: 'RAD_REPORTING_MASTER_VIEW' },
+      { id: 'physician',       permission: 'MASTER_DATA_VIEW' },
+      { id: 'center',          permission: 'MASTER_DATA_VIEW' },
+      { id: 'modality-master', permission: 'MASTER_DATA_VIEW' },
+      { id: 'center-modality', permission: 'MASTER_DATA_VIEW' },
+    ];
+    const perms = getUserPerms();
+    const first = allTabs.find(t => canSeeTab(perms, t.permission));
+    return first?.id || 'study-catalog';
+  });
   const [catalogAddHandler, setCatalogAddHandler] = useState(null);
   const [catalogHasSelection, setCatalogHasSelection] = useState(false);
 
@@ -4327,11 +4358,11 @@ const MasterDataSettings = () => {
       color: '#0d9488',                    // teal-600 — primary brand
       icon: 'M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z',
       tabs: [
-        { id: 'study-catalog',   label: 'Study Catalogue', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
-        { id: 'study-pricing',   label: 'Study Pricing',   icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
-        { id: 'service-master',  label: 'Service Master',  icon: 'M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z' },
-        { id: 'radiologist',     label: 'RAD Reporting',   icon: 'M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
-        { id: 'physician',       label: 'Ref. Physician',  icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
+        { id: 'study-catalog',   label: 'Study Catalogue', permission: 'STUDY_CATALOG_VIEW',       icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
+        { id: 'study-pricing',   label: 'Study Pricing',   permission: 'STUDY_PRICING_VIEW',        icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+        { id: 'service-master',  label: 'Service Master',  permission: 'MASTER_DATA_VIEW',          icon: 'M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z' },
+        { id: 'radiologist',     label: 'RAD Reporting',   permission: 'RAD_REPORTING_MASTER_VIEW', icon: 'M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+        { id: 'physician',       label: 'Ref. Physician',  permission: 'MASTER_DATA_VIEW',          icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
       ],
     },
     {
@@ -4371,12 +4402,15 @@ const MasterDataSettings = () => {
 
           {/* Tab bar */}
           <div className="flex items-end gap-0.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-            {NAV_GROUPS.map((g, gi) => (
+            {NAV_GROUPS.map((g, gi) => {
+              const visibleTabs = g.tabs.filter(t => canSeeTab(userPerms, t.permission));
+              if (!visibleTabs.length) return null;
+              return (
               <div key={g.group} className="flex items-end flex-shrink-0">
                 {gi > 0 && (
                   <div className="self-center w-px h-5 mx-2 flex-shrink-0" style={{ background: 'rgba(255,255,255,0.25)' }} />
                 )}
-                {g.tabs.map(tab => {
+                {visibleTabs.map(tab => {
                   const isAct = activeTab === tab.id;
                   return (
                     <button
@@ -4392,7 +4426,8 @@ const MasterDataSettings = () => {
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </div>
 
         </div>

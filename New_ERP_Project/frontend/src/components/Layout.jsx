@@ -94,7 +94,7 @@ const NAV_GROUPS = [
     key: 'system',
     section: 'System',
     items: [
-      { to: '/master-data',    label: 'Master Data',         iconKey: 'settings',                          permission: 'MASTER_DATA_VIEW' },
+      { to: '/master-data',    label: 'Master Data',         iconKey: 'settings',                          permission: ['MASTER_DATA_VIEW','STUDY_CATALOG_VIEW','STUDY_PRICING_VIEW','RAD_REPORTING_MASTER_VIEW'] },
       { to: '/settings/users', label: 'User Management',     iconKey: 'users',                             permission: 'USER_CREATE' },
       { to: '/settings/roles', label: 'Roles & Permissions', iconKey: 'settings', iconKey2: 'settings2',  permission: 'USER_ASSIGN_ROLE' },
       { to: '/settings/mwl',   label: 'MWL Gateway',         iconKey: 'mwl',                               permission: 'MWL_VIEW' },
@@ -222,10 +222,13 @@ const Layout = () => {
   }, []);
 
   // Permission check — ALL_ACCESS bypasses everything (SUPER_ADMIN)
+  // perm can be a string or array of strings (any match = allowed)
   const hasPermission = (perm) => {
     if (!perm) return true;
     const perms = Array.isArray(user.permissions) ? user.permissions : [];
-    return perms.includes('ALL_ACCESS') || perms.includes(perm);
+    if (perms.includes('ALL_ACCESS')) return true;
+    const required = Array.isArray(perm) ? perm : [perm];
+    return required.some(p => perms.includes(p));
   };
 
   // Filtered nav groups — hide items the user has no permission for,

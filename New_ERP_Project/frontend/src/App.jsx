@@ -40,10 +40,12 @@ import PatientHistory from './pages/PatientHistory';
 import Layout from './components/Layout';
 
 // Permission-gated route — redirects to /dashboard if user lacks the required permission
+// permission can be a string or an array of strings (any match = allowed)
 const ProtectedRoute = ({ element, permission }) => {
   const user = (() => { try { return JSON.parse(localStorage.getItem('user')) || {}; } catch { return {}; } })();
   const perms = Array.isArray(user.permissions) ? user.permissions : [];
-  const allowed = !permission || perms.includes('ALL_ACCESS') || perms.includes(permission);
+  const required = Array.isArray(permission) ? permission : (permission ? [permission] : []);
+  const allowed = !required.length || perms.includes('ALL_ACCESS') || required.some(p => perms.includes(p));
   return allowed ? element : <Navigate to="/dashboard" replace />;
 };
 
@@ -99,7 +101,7 @@ function App() {
               <Route path="stock"            element={<ProtectedRoute permission="INVENTORY_VIEW"        element={<Stock />} />} />
               <Route path="item-master"      element={<ProtectedRoute permission="INVENTORY_VIEW"        element={<ItemMaster />} />} />
               <Route path="reports"          element={<ProtectedRoute permission="REPORTS_VIEW"          element={<Reports />} />} />
-              <Route path="master-data"      element={<ProtectedRoute permission="MASTER_DATA_VIEW"      element={<MasterDataSettings />} />} />
+              <Route path="master-data"      element={<ProtectedRoute permission={['MASTER_DATA_VIEW','STUDY_CATALOG_VIEW','STUDY_PRICING_VIEW','RAD_REPORTING_MASTER_VIEW']} element={<MasterDataSettings />} />} />
               <Route path="settings"         element={<ProtectedRoute permission="MASTER_DATA_VIEW"      element={<SimpleSettingsPage />} />} />
               <Route path="settings/users"   element={<ProtectedRoute permission="USER_CREATE"           element={<UserManagement />} />} />
               <Route path="settings/roles"   element={<ProtectedRoute permission="USER_ASSIGN_ROLE"      element={<RoleManagement />} />} />
