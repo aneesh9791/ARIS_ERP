@@ -69,14 +69,12 @@ const printInvoice = (bill, items) => {
   </style></head><body><div class="page">
   <div class="hdr">
     <div class="hdr-left">
-      <div class="co-name">${(() => { const n = co.company_name || 'ARIS Healthcare'; const i = n.toLowerCase().lastIndexOf('tech'); return i > 0 ? `<span class="brand-main">${n.slice(0,i)}</span><span class="brand-suffix">${n.slice(i)}</span>` : `<span class="brand-main">${n}</span>`; })()}</div>
+      ${logo.customLogo ? `<img src="${logo.customLogo}" alt="logo" style="max-height:56px;max-width:180px;object-fit:contain;margin-bottom:6px;" />` : `<div class="co-name">${(() => { const n = co.company_name || 'ARIS Healthcare'; const i = n.toLowerCase().lastIndexOf('tech'); return i > 0 ? `<span class="brand-main">${n.slice(0,i)}</span><span class="brand-suffix">${n.slice(i)}</span>` : `<span class="brand-main">${n}</span>`; })()}</div>`}
       ${co.address_line1 ? `<div class="co-sub">${co.address_line1}${co.city ? ', ' + co.city : ''}</div>` : ''}
       ${co.phone ? `<div class="co-sub">Ph: ${co.phone}</div>` : ''}
       ${co.gstin ? `<div class="co-sub" style="font-weight:600;color:#475569">GSTIN: ${co.gstin}</div>` : ''}
     </div>
-    <div class="hdr-center">
-      ${logo.customLogo ? `<img src="${logo.customLogo}" alt="logo" style="max-height:64px;max-width:160px;object-fit:contain;"/>` : ''}
-    </div>
+    <div class="hdr-center"></div>
     <div class="hdr-right">
       <div class="inv-title">INVOICE</div>
       <div class="inv-meta">

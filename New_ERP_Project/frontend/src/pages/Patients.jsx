@@ -141,16 +141,14 @@ const PrintBill = ({ bill, patient, onClose }) => {
       <div class="hdr">
         <div class="hdr-left">
           <div class="co-info">
-            <div class="co-name">${coName}</div>
+            ${logoSrc ? `<img src="${logoSrc}" style="max-height:56px;max-width:180px;object-fit:contain;margin-bottom:6px;" />` : `<div class="co-name">${coName}</div>`}
             ${coAddr     ? `<div class="co-line">${coAddr}</div>` : ''}
             ${coCityLine ? `<div class="co-line">${coCityLine}</div>` : ''}
             ${coTaxLine  ? `<div class="co-tax">${coTaxLine}</div>` : ''}
             ${coContact  ? `<div class="co-line">${coContact}</div>` : ''}
           </div>
         </div>
-        <div class="hdr-center">
-          ${logoSrc ? `<img src="${logoSrc}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
-        </div>
+        <div class="hdr-center"></div>
         <div class="hdr-right">
           <div class="inv-title">INVOICE</div>
           <div class="inv-meta">
