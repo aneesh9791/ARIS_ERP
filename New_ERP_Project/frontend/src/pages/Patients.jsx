@@ -538,8 +538,7 @@ export default function Patients() {
     const t = setTimeout(async () => {
       setSearching(true);
       try {
-        const centerParam = !isCorp && myCenter ? `&center_id=${encodeURIComponent(myCenter)}` : '';
-        const r = await api(`/api/patients/quick-search?search_term=${encodeURIComponent(query)}${centerParam}`);
+        const r = await api(`/api/patients/quick-search?search_term=${encodeURIComponent(query)}`);
         const d = await r.json();
         setResults(d.patients || d || []);
       } catch { setResults([]); }
