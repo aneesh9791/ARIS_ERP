@@ -613,12 +613,8 @@ router.get('/attendance/summary', async (req, res) => {
         COUNT(CASE WHEN a.status = 'PRESENT' THEN 1 END) as present_days,
         COUNT(CASE WHEN a.status = 'ABSENT' THEN 1 END) as absent_days,
         COUNT(CASE WHEN a.status = 'LEAVE' THEN 1 END) as leave_days,
-        COUNT(CASE WHEN a.status = 'HALF_DAY' THEN 1 END) as half_day_days,
-        ROUND(
-          (COUNT(CASE WHEN a.status = 'PRESENT' THEN 1 END) + 
-           COUNT(CASE WHEN a.status = 'HALF_DAY' THEN 1 END) * 0.5) / 
-          NULLIF(COUNT(a.id), 0) * 100, 2
-        ) as attendance_percentage
+        COUNT(CASE WHEN a.status = 'HALF_DAY' THEN 1 END) as half_days,
+        COUNT(CASE WHEN a.status = 'WEEKEND' THEN 1 END) as weekend_days
       FROM employees e
       LEFT JOIN centers c ON e.center_id = c.id
       LEFT JOIN attendance a ON e.id = a.employee_id 

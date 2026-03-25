@@ -137,7 +137,7 @@ function DashboardTab({ onTabSwitch }) {
     try {
       const [empRes, attRes] = await Promise.all([
         api('/api/payroll/employees?active_only=true'),
-        api(`/api/payroll/attendance?from_date=${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01&to_date=${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-31`),
+        api(`/api/payroll/attendance?start_date=${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01&end_date=${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-31&limit=500`),
       ]);
       const empData = empRes.ok ? await empRes.json() : { employees: [] };
       const attData = attRes.ok ? await attRes.json() : { attendance: [] };
@@ -674,7 +674,10 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const attParams = new URLSearchParams({ month, year });
+    const daysInMo = new Date(year, month, 0).getDate();
+    const startDate = `${year}-${String(month).padStart(2,'0')}-01`;
+    const endDate   = `${year}-${String(month).padStart(2,'0')}-${String(daysInMo).padStart(2,'0')}`;
+    const attParams = new URLSearchParams({ start_date: startDate, end_date: endDate, limit: 500 });
     const sumParams = new URLSearchParams({ month, year });
     if (centerFilter) { attParams.set('center_id', centerFilter); sumParams.set('center_id', centerFilter); }
     try {
@@ -705,8 +708,8 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
   // Build lookup: empId -> day -> { status, id }
   const attLookup = {};
   attendance.forEach(a => {
-    const d = new Date(a.attendance_date);
-    const day = d.getDate();
+    // Use string slice to avoid timezone-related off-by-one (new Date('YYYY-MM-DD') is UTC)
+    const day = parseInt((a.attendance_date || '').slice(8, 10), 10);
     const empId = a.employee_id;
     if (!attLookup[empId]) attLookup[empId] = {};
     attLookup[empId][day] = { status: a.status, id: a.id };
@@ -890,7 +893,7 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
-                      {['Employee', 'Department', 'Present', 'Absent', 'Leave', 'Half Day', 'Attendance %'].map(h => (
+                      {['Employee', 'Department', 'Present', 'Absent', 'Leave', 'Half Day', 'Weekend'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                       ))}
                     </tr>
@@ -900,9 +903,6 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
                       <tr><td colSpan={7} className="text-center py-10 text-slate-400">No summary data for this period</td></tr>
                     )}
                     {summary.map((row, i) => {
-                      const total = (row.present_days || 0) + (row.absent_days || 0) + (row.leave_days || 0) + (row.half_days || 0);
-                      const pct = total > 0 ? (((row.present_days || 0) + (row.half_days || 0) * 0.5) / total * 100).toFixed(1) : '—';
-                      const pctNum = parseFloat(pct);
                       return (
                         <tr key={i} className="hover:bg-slate-50/60 transition-colors">
                           <td className="px-4 py-3 font-semibold text-slate-800">{row.employee_name || row.name || '—'}</td>
@@ -920,18 +920,7 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
                             <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700">{row.half_days || 0}</span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="h-1.5 w-20 bg-slate-100 rounded-full overflow-hidden">
-                                <div className="h-full rounded-full transition-all"
-                                  style={{
-                                    width: isNaN(pctNum) ? '0%' : `${pctNum}%`,
-                                    background: pctNum >= 90 ? '#16a34a' : pctNum >= 75 ? '#d97706' : '#dc2626',
-                                  }} />
-                              </div>
-                              <span className={`text-xs font-bold ${pctNum >= 90 ? 'text-green-700' : pctNum >= 75 ? 'text-yellow-700' : 'text-red-600'}`}>
-                                {isNaN(pctNum) ? '—' : pct + '%'}
-                              </span>
-                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700">{row.weekend_days || 0}</span>
                           </td>
                         </tr>
                       );
@@ -959,6 +948,10 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
 function MarkAttendanceModal({ employees, onClose, onSaved }) {
   const [date, setDate] = useState(today());
   const [records, setRecords] = useState({});
+  // existingIds: empId -> attendance record id (for PUT)
+  const [existingIds, setExistingIds] = useState({});
+  // weekendCounts: empId -> number of WEEKEND days already marked this month (excluding today's record)
+  const [weekendCounts, setWeekendCounts] = useState({});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -968,6 +961,42 @@ function MarkAttendanceModal({ employees, onClose, onSaved }) {
     setRecords(init);
   }, [employees]);
 
+  // When date changes: load existing attendance for that date + month weekend counts
+  useEffect(() => {
+    if (!date || employees.length === 0) return;
+    const [y, m] = date.split('-');
+    const daysInMo = new Date(+y, +m, 0).getDate();
+    const start = `${y}-${m}-01`;
+    const end   = `${y}-${m}-${String(daysInMo).padStart(2,'0')}`;
+    api(`/api/payroll/attendance?start_date=${start}&end_date=${end}&limit=500`)
+      .then(r => r.ok ? r.json() : { attendance: [] })
+      .then(d => {
+        const ids = {};
+        const counts = {};
+        (d.attendance || []).forEach(a => {
+          // Existing record for this exact date → pre-fill status + store id for PUT
+          if ((a.attendance_date || '').slice(0, 10) === date) {
+            ids[a.employee_id] = a.id;
+            setRecords(prev => ({ ...prev, [a.employee_id]: a.status }));
+          }
+          // Weekend counts for the month (exclude today's record — it will be overwritten)
+          if (a.status === 'WEEKEND' && (a.attendance_date || '').slice(0, 10) !== date) {
+            counts[a.employee_id] = (counts[a.employee_id] || 0) + 1;
+          }
+        });
+        setExistingIds(ids);
+        setWeekendCounts(counts);
+      })
+      .catch(() => {});
+  }, [date, employees]);
+
+  const contractedOffs = (emp) => {
+    if (!date) return 0;
+    const [y, m] = date.split('-');
+    const daysInMo = new Date(+y, +m, 0).getDate();
+    return Math.round(daysInMo * (parseInt(emp.weekly_offs) || 1) / 7);
+  };
+
   const setStatus = (empId, status) => setRecords(r => ({ ...r, [empId]: status }));
 
   const save = async () => {
@@ -976,12 +1005,21 @@ function MarkAttendanceModal({ employees, onClose, onSaved }) {
     setErr('');
     try {
       const entries = Object.entries(records);
-      const results = await Promise.all(entries.map(([employee_id, status]) =>
-        api('/api/payroll/attendance', {
+      const results = await Promise.all(entries.map(([employee_id, status]) => {
+        const existId = existingIds[+employee_id] || existingIds[employee_id];
+        if (existId) {
+          // Record exists → update it
+          return api(`/api/payroll/attendance/${existId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status }),
+          });
+        }
+        // New record → insert it
+        return api('/api/payroll/attendance', {
           method: 'POST',
           body: JSON.stringify({ employee_id: +employee_id, attendance_date: date, status }),
-        })
-      ));
+        });
+      }));
       const failed = results.filter(r => !r.ok).length;
       if (failed > 0) setErr(`${failed} record(s) failed to save. Rest were saved.`);
       else onSaved();
@@ -989,7 +1027,7 @@ function MarkAttendanceModal({ employees, onClose, onSaved }) {
     setSaving(false);
   };
 
-  const STATUS_OPTS = ['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY'];
+  const STATUS_OPTS = ['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY', 'WEEKEND'];
 
   return (
     <Modal title="Mark Attendance" onClose={onClose} wide>
@@ -1010,17 +1048,23 @@ function MarkAttendanceModal({ employees, onClose, onSaved }) {
               <div className="text-sm font-semibold text-slate-800 truncate">{emp.name}</div>
               <div className="text-xs text-slate-400">{emp.department} · {emp.position}</div>
             </div>
-            <div className="flex gap-1.5 flex-wrap justify-end">
+            <div className="flex gap-1.5 flex-wrap justify-end items-center">
               {STATUS_OPTS.map(s => {
                 const cfg = STATUS_CFG[s];
                 const active = records[emp.id] === s;
+                const maxOffs = contractedOffs(emp);
+                const used = weekendCounts[emp.id] || 0;
+                const weekendDisabled = s === 'WEEKEND' && used >= maxOffs && !active;
                 return (
-                  <button key={s} onClick={() => setStatus(emp.id, s)}
-                    className="px-2.5 py-1 rounded-lg text-xs font-bold border transition-all"
+                  <button key={s} onClick={() => !weekendDisabled && setStatus(emp.id, s)}
+                    disabled={weekendDisabled}
+                    title={s === 'WEEKEND' ? `${used}/${maxOffs} weekend days used` : ''}
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold border transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     style={active
                       ? { background: cfg.bg, color: cfg.color, borderColor: cfg.color }
                       : { background: '#f8fafc', color: '#94a3b8', borderColor: '#e2e8f0' }}>
                     {cfg.label}
+                    {s === 'WEEKEND' && <span className="ml-1 opacity-60">({used}/{maxOffs})</span>}
                   </button>
                 );
               })}
@@ -1351,14 +1395,16 @@ function PayrollTab({ centerId = '' }) {
             <table className="min-w-full text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  {['Employee', 'Code', 'Department', 'Period', 'Basic', 'Gross', 'PF', 'ESI', 'Prof Tax', 'Net Salary', 'Status'].map(h => (
+                  {['Employee', 'Code', 'Department', 'Period', 'Basic',
+                    ...(benefitsEnabled ? ['Gross', 'PF', 'ESI', 'Prof Tax'] : []),
+                    'Net Salary', 'Status'].map(h => (
                     <th key={h} className="px-3 py-3 text-left font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {register.length === 0 && (
-                  <tr><td colSpan={11} className="text-center py-10 text-slate-400">No payroll records for this period</td></tr>
+                  <tr><td colSpan={benefitsEnabled ? 11 : 7} className="text-center py-10 text-slate-400">No payroll records for this period</td></tr>
                 )}
                 {register.map((row, i) => (
                   <tr key={i} className="hover:bg-slate-50/60 transition-colors">
@@ -1367,10 +1413,12 @@ function PayrollTab({ centerId = '' }) {
                     <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{row.department}</td>
                     <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(row.pay_period_month || 1) - 1]} {row.pay_period_year}</td>
                     <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{fmt(row.basic_salary)}</td>
-                    <td className="px-3 py-3 font-semibold text-teal-700 whitespace-nowrap">{fmt(row.gross_salary)}</td>
-                    <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.pf_deduction)}</td>
-                    <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.esi_deduction)}</td>
-                    <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.professional_tax)}</td>
+                    {benefitsEnabled && <>
+                      <td className="px-3 py-3 font-semibold text-teal-700 whitespace-nowrap">{fmt(row.gross_salary)}</td>
+                      <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.pf_deduction)}</td>
+                      <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.esi_deduction)}</td>
+                      <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.professional_tax)}</td>
+                    </>}
                     <td className="px-3 py-3 font-bold text-green-700 whitespace-nowrap">{fmt(row.net_salary)}</td>
                     <td className="px-3 py-3 whitespace-nowrap"><Badge status={row.status} /></td>
                   </tr>
