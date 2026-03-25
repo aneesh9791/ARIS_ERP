@@ -31,35 +31,69 @@ const StatusBadge = ({ status }) => {
 };
 
 // ── Print invoice ──────────────────────────────────────────────────────────────
-const printInvoice = (bill, items) => {
-  const co = (() => { try { return JSON.parse(localStorage.getItem('companyInfo')) || {}; } catch { return {}; } })();
-  const logo = (() => { try { return JSON.parse(localStorage.getItem('logoConfig')) || {}; } catch { return {}; } })();
+const printInvoice = async (bill, items) => {
+  let co = {};
+  try {
+    const r = await fetch('/api/settings/company', { headers: { Authorization: `Bearer ${token()}` } });
+    const d = await r.json();
+    co = d.company || {};
+  } catch { /* ignore */ }
+  if (!co.company_name) {
+    try { co = { ...co, ...JSON.parse(localStorage.getItem('companyInfo') || '{}') }; } catch { /* ignore */ }
+  }
+
+  const lgc = (() => { try { return JSON.parse(localStorage.getItem('logoConfig')) || {}; } catch { return {}; } })();
+  const logoSrc = lgc.customLogo || co.logo_path || null;
+
+  const AC = '#0d9488';
+  const coName     = co.company_name || 'ARIS Healthcare';
+  const coAddr     = [co.address_line1, co.address_line2].filter(Boolean).join(', ');
+  const coCityLine = [co.city, co.state, co.pincode].filter(Boolean).join(', ');
+  const coTaxLine  = co.gstin ? `GSTIN: ${co.gstin}` : '';
+  const coContact  = [co.phone ? `Ph: ${co.phone}` : '', co.email || ''].filter(Boolean).join('  |  ');
+  const billHeader = co.bill_header_text || '';
+  const billFooter = co.bill_footer_text || 'Thank you for choosing our services. Wishing you good health!';
+  const termsText  = co.terms_and_conditions || '';
+
   const w = window.open('', '_blank');
-  const html = `<!DOCTYPE html><html><head><title>Invoice ${bill.invoice_number}</title>
+  const html = `<!DOCTYPE html><html><head>
+  <meta charset="utf-8">
+  <title>Invoice ${bill.invoice_number}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;color:#1e293b;background:#fff}
-    .page{width:210mm;min-height:297mm;margin:auto;padding:18mm 14mm}
-    .hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0d9488;padding-bottom:14px;margin-bottom:20px}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;font-size:12px}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    .page{width:210mm;min-height:297mm;margin:0 auto;padding:0 0 24mm;position:relative}
+    .hdr-band{background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);color:#fff;text-align:center;padding:7px 14mm;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border-bottom:3px solid #0f766e}
+    .hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 14mm 10px;border-bottom:3px solid ${AC}}
     .hdr-left{flex:1}
     .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 16px}
-    .hdr-right{flex:1;text-align:right}
-    .co-name{font-size:20px;font-weight:700}
-    .co-sub{font-size:11px;color:#64748b;margin-top:2px}
-    .inv-title{font-size:22px;font-weight:800;color:#0d9488;text-align:right}
-    .inv-meta{font-size:12px;text-align:right;margin-top:4px;line-height:1.7}
-    .pt-box{background:#f8fafc;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px 20px}
-    .pt-label{font-size:9px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.05em}
-    .pt-val{font-size:13px;font-weight:600;margin-top:1px}
-    table{width:100%;border-collapse:collapse;margin-bottom:18px}
-    th{background:#0f766e;color:#fff;padding:9px 12px;text-align:left;font-size:12px}
-    td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}
-    td:last-child,th:last-child{text-align:right}
-    .totals{margin-left:auto;width:270px}
-    .tot-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid #f1f5f9}
-    .grand{display:flex;justify-content:space-between;font-size:17px;font-weight:800;color:#0d9488;border-top:2px solid #0d9488;padding-top:8px;margin-top:6px}
-    .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:#dcfce7;color:#166534}
-    .badge.pending{background:#fef3c7;color:#92400e}
+    .co-info{display:flex;flex-direction:column;gap:2px}
+    .co-name{font-size:16px;font-weight:800;color:#1e293b;line-height:1.2}
+    .co-line{font-size:9px;color:#64748b;line-height:1.5}
+    .co-tax{font-size:9px;color:#475569;font-weight:600}
+    .hdr-right{text-align:right;flex-shrink:0;flex:1}
+    .inv-title{font-size:26px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
+    .inv-meta{margin-top:6px;font-size:10px;line-height:1.9;color:#475569}
+    .inv-meta b{color:#1e293b}
+    .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:9px;font-weight:700}
+    .badge-paid{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+    .badge-pending{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+    .body{padding:0 14mm}
+    .pt-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:7px;padding:10px 14px;margin:12px 0;display:grid;grid-template-columns:repeat(3,1fr);gap:7px 18px}
+    .pt-label{font-size:8px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.05em}
+    .pt-val{font-size:12px;font-weight:600;margin-top:1px;color:#1e293b}
+    table{width:100%;border-collapse:collapse;margin-bottom:14px}
+    thead tr{background:${AC}}
+    th{padding:8px 10px;text-align:left;font-size:9.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.05em}
+    th.r,td.r{text-align:right}
+    tbody tr:nth-child(even){background:#f0fdfa}
+    td{padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:11px;color:#334155}
+    .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:14px}
+    .totals{width:240px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
+    .tot-row{display:flex;justify-content:space-between;padding:5px 11px;font-size:11px;border-bottom:1px solid #f1f5f9;color:#475569}
+    .tot-disc{color:#16a34a}
+    .grand{display:flex;justify-content:space-between;padding:8px 11px;background:${AC};color:#fff;font-size:14px;font-weight:800}
     .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:5px;padding:7px 11px;margin-bottom:12px;font-size:10px;color:#134e4a}
     .terms-box{margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;margin-bottom:12px}
     .terms-hdr{font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
@@ -70,64 +104,72 @@ const printInvoice = (bill, items) => {
     .sig-line{border-top:1px solid #334155;padding-top:5px;font-size:9px;color:#64748b}
     .ftr-band{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);border-top:3px solid #0f766e;padding:6px 14mm;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:rgba(255,255,255,0.9)}
     .ftr-text{font-style:italic;color:rgba(255,255,255,0.75);flex:1;text-align:center;padding:0 12px}
-  </style></head><body><div class="page">
-  <div class="hdr">
-    <div class="hdr-left">
-      <div class="co-name">${co.company_name || 'ARIS Healthcare'}</div>
-      ${co.address_line1 ? `<div class="co-sub">${co.address_line1}${co.city ? ', ' + co.city : ''}</div>` : ''}
-      ${co.phone ? `<div class="co-sub">Ph: ${co.phone}</div>` : ''}
-      ${co.gstin ? `<div class="co-sub" style="font-weight:600;color:#475569">GSTIN: ${co.gstin}</div>` : ''}
-    </div>
-    <div class="hdr-center">
-      ${logo.customLogo ? `<img src="${logo.customLogo}" alt="logo" style="max-height:64px;max-width:160px;object-fit:contain;"/>` : ''}
-    </div>
-    <div class="hdr-right">
-      <div class="inv-title">INVOICE</div>
-      <div class="inv-meta">
-        <b>Bill #:</b> ${bill.invoice_number || '—'}<br>
-        <b>Date:</b> ${fmtDate(bill.bill_date)}<br>
-        ${bill.accession_number ? `<b>Accession:</b> ${bill.accession_number}<br>` : ''}
-        <b>Status:</b> <span class="badge ${bill.payment_status !== 'PAID' ? 'pending' : ''}">${bill.payment_status}</span>
+  </style></head><body>
+  <div class="page">
+    ${billHeader ? `<div class="hdr-band">${billHeader}</div>` : ''}
+    <div class="hdr">
+      <div class="hdr-left">
+        <div class="co-info">
+          <div class="co-name">${coName}</div>
+          ${coAddr     ? `<div class="co-line">${coAddr}</div>` : ''}
+          ${coCityLine ? `<div class="co-line">${coCityLine}</div>` : ''}
+          ${coTaxLine  ? `<div class="co-tax">${coTaxLine}</div>` : ''}
+          ${coContact  ? `<div class="co-line">${coContact}</div>` : ''}
+        </div>
+      </div>
+      <div class="hdr-center">
+        ${logoSrc ? `<img src="${logoSrc}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
+      </div>
+      <div class="hdr-right">
+        <div class="inv-title">INVOICE</div>
+        <div class="inv-meta">
+          <b>Bill #:</b> ${bill.invoice_number || '—'}<br>
+          <b>Date:</b> ${fmtDate(bill.bill_date)}<br>
+          ${bill.accession_number ? `<b>Accession:</b> ${bill.accession_number}<br>` : ''}
+          <b>Status:</b>&nbsp;<span class="badge ${bill.payment_status === 'PAID' ? 'badge-paid' : 'badge-pending'}">${bill.payment_status}</span>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="pt-box">
-    ${[
-      ['Patient', bill.patient_name],
-      ['PID', bill.pid || '—'],
-      ['Phone', bill.patient_phone || '—'],
-      ['Gender', bill.gender || '—'],
-      ['Age', calcAge(bill.date_of_birth)],
-      ['Payment', bill.payment_mode + (bill.payment_reference ? ' · ' + bill.payment_reference : '')],
-    ].map(([l, v]) => `<div><div class="pt-label">${l}</div><div class="pt-val">${v}</div></div>`).join('')}
-  </div>
-  <table>
-    <thead><tr><th>#</th><th>Study / Service</th><th>Modality</th><th>Amount</th></tr></thead>
-    <tbody>
-      ${items.map((s, i) => `<tr><td>${i + 1}</td><td>${s.study_name}</td><td>${s.modality || '—'}</td><td>${fmt(s.amount)}</td></tr>`).join('')}
-    </tbody>
-  </table>
-  <div class="totals">
-    <div class="tot-row"><span>Subtotal</span><span>${fmt(bill.subtotal)}</span></div>
-    ${bill.discount_amount > 0 ? `<div class="tot-row" style="color:#16a34a"><span>Discount</span><span>- ${fmt(bill.discount_amount)}</span></div>` : ''}
-    ${bill.total_gst > 0 ? `<div class="tot-row"><span>GST</span><span>${fmt(bill.total_gst)}</span></div>` : ''}
-    <div class="grand"><span>Total</span><span>${fmt(bill.total_amount)}</span></div>
-  </div>
-  ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${bill.notes}</div>` : ''}
-  ${co.terms_and_conditions ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${co.terms_and_conditions.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${l.trim().replace(/^\d+[\.\)]\s*/,'')}</span></div>`).join('')}</div>` : ''}
-  <div class="sig-row">
-    <div style="flex:1"></div>
-    <div class="sig-box"><div class="sig-line">Authorised Signatory</div></div>
-  </div>
-  </div>
-  <div class="ftr-band">
-    <span style="white-space:nowrap">${co.company_name || 'ARIS Healthcare'}</span>
-    <span class="ftr-text">${co.bill_footer_text || 'Thank you for choosing our services. Wishing you good health!'}</span>
-    <span style="white-space:nowrap">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
-  </div>
+    <div class="body">
+      <div class="pt-box">
+        ${[
+          ['Patient', bill.patient_name],
+          ['PID', bill.pid || '—'],
+          ['Phone', bill.patient_phone || '—'],
+          ['Gender', bill.gender || '—'],
+          ['Age', calcAge(bill.date_of_birth)],
+          ['Payment Mode', bill.payment_mode || '—'],
+        ].map(([l, v]) => `<div><div class="pt-label">${l}</div><div class="pt-val">${v || '—'}</div></div>`).join('')}
+      </div>
+      <table>
+        <thead><tr><th style="width:28px">#</th><th>Study / Service</th><th>Modality</th><th class="r">Amount</th></tr></thead>
+        <tbody>
+          ${items.map((s, i) => `<tr><td>${i + 1}</td><td>${s.study_name}</td><td>${s.modality || '—'}</td><td class="r">${fmt(s.amount)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="totals-wrap">
+        <div class="totals">
+          <div class="tot-row"><span>Subtotal</span><span>${fmt(bill.subtotal)}</span></div>
+          ${bill.discount_amount > 0 ? `<div class="tot-row tot-disc"><span>Discount</span><span>− ${fmt(bill.discount_amount)}</span></div>` : ''}
+          ${bill.total_gst > 0 ? `<div class="tot-row"><span>GST</span><span>${fmt(bill.total_gst)}</span></div>` : ''}
+          <div class="grand"><span>Total</span><span>${fmt(bill.total_amount)}</span></div>
+        </div>
+      </div>
+      ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${bill.notes}</div>` : ''}
+      ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${l.trim().replace(/^\d+[\.\)]\s*/,'')}</span></div>`).join('')}</div>` : ''}
+      <div class="sig-row">
+        <div style="flex:1"></div>
+        <div class="sig-box"><div class="sig-line">Authorised Signatory</div></div>
+      </div>
+    </div>
+    <div class="ftr-band">
+      <span style="white-space:nowrap">${coName}</span>
+      <span class="ftr-text">${billFooter}</span>
+      <span style="white-space:nowrap">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
+    </div>
   </div></body></html>`;
-  w.document.open(); w.document.write(html); w.document.close();
-  setTimeout(() => w.print(), 400);
+  w.document.documentElement.innerHTML = html;
+  setTimeout(() => w.print(), 500);
 };
 
 // ── Update Payment Status Modal ────────────────────────────────────────────────
