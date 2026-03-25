@@ -1886,7 +1886,6 @@ export default function Procurement() {
   const [tab, setTab]         = useState('prs');
   const [prs, setPrs]         = useState([]);
   const [pos, setPos]         = useState([]);
-  const [matrix, setMatrix]   = useState([]);
   const [allUsers, setUsers]  = useState([]);
   const [centers, setCenters] = useState([]);
   const [notifs, setNotifs]   = useState([]);
@@ -1904,11 +1903,6 @@ export default function Procurement() {
   const [showPRDetail, setDetail]   = useState(null);
   const [showPOForm, setShowPOForm] = useState(null); // null | prId
   const [showPODetail, setPODetail] = useState(null);
-
-  // Approval matrix form
-  const [matrixForm, setMForm] = useState({ user_id: '', level: '1', center_id: '' });
-  const [matSaving, setMatSav] = useState(false);
-  const [matMsg, setMatMsg]    = useState(null); // { type: 'success'|'error', text }
 
   // GRN state
   const [grns, setGrns] = useState([]);
@@ -1941,12 +1935,6 @@ export default function Procurement() {
     setPos(d.pos || []);
   }, [poStatus]);
 
-  const loadMatrix = useCallback(async () => {
-    const r = await api('/api/procurement/approval-matrix');
-    const d = await r.json();
-    setMatrix(d.matrix || []);
-  }, []);
-
   const loadGRNs = useCallback(async () => {
     setGrnLoading(true);
     const r = await api('/api/grn');
@@ -1972,56 +1960,11 @@ export default function Procurement() {
 
   useEffect(() => { if (tab === 'prs') loadPRs(); }, [tab, loadPRs]);
   useEffect(() => { if (tab === 'pos') loadPOs(); }, [tab, loadPOs]);
-  useEffect(() => { if (tab === 'matrix') loadMatrix(); }, [tab, loadMatrix]);
   useEffect(() => { if (tab === 'grn') loadGRNs(); }, [tab, loadGRNs]);
 
   const markAllRead = async () => {
     await api('/api/procurement/notifications/read-all', { method: 'PATCH', body: '{}' });
     loadNotifs();
-  };
-
-  const addMatrixEntry = async () => {
-    if (!matrixForm.user_id) return;
-    setMatSav(true);
-    setMatMsg(null);
-    try {
-      const r = await api('/api/procurement/approval-matrix', {
-        method: 'POST',
-        body: JSON.stringify({
-          user_id:   parseInt(matrixForm.user_id, 10),
-          level:     parseInt(matrixForm.level, 10),
-          center_id: matrixForm.center_id ? parseInt(matrixForm.center_id, 10) : null,
-        }),
-      });
-      const d = await r.json();
-      if (!r.ok || d.errors || d.success === false) {
-        const msg = d.errors ? d.errors.map(e => e.msg).join(', ') : (d.error || 'Failed to add approver');
-        setMatMsg({ type: 'error', text: msg });
-      } else {
-        setMatMsg({ type: 'success', text: 'Approver added successfully' });
-        setMForm({ user_id: '', level: '1', center_id: '' });
-        loadMatrix();
-      }
-    } catch {
-      setMatMsg({ type: 'error', text: 'Network error — could not add approver' });
-    }
-    setMatSav(false);
-  };
-
-  const removeMatrixEntry = async (id) => {
-    setMatMsg(null);
-    try {
-      const r = await api(`/api/procurement/approval-matrix/${id}`, { method: 'DELETE' });
-      const d = await r.json();
-      if (!r.ok || d.success === false) {
-        setMatMsg({ type: 'error', text: d.error || 'Failed to remove approver' });
-      } else {
-        setMatMsg({ type: 'success', text: 'Approver removed' });
-        loadMatrix();
-      }
-    } catch {
-      setMatMsg({ type: 'error', text: 'Network error — could not remove approver' });
-    }
   };
 
   const openReceiveModal = async (po) => {
@@ -2218,7 +2161,6 @@ export default function Procurement() {
               { key: 'prs', label: 'Purchase Requisitions' },
               { key: 'pos', label: 'Purchase Orders' },
               { key: 'grn', label: 'Goods Receipts' },
-              { key: 'matrix', label: 'Approval Matrix' },
             ].map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className="px-4 py-2 rounded-lg text-sm font-semibold transition-all"
@@ -2486,89 +2428,6 @@ export default function Procurement() {
           </div>
         )}
 
-        {/* ── Approval Matrix Tab ── */}
-        {tab === 'matrix' && (
-          <div className="space-y-4">
-            {matMsg && (
-              <div className={`px-4 py-3 rounded-xl text-sm font-medium border ${matMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-red-50 text-red-800 border-red-200'}`}>
-                {matMsg.text}
-              </div>
-            )}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <p className="text-sm font-bold text-slate-700 mb-3">Add Approver</p>
-              <div className="grid grid-cols-4 gap-3 items-end">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">User</label>
-                  <select value={matrixForm.user_id} onChange={e => setMForm(f => ({ ...f, user_id: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Select user…</option>
-                    {allUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Level</label>
-                  <select value={matrixForm.level} onChange={e => setMForm(f => ({ ...f, level: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="1">Level 1 — Center Admin</option>
-                    <option value="2">Level 2 — Director</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Center (blank = all)</label>
-                  <select value={matrixForm.center_id} onChange={e => setMForm(f => ({ ...f, center_id: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">All Centers</option>
-                    {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <button onClick={addMatrixEntry} disabled={!matrixForm.user_id || matSaving}
-                  className="py-2 px-4 rounded-xl text-white font-bold text-sm"
-                  style={{ background: matSaving || !matrixForm.user_id ? '#94a3b8' : 'linear-gradient(135deg,#0f766e,#0d9488)' }}>
-                  {matSaving ? 'Adding…' : '+ Add'}
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">Approver</th>
-                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">Role</th>
-                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">Level</th>
-                    <th className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">Center Scope</th>
-                    <th className="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {matrix.length === 0 ? (
-                    <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">No approvers configured yet</td></tr>
-                  ) : matrix.map(m => (
-                    <tr key={m.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5">
-                        <p className="font-semibold text-slate-800">{m.name}</p>
-                        <p className="text-xs text-slate-400">{m.email}</p>
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-slate-600">{m.role}</td>
-                      <td className="px-4 py-2.5">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${m.level === 1 ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                          L{m.level} — {m.level === 1 ? 'Center Admin' : 'Director'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-slate-600">{m.center_name || 'All Centers'}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        <button onClick={() => removeMatrixEntry(m.id)}
-                          className="text-xs px-2.5 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 font-semibold transition-colors">
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* PO Detail Modal */}
