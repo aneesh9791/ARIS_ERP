@@ -94,6 +94,13 @@ const authorizePermission = (...perms) => {
     }
     const userPerms = Array.isArray(req.user.permissions) ? req.user.permissions : [];
     if (userPerms.includes('ALL_ACCESS') || perms.some(p => userPerms.includes(p))) return next();
+    logger.warn('Permission denied', {
+      userId: req.user.id,
+      role: req.user.role,
+      required: perms,
+      method: req.method,
+      path: req.path,
+    });
     return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS', required_permissions: perms });
   };
 };

@@ -3,27 +3,8 @@ const { body, validationResult } = require('express-validator');
 const pool = require('../config/db');
 const { logger } = require('../config/logger');
 const financeService = require('../services/financeService');
+const { authorizePermission } = require('../middleware/auth');
 const router = express.Router();
-
-const HR_WRITE      = ['SUPER_ADMIN', 'CENTER_MANAGER', 'HR_MANAGER'];
-const PAYROLL_ADMIN = ['SUPER_ADMIN', 'CENTER_MANAGER'];
-
-// Combined middleware: HR roles OR individual permission
-const allowEmployeeWrite = (req, res, next) => {
-  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  if (HR_WRITE.includes(req.user?.role) || perms.includes('ALL_ACCESS') || perms.includes('EMPLOYEE_WRITE')) return next();
-  return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
-};
-const allowPayrollWrite = (req, res, next) => {
-  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  if (HR_WRITE.includes(req.user?.role) || perms.includes('ALL_ACCESS') || perms.includes('PAYROLL_WRITE')) return next();
-  return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
-};
-const allowPayrollApprove = (req, res, next) => {
-  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  if (PAYROLL_ADMIN.includes(req.user?.role) || perms.includes('ALL_ACCESS') || perms.includes('PAYROLL_APPROVE')) return next();
-  return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
-};
 
 /**
  * Compute contractual working days in a given month.
@@ -35,27 +16,6 @@ function computeWorkingDays(year, month, weeklyOffs = 1) {
   const workPerWeek = Math.max(1, 7 - Math.min(weeklyOffs, 6));
   return Math.round(daysInMonth * workPerWeek / 7) || 1;
 }
-
-// Allows HR_WRITE roles OR users with LEAVE_APPLY permission
-const allowLeaveApply = (req, res, next) => {
-  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  if (HR_WRITE.includes(req.user?.role) || perms.includes('ALL_ACCESS') || perms.includes('LEAVE_APPLY')) return next();
-  return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
-};
-
-// Allows HR_WRITE roles OR users with LEAVE_APPROVE permission
-const allowLeaveApprove = (req, res, next) => {
-  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  if (HR_WRITE.includes(req.user?.role) || perms.includes('ALL_ACCESS') || perms.includes('LEAVE_APPROVE')) return next();
-  return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
-};
-
-// Allows HR_WRITE roles OR users with ATTENDANCE_MARK permission
-const allowAttendanceMark = (req, res, next) => {
-  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  if (HR_WRITE.includes(req.user?.role) || perms.includes('ALL_ACCESS') || perms.includes('ATTENDANCE_MARK')) return next();
-  return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
-};
 
 // EMPLOYEE MASTER AND PAYROLL MODULE
 
@@ -134,7 +94,7 @@ router.get('/employees', async (req, res) => {
 });
 
 // Create new employee
-router.post('/employees', allowEmployeeWrite, [
+router.post('/employees', authorizePermission('EMPLOYEE_WRITE'), [
   body('employee_code').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 20 }),
   body('name').trim().isLength({ min: 3, max: 100 }),
   body('email').trim().isEmail().normalizeEmail(),
@@ -256,7 +216,7 @@ router.post('/employees', allowEmployeeWrite, [
 });
 
 // Update employee
-router.put('/employees/:id', allowEmployeeWrite, [
+router.put('/employees/:id', authorizePermission('EMPLOYEE_WRITE'), [
   body('name').trim().isLength({ min: 3, max: 100 }),
   body('email').trim().isEmail().normalizeEmail(),
   body('phone').trim().isLength({ min: 10, max: 10 }).withMessage('Phone must be exactly 10 digits'),
@@ -357,7 +317,7 @@ router.put('/employees/:id', allowEmployeeWrite, [
 });
 
 // Delete employee (soft delete)
-router.delete('/employees/:id', allowEmployeeWrite, async (req, res) => {
+router.delete('/employees/:id', authorizePermission('EMPLOYEE_WRITE'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -392,7 +352,7 @@ router.delete('/employees/:id', allowEmployeeWrite, async (req, res) => {
 // ATTENDANCE MARKING
 
 // Mark attendance
-router.post('/attendance', allowAttendanceMark, [
+router.post('/attendance', authorizePermission('ATTENDANCE_MARK'), [
   body('employee_id').isInt(),
   body('attendance_date').isISO8601().toDate(),
   body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY', 'WEEKEND']),
@@ -475,7 +435,7 @@ router.post('/attendance', allowAttendanceMark, [
 });
 
 // Update attendance
-router.put('/attendance/:id', allowAttendanceMark, [
+router.put('/attendance/:id', authorizePermission('ATTENDANCE_MARK'), [
   body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY', 'WEEKEND']),
   body('notes').optional().trim().isLength({ min: 2, max: 200 })
 ], async (req, res) => {
@@ -677,7 +637,7 @@ router.get('/attendance/summary', async (req, res) => {
 // PAYROLL CALCULATION
 
 // Calculate payroll for a month
-router.post('/payroll/calculate', allowPayrollWrite, [
+router.post('/payroll/calculate', authorizePermission('PAYROLL_WRITE'), [
   body('center_id').isInt(),
   body('month').isInt({ min: 1, max: 12 }),
   body('year').isInt({ min: 2020, max: 2100 }),
@@ -854,7 +814,7 @@ router.post('/payroll/calculate', allowPayrollWrite, [
 });
 
 // ── POST /payroll/approve ─ Approve payroll run and post Finance JE ───────────
-router.post('/payroll/approve', allowPayrollApprove, [
+router.post('/payroll/approve', authorizePermission('PAYROLL_APPROVE'), [
   body('center_id').isInt(),
   body('month').isInt({ min: 1, max: 12 }),
   body('year').isInt({ min: 2020, max: 2100 }),
@@ -1083,7 +1043,7 @@ router.get('/leave-balances', async (req, res) => {
 });
 
 // ── POST /leave-balances/init ── Initialise yearly balances for all employees ─
-router.post('/leave-balances/init', allowEmployeeWrite, async (req, res) => {
+router.post('/leave-balances/init', authorizePermission('EMPLOYEE_WRITE'), async (req, res) => {
   try {
     const { year = new Date().getFullYear() } = req.body;
     const result = await pool.query(
@@ -1139,7 +1099,7 @@ router.get('/leave-requests', async (req, res) => {
 });
 
 // ── POST /leave-requests ──────────────────────────────────────────────────────
-router.post('/leave-requests', allowLeaveApply, [
+router.post('/leave-requests', authorizePermission('LEAVE_APPLY'), [
   body('employee_id').isInt({ min: 1 }),
   body('leave_type_id').isInt({ min: 1 }),
   body('from_date').isDate(),
@@ -1185,7 +1145,7 @@ router.post('/leave-requests', allowLeaveApply, [
 });
 
 // ── PUT /leave-requests/:id/approve ──────────────────────────────────────────
-router.put('/leave-requests/:id/approve', allowLeaveApprove, async (req, res) => {
+router.put('/leave-requests/:id/approve', authorizePermission('LEAVE_APPROVE'), async (req, res) => {
   try {
     const { id } = req.params;
     const lr = await pool.query(
@@ -1240,7 +1200,7 @@ router.put('/leave-requests/:id/approve', allowLeaveApprove, async (req, res) =>
 });
 
 // ── PUT /leave-requests/:id/reject ────────────────────────────────────────────
-router.put('/leave-requests/:id/reject', allowLeaveApprove, [
+router.put('/leave-requests/:id/reject', authorizePermission('LEAVE_APPROVE'), [
   body('rejection_reason').trim().isLength({ min: 3, max: 500 }),
 ], async (req, res) => {
   const errs = validationResult(req);
@@ -1261,7 +1221,7 @@ router.put('/leave-requests/:id/reject', allowLeaveApprove, [
 });
 
 // ── PUT /leave-requests/:id/cancel ────────────────────────────────────────────
-router.put('/leave-requests/:id/cancel', allowLeaveApply, async (req, res) => {
+router.put('/leave-requests/:id/cancel', authorizePermission('LEAVE_APPLY'), async (req, res) => {
   try {
     const { id } = req.params;
     const lr = await pool.query(
