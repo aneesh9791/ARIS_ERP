@@ -10,6 +10,22 @@ const router = express.Router();
 const HR_WRITE      = ['SUPER_ADMIN', 'CENTER_MANAGER', 'HR_MANAGER'];
 const PAYROLL_ADMIN = ['SUPER_ADMIN', 'CENTER_MANAGER'];
 
+/**
+ * Compute contractual working days in a given month for an employee.
+ * weeklyOffs: 0 = all 7 days work, 1 = Sunday off, 2 = Saturday+Sunday off
+ */
+function computeWorkingDays(year, month, weeklyOffs = 1) {
+  let count = 0;
+  const d = new Date(year, month - 1, 1);
+  while (d.getMonth() === month - 1) {
+    const dow = d.getDay(); // 0=Sun, 6=Sat
+    const isOff = (weeklyOffs >= 1 && dow === 0) || (weeklyOffs >= 2 && dow === 6);
+    if (!isOff) count++;
+    d.setDate(d.getDate() + 1);
+  }
+  return count || 26;
+}
+
 // Allows HR_WRITE roles OR users with LEAVE_APPLY permission
 const allowLeaveApply = (req, res, next) => {
   const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
@@ -156,15 +172,18 @@ router.post('/employees', authorize(HR_WRITE), [
     // Generate employee ID
     const employeeId = 'EMP' + Date.now().toString(36).substr(2, 9).toUpperCase();
 
+    const { weekly_offs = 1 } = req.body;
+
     const query = `
       INSERT INTO employees (
         employee_id, employee_code, name, email, phone, department, position,
         department_id, designation_id, employment_type,
         center_id, basic_salary, bank_account_number, bank_name, ifsc_code,
         pan_number, aadhaar_number, date_of_birth, date_of_joining, address,
-        emergency_contact_name, emergency_contact_phone, notes, created_at, updated_at, active
+        emergency_contact_name, emergency_contact_phone, notes, weekly_offs,
+        created_at, updated_at, active
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
         NOW(), NOW(), true
       )
     `;
@@ -175,7 +194,7 @@ router.post('/employees', authorize(HR_WRITE), [
       department_id || null, designation_id || null, employment_type,
       center_id, basic_salary, bank_account_number, bank_name, ifsc_code,
       pan_number, aadhaar_number, date_of_birth, date_of_joining, address,
-      emergency_contact_name, emergency_contact_phone, notes,
+      emergency_contact_name, emergency_contact_phone, notes, parseInt(weekly_offs) || 1,
     ]);
 
     logger.info(`Employee created: ${name} (${employee_code})`);
@@ -252,6 +271,7 @@ router.put('/employees/:id', authorize(HR_WRITE), [
       pan_number, aadhaar_number,
       date_of_birth, date_of_joining, address,
       emergency_contact_name, emergency_contact_phone, notes,
+      weekly_offs = 1,
     } = req.body;
 
     const existingEmployee = await pool.query(
@@ -267,15 +287,15 @@ router.put('/employees/:id', authorize(HR_WRITE), [
         center_id=$9, basic_salary=$10, bank_account_number=$11, bank_name=$12,
         ifsc_code=$13, pan_number=$14, aadhaar_number=$15, date_of_birth=$16,
         date_of_joining=$17, address=$18, emergency_contact_name=$19,
-        emergency_contact_phone=$20, notes=$21, updated_at=NOW()
-      WHERE id=$22 AND active=true`,
+        emergency_contact_phone=$20, notes=$21, weekly_offs=$22, updated_at=NOW()
+      WHERE id=$23 AND active=true`,
       [
         name, email, phone, department || '', position || '',
         department_id || null, designation_id || null, employment_type,
         center_id, basic_salary, bank_account_number, bank_name,
         ifsc_code, pan_number, aadhaar_number, date_of_birth,
         date_of_joining, address, emergency_contact_name,
-        emergency_contact_phone, notes, id,
+        emergency_contact_phone, notes, parseInt(weekly_offs) || 1, id,
       ]
     );
 
@@ -674,19 +694,9 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
 
     const employeesResult = await pool.query(employeesQuery, [month, year, center_id]);
 
-    // Calculate actual working days in the month (exclude Sat/Sun)
-    const workingDaysInMonth = (() => {
-      let count = 0;
-      const d = new Date(year, month - 1, 1);
-      while (d.getMonth() === month - 1) {
-        const dow = d.getDay();
-        if (dow !== 0 && dow !== 6) count++;
-        d.setDate(d.getDate() + 1);
-      }
-      return count || 22;
-    })();
-
     const payrollCalculations = employeesResult.rows.map(employee => {
+      // Working days = total days in month minus contracted weekly-off days
+      const workingDaysInMonth = computeWorkingDays(year, month, parseInt(employee.weekly_offs ?? 1));
       const basicSalary = parseFloat(employee.basic_salary) * basic_salary_multiplier;
       const hra = basicSalary * (hra_percentage / 100);
       const da = basicSalary * (da_percentage / 100);
