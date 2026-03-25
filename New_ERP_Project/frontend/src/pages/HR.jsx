@@ -356,7 +356,7 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
         : await api('/api/payroll/employees', { method: 'POST', body: JSON.stringify(body) });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        setErr(d.message || d.error || 'Save failed');
+        setErr(d.message || d.error || d.errors?.[0]?.msg || 'Save failed');
       } else {
         onSaved(isEdit ? 'updated' : 'created');
       }
