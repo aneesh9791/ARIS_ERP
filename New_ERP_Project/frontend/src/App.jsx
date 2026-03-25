@@ -37,7 +37,6 @@ import RoleManagement from './pages/Settings/RoleManagement';
 import MWLGatewaySettings from './pages/Settings/MWLGatewaySettings';
 import PatientHistory from './pages/PatientHistory';
 import Layout from './components/Layout';
-import RouteTestPage from './RouteTestPage';
 
 // Permission-gated route — redirects to /dashboard if user lacks the required permission
 const ProtectedRoute = ({ element, permission }) => {
@@ -76,7 +75,6 @@ function App() {
             }}
           />
           <Routes>
-            <Route path="/test-routes" element={<RouteTestPage />} />
             <Route path="/login" element={<Login />} />
             <Route
               path="/"
