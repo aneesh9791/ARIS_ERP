@@ -35,6 +35,7 @@ import SimpleSettingsPage from './pages/Settings/SimpleSettingsPage';
 import UserManagement from './pages/Settings/UserManagement';
 import RoleManagement from './pages/Settings/RoleManagement';
 import MWLGatewaySettings from './pages/Settings/MWLGatewaySettings';
+import AuditLog from './pages/Settings/AuditLog';
 import PatientHistory from './pages/PatientHistory';
 import Layout from './components/Layout';
 
@@ -103,6 +104,7 @@ function App() {
               <Route path="settings/users"   element={<ProtectedRoute permission="USER_CREATE"           element={<UserManagement />} />} />
               <Route path="settings/roles"   element={<ProtectedRoute permission="USER_ASSIGN_ROLE"      element={<RoleManagement />} />} />
               <Route path="settings/mwl"     element={<ProtectedRoute permission="MWL_VIEW"              element={<MWLGatewaySettings />} />} />
+              <Route path="settings/audit"   element={<ProtectedRoute permission="USER_CREATE"            element={<AuditLog />} />} />
               <Route path="centers"          element={<ProtectedRoute permission="CENTER_VIEW"           element={<Centers />} />} />
               <Route path="customers"        element={<ProtectedRoute permission="PATIENT_VIEW"          element={<Customers />} />} />
               <Route path="billing"          element={<ProtectedRoute permission="BILLING_VIEW"          element={<Billing />} />} />

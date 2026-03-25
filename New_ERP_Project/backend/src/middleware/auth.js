@@ -53,6 +53,13 @@ const authenticateToken = async (req, res, next) => {
     }
 
     req.user = userResult.rows[0];
+
+    // Helper routes can call inside a transaction: await req.setAuditUser(client)
+    // Sets a session-level variable the fn_audit_trail trigger reads to capture user_id
+    req.setAuditUser = async (client) => {
+      await client.query(`SELECT set_config('app.current_user_id', $1::text, true)`, [req.user.id]);
+    };
+
     next();
   } catch (error) {
     logger.error('Authentication error:', error);
