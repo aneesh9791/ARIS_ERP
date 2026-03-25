@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { today } from '../utils/serverDate';
+import { getPermissions } from '../utils/permissions';
 
 // ── Helpers ────────────────────────────────────────────────────
 const token = () => localStorage.getItem('token');

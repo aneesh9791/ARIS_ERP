@@ -2152,8 +2152,16 @@ async function postReporterPayableJE({ reporter, rate, bill, studyId, examDate }
     const narration = `Reporter fee: ${reporter.radiologist_code} | ${bill.invoice_number || bill.id}`;
 
     // RCM applies only when reporter is TELERADIOLOGY AND has a GST number (registered supplier)
+    // Look up gst_number from DB only for TELERADIOLOGY — individual radiologists never need it
+    let reporterGstNumber = reporter.gst_number || null;
+    if ((reporter.reporter_type || '').toUpperCase() === 'TELERADIOLOGY' && !reporterGstNumber && reporter.id) {
+      const { rows: [rm] } = await pool.query(
+        `SELECT gst_number FROM radiologist_master WHERE id = $1`, [reporter.id]
+      );
+      reporterGstNumber = rm?.gst_number || null;
+    }
     const isTeleRadForRCM = (reporter.reporter_type || '').toUpperCase() === 'TELERADIOLOGY'
-      && reporter.gst_number;
+      && reporterGstNumber;
 
     // RCM GST for tele-radiology: 18% IGST under reverse charge
     // DR ITC Input (1134) / CR IGST Payable (2123)
