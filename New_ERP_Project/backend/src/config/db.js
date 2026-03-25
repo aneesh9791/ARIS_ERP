@@ -14,7 +14,7 @@ const pool = new Pool({
   keepAliveInitialDelayMillis: 10000,
 });
 pool.on('error', (err) => {
-  try { require('./logger').logger.error('Unexpected DB pool error', err); }
-  catch (_) { console.error('Unexpected DB pool error', err.message); }
+  // Idle client error — log and continue; do NOT throw (would crash Node)
+  console.error('DB pool idle client error:', err.message);
 });
 module.exports = pool;
