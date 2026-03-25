@@ -9,6 +9,7 @@ const { authorizePermission } = require('../middleware/auth');
 const router = express.Router();
 
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS) || 12;
+const PRIVILEGED_ROLES = ['SUPER_ADMIN', 'superadmin', 'CENTER_MANAGER', 'admin'];
 
 // ── GET /api/users ─────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
