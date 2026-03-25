@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getPermissions } from '../utils/permissions';
+
+const hasPermission = p => (getPermissions() || []).includes(p);
 
 const token = () => localStorage.getItem('token');
 const api = (path, opts = {}) => fetch(path, {
@@ -321,6 +324,7 @@ const UpdateStatusModal = ({ bill, onClose, onUpdated }) => {
 
               {/* Void section */}
               {!isVoided ? (
+                hasPermission('BILLING_REFUND') ? (
                 <div className="px-6 py-4">
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Void Bill</p>
                   <div className="grid grid-cols-2 gap-2">
@@ -336,6 +340,7 @@ const UpdateStatusModal = ({ bill, onClose, onUpdated }) => {
                     </button>
                   </div>
                 </div>
+                ) : null
               ) : (
                 <div className="px-6 py-4">
                   <div className="rounded-xl px-4 py-3 text-center" style={{ background: '#f1f5f9' }}>
