@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getPermissions } from '../utils/permissions';
 
 const AUTH_HEADER = () => {
   const token = localStorage.getItem('token');
@@ -42,6 +43,7 @@ const StatCard = ({ label, value, sub, color }) => (
 
 // ── Main component ────────────────────────────────────────────────────────────
 const Payroll = () => {
+  const { has } = getPermissions();
   const now = new Date();
   const [centers,       setCenters]       = useState([]);
   const [centerId,      setCenterId]      = useState('');
@@ -279,10 +281,12 @@ const Payroll = () => {
                   <h2 className="text-sm font-semibold text-gray-800">Step 1 — Calculate Payroll</h2>
                   <p className="text-xs text-gray-400 mt-0.5">Calculates gross, PF, ESI, PT for all active employees at selected center</p>
                 </div>
+                {has('PAYROLL_WRITE') && (
                 <button onClick={handleCalculate} disabled={calcLoading || !centerId}
                   className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
                   {calcLoading ? 'Calculating…' : 'Calculate'}
                 </button>
+                )}
               </div>
 
               {calcError && (
@@ -359,10 +363,12 @@ const Payroll = () => {
                     <h2 className="text-sm font-semibold text-gray-800">Step 2 — Approve & Post to GL</h2>
                     <p className="text-xs text-gray-400 mt-0.5">Posts journal entry: DR Salary Expense (by dept) / CR Salaries Payable</p>
                   </div>
+                  {has('PAYROLL_APPROVE') && (
                   <button onClick={handleApprove} disabled={approving}
                     className="px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50">
                     {approving ? 'Approving…' : 'Approve & Post JE'}
                   </button>
+                  )}
                 </div>
                 {approveError && (
                   <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{approveError}</p>

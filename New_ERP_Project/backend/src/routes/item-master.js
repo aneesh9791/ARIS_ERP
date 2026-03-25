@@ -4,11 +4,9 @@ const { body, validationResult } = require('express-validator');
 const pool          = require('../config/db');
 const { logger }    = require('../config/logger');
 const financeService = require('../services/financeService');
-const { authorize } = require('../middleware/auth');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-const ITEM_WRITE = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'PROCUREMENT_MANAGER'];
 
 const UOM_OPTIONS = ['PCS','BOX','BOTTLE','VIAL','ML','MG','GM','KG','LTR','ROLL','SHEET','PAIR','SET','PACKET','REAM','UNIT','HRS','SESSION','VISIT','MONTH','YEAR','CREDITS','STUDIES','SCANS'];
 
@@ -181,7 +179,7 @@ router.get('/center-config', async (req, res) => {
   } catch (e) { logger.error('center-config GET:', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-router.put('/center-config', authorize(ITEM_WRITE), async (req, res) => {
+router.put('/center-config', authorizePermission('INVENTORY_WRITE'), async (req, res) => {
   try {
     const { center_id, item_id, minimum_stock, reorder_level, is_active = true } = req.body;
     if (!center_id || !item_id) return res.status(400).json({ error: 'center_id and item_id required' });
@@ -203,7 +201,7 @@ router.put('/center-config', authorize(ITEM_WRITE), async (req, res) => {
   } catch (e) { logger.error('center-config PUT:', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-router.delete('/center-config/:center_id/:item_id', authorize(ITEM_WRITE), async (req, res) => {
+router.delete('/center-config/:center_id/:item_id', authorizePermission('INVENTORY_WRITE'), async (req, res) => {
   try {
     await pool.query(
       `DELETE FROM center_stock_config WHERE center_id=$1 AND item_id=$2`,
@@ -214,7 +212,7 @@ router.delete('/center-config/:center_id/:item_id', authorize(ITEM_WRITE), async
 });
 
 // ── POST /api/item-master ───────────────────────────────────────────────────
-router.post('/', authorize(ITEM_WRITE), itemValidators, async (req, res) => {
+router.post('/', authorizePermission('INVENTORY_WRITE'), itemValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   try {
@@ -258,7 +256,7 @@ router.post('/', authorize(ITEM_WRITE), itemValidators, async (req, res) => {
 });
 
 // ── PUT /api/item-master/:id ────────────────────────────────────────────────
-router.put('/:id', authorize(ITEM_WRITE), itemValidators, async (req, res) => {
+router.put('/:id', authorizePermission('INVENTORY_WRITE'), itemValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   try {
@@ -320,7 +318,7 @@ router.put('/:id', authorize(ITEM_WRITE), itemValidators, async (req, res) => {
 });
 
 // ── DELETE /api/item-master/:id ─────────────────────────────────────────────
-router.delete('/:id', authorize(ITEM_WRITE), async (req, res) => {
+router.delete('/:id', authorizePermission('INVENTORY_WRITE'), async (req, res) => {
   try {
     const result = await pool.query(
       `UPDATE item_master SET active=false, updated_at=NOW() WHERE id=$1 AND active=true RETURNING id`,
@@ -449,7 +447,7 @@ router.get('/stock-summary', async (req, res) => {
 
 // ── GET /api/item-master/center-config?center_id= ──────────────────────────────
 // POST /api/item-master/movements  — record stock-in or stock-out
-router.post('/movements', authorize(ITEM_WRITE), async (req, res) => {
+router.post('/movements', authorizePermission('INVENTORY_WRITE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

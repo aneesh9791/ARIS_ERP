@@ -3,9 +3,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const pool   = require('../config/db');
 const { logger } = require('../config/logger');
-const { authorize } = require('../middleware/auth');
-
-const CATEGORY_WRITE = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -114,7 +112,7 @@ router.get('/tree', async (req, res) => {
 });
 
 // ── POST /api/item-categories ─────────────────────────────────────────────────
-router.post('/', authorize(CATEGORY_WRITE), [
+router.post('/', authorizePermission('INVENTORY_WRITE'), [
   body('code').trim().isLength({ min: 1, max: 50 }).withMessage('Code is required'),
   body('name').trim().isLength({ min: 2, max: 200 }).withMessage('Name is required'),
   body('item_type').isIn(['STOCK','EXPENSE','FIXED_ASSET']).withMessage('item_type must be STOCK, EXPENSE or FIXED_ASSET'),
@@ -177,7 +175,7 @@ router.post('/', authorize(CATEGORY_WRITE), [
 });
 
 // ── PUT /api/item-categories/:id ──────────────────────────────────────────────
-router.put('/:id', authorize(CATEGORY_WRITE), [
+router.put('/:id', authorizePermission('INVENTORY_WRITE'), [
   body('name').optional().trim().isLength({ min: 2, max: 200 }),
   body('asset_gl_id').optional({ nullable: true }).custom(v => v === null || (Number.isInteger(Number(v)) && Number(v) >= 1)).withMessage('asset_gl_id must be a positive integer or null'),
   body('expense_gl_id').optional({ nullable: true }).custom(v => v === null || (Number.isInteger(Number(v)) && Number(v) >= 1)).withMessage('expense_gl_id must be a positive integer or null'),
@@ -249,7 +247,7 @@ router.put('/:id', authorize(CATEGORY_WRITE), [
 
 // ── DELETE /api/item-categories/:id ──────────────────────────────────────────
 // Soft delete — sets active=false
-router.delete('/:id', authorize(CATEGORY_WRITE), async (req, res) => {
+router.delete('/:id', authorizePermission('INVENTORY_WRITE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE item_categories SET active = false, updated_at = NOW()
