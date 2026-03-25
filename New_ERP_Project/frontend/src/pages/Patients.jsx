@@ -50,11 +50,7 @@ const PrintBill = ({ bill, patient, onClose }) => {
     const lgc = (() => { try { return JSON.parse(localStorage.getItem('logoConfig')) || {}; } catch { return {}; } })();
     const logoSrc = lgc.customLogo || co.logo_path || null;
 
-    const coNameRaw  = co.company_name || 'ARIS Healthcare';
-    const techIdx    = coNameRaw.toLowerCase().lastIndexOf('tech');
-    const coName     = techIdx > 0
-      ? `<span class="brand-main">${coNameRaw.slice(0, techIdx)}</span><span class="brand-suffix">${coNameRaw.slice(techIdx)}</span>`
-      : `<span class="brand-main">${coNameRaw}</span>`;
+    const coName     = co.company_name || 'ARIS Healthcare';
     const coAddr     = [co.address_line1, co.address_line2].filter(Boolean).join(', ');
     const coCityLine = [co.city, co.state, co.pincode].filter(Boolean).join(', ');
     const coTaxLine  = co.gstin ? `GSTIN: ${co.gstin}` : '';
@@ -83,9 +79,7 @@ const PrintBill = ({ bill, patient, onClose }) => {
       .hdr-left{flex:1}
       .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 16px}
       .co-info{display:flex;flex-direction:column;gap:2px}
-      .co-name{font-size:16px;color:#1e293b;line-height:1.2}
-      .co-name .brand-main{font-weight:900}
-      .co-name .brand-suffix{font-weight:400}
+      .co-name{font-size:16px;font-weight:800;color:#1e293b;line-height:1.2}
       .co-line{font-size:9px;color:#64748b;line-height:1.5}
       .co-tax{font-size:9px;color:#475569;font-weight:600}
       .hdr-right{text-align:right;flex-shrink:0;flex:1}
@@ -123,10 +117,8 @@ const PrintBill = ({ bill, patient, onClose }) => {
       .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:5px;padding:7px 11px;margin-bottom:12px;font-size:10px;color:#134e4a}
 
       /* Terms */
-      .terms-box{border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:18px;font-size:9px;color:#94a3b8}
-      .terms-box b{color:#64748b;display:block;margin-bottom:4px}
-      .terms-line{padding:2px 0;line-height:1.5;display:flex;gap:6px}
-      .terms-line .term-num{flex-shrink:0;color:#64748b;font-weight:600}
+      .terms-box{border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:18px;font-size:9px;color:#94a3b8;line-height:1.6}
+      .terms-box b{color:#64748b}
 
       /* Footer band */
       .ftr-band{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);border-top:3px solid #0f766e;padding:6px 14mm;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:rgba(255,255,255,0.9)}
@@ -141,7 +133,7 @@ const PrintBill = ({ bill, patient, onClose }) => {
       <div class="hdr">
         <div class="hdr-left">
           <div class="co-info">
-            ${logoSrc ? `<img src="${logoSrc}" style="max-height:56px;max-width:180px;object-fit:contain;margin-bottom:6px;" />` : `<div class="co-name">${coName}</div>`}
+            <div class="co-name">${coName}</div>
             ${coAddr     ? `<div class="co-line">${coAddr}</div>` : ''}
             ${coCityLine ? `<div class="co-line">${coCityLine}</div>` : ''}
             ${coTaxLine  ? `<div class="co-tax">${coTaxLine}</div>` : ''}
@@ -149,15 +141,7 @@ const PrintBill = ({ bill, patient, onClose }) => {
           </div>
         </div>
         <div class="hdr-center">
-          <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-            <div style="width:52px;height:52px;border-radius:50%;border:2px solid #0d9488;background:#f0fdfa;display:flex;align-items:center;justify-content:center">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="#f59e0b" aria-hidden="true"><circle cx="12" cy="6.5" r="3"/><path d="M12 12c-4.418 0-7.5 2.015-7.5 3.5V17h15v-1.5C19.5 14.015 16.418 12 12 12z"/></svg>
-            </div>
-            <div style="text-align:center;line-height:1.2">
-              <div style="font-size:20px;font-weight:900;color:#0f766e;letter-spacing:-0.5px">ARIS</div>
-              <div style="font-size:9px;font-weight:600"><span style="color:#f59e0b">Diagnostic</span> <span style="color:#0d9488">Centre</span></div>
-            </div>
-          </div>
+          ${logoSrc ? `<img src="${logoSrc}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
         </div>
         <div class="hdr-right">
           <div class="inv-title">INVOICE</div>
@@ -196,11 +180,7 @@ const PrintBill = ({ bill, patient, onClose }) => {
 
         ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${bill.notes}</div>` : ''}
 
-        ${termsText ? `<div class="terms-box"><b>Terms &amp; Conditions:</b>${
-          termsText.split(/\r?\n/).filter(l => l.trim()).map((l, i) =>
-            `<div class="terms-line"><span class="term-num">${i + 1}.</span><span>${l.trim()}</span></div>`
-          ).join('')
-        }</div>` : ''}
+        ${termsText ? `<div class="terms-box"><b>Terms &amp; Conditions:</b><br>${termsText}</div>` : ''}
 
       </div>
 
