@@ -28,6 +28,13 @@ const allowLeaveApply = (req, res, next) => {
   return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
 };
 
+// Allows HR_WRITE roles OR users with LEAVE_APPROVE permission
+const allowLeaveApprove = (req, res, next) => {
+  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+  if (HR_WRITE.includes(req.user?.role) || perms.includes('ALL_ACCESS') || perms.includes('LEAVE_APPROVE')) return next();
+  return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
+};
+
 // EMPLOYEE MASTER AND PAYROLL MODULE
 
 // Get all employees
@@ -1156,7 +1163,7 @@ router.post('/leave-requests', allowLeaveApply, [
 });
 
 // ── PUT /leave-requests/:id/approve ──────────────────────────────────────────
-router.put('/leave-requests/:id/approve', authorize(HR_WRITE), async (req, res) => {
+router.put('/leave-requests/:id/approve', allowLeaveApprove, async (req, res) => {
   try {
     const { id } = req.params;
     const lr = await pool.query(
@@ -1211,7 +1218,7 @@ router.put('/leave-requests/:id/approve', authorize(HR_WRITE), async (req, res) 
 });
 
 // ── PUT /leave-requests/:id/reject ────────────────────────────────────────────
-router.put('/leave-requests/:id/reject', authorize(HR_WRITE), [
+router.put('/leave-requests/:id/reject', allowLeaveApprove, [
   body('rejection_reason').trim().isLength({ min: 3, max: 500 }),
 ], async (req, res) => {
   const errs = validationResult(req);

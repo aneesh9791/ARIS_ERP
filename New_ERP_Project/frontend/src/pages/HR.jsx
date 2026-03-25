@@ -66,7 +66,7 @@ const STATUS_CFG = {
   PAID:     { bg: '#ede9fe', color: '#5b21b6', label: 'Paid' },
 };
 
-const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white appearance-none text-slate-700';
+const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white appearance-none text-slate-700';
 const labelCls = 'block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide';
 
 const Badge = ({ status, customLabel }) => {
@@ -94,8 +94,8 @@ const Toast = ({ msg, type }) => {
   };
   const s = styles[type] || styles.info;
   return (
-    <div className="fixed top-4 right-4 z-[200] px-5 py-3 rounded-xl shadow-lg text-sm font-semibold border"
-      style={{ background: s.bg, color: s.color, borderColor: s.border, minWidth: 260 }}>
+    <div className="fixed top-3 left-3 right-3 sm:left-auto sm:right-4 sm:top-4 z-[200] px-4 sm:px-5 py-3 rounded-xl shadow-lg text-sm font-semibold border sm:min-w-[260px]"
+      style={{ background: s.bg, color: s.color, borderColor: s.border }}>
       {msg}
     </div>
   );
@@ -119,13 +119,13 @@ const KpiCard = ({ label, value, sub, color = '#0d9488', icon }) => (
 
 // ── Modal wrapper ──────────────────────────────────────────────
 const Modal = ({ title, onClose, children, wide }) => (
-  <div className="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4">
+  <div className="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 overflow-y-auto py-4 sm:py-8 px-2 sm:px-4">
     <div className={`bg-white rounded-2xl shadow-2xl w-full ${wide ? 'max-w-4xl' : 'max-w-2xl'} relative`}>
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-        <h3 className="font-bold text-slate-800 text-base">{title}</h3>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold leading-none">×</button>
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100">
+        <h3 className="font-bold text-slate-800 text-sm sm:text-base">{title}</h3>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl font-bold leading-none w-8 h-8 flex items-center justify-center">×</button>
       </div>
-      <div className="px-6 py-5">{children}</div>
+      <div className="px-4 sm:px-6 py-4 sm:py-5">{children}</div>
     </div>
   </div>
 );
@@ -287,11 +287,11 @@ const EmpSection = ({ title, children }) => (
       <h4 className="text-xs font-bold text-teal-700 uppercase tracking-widest">{title}</h4>
       <div className="flex-1 h-px bg-teal-50" />
     </div>
-    <div className="grid grid-cols-3 gap-x-4 gap-y-3">{children}</div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">{children}</div>
   </div>
 );
 
-const SPAN_CLS = { 1: '', 2: 'col-span-2', 3: 'col-span-3' };
+const SPAN_CLS = { 1: '', 2: 'sm:col-span-2', 3: 'sm:col-span-2 lg:col-span-3' };
 // span: 1 (default) | 2 | 3 (full row)
 const EmpFLD = ({ label, fkey, type = 'text', span = 1, maxLength, form, onChange }) => (
   <div className={SPAN_CLS[span] || ''}>
@@ -304,38 +304,61 @@ const EmpFLD = ({ label, fkey, type = 'text', span = 1, maxLength, form, onChang
 // 3-dropdown date picker — avoids native browser date input inconsistencies
 // Value is always YYYY-MM-DD string or ''
 const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const parseDateVal = v => {
+  if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [y, m, d] = v.split('-');
+    return { y: parseInt(y), m: parseInt(m), d: parseInt(d) };
+  }
+  return { y: '', m: '', d: '' };
+};
 const DateInput = ({ label, value, onChange, minYear, maxYear, span = 1 }) => {
   const now = new Date();
-  const [y, m, d] = value ? value.split('-') : ['', '', ''];
-  const year  = y ? parseInt(y, 10)  : '';
-  const month = m ? parseInt(m, 10)  : '';
-  const day   = d ? parseInt(d, 10)  : '';
+  const init = parseDateVal(value);
+  const [iY, setIY] = useState(init.y);
+  const [iM, setIM] = useState(init.m);
+  const [iD, setID] = useState(init.d);
+
+  // Sync when external value changes (e.g. edit employee loads saved date)
+  useEffect(() => {
+    const p = parseDateVal(value);
+    setIY(p.y); setIM(p.m); setID(p.d);
+  }, [value]);
 
   const minY = minYear || 1950;
   const maxY = maxYear || now.getFullYear();
   const years = Array.from({ length: maxY - minY + 1 }, (_, i) => maxY - i);
-  const daysInMonth = (year && month) ? new Date(year, month, 0).getDate() : 31;
+  const daysInMonth = (iY && iM) ? new Date(iY, iM, 0).getDate() : 31;
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  const emit = (ny, nm, nd) => {
-    if (ny && nm && nd) onChange(`${ny}-${String(nm).padStart(2,'0')}-${String(nd).padStart(2,'0')}`);
-    else onChange('');
+  const notify = (y, m, d) => {
+    if (y && m && d) onChange(`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
   };
+  const onY = v => { const y = +v; setIY(y); notify(y, iM, iD); };
+  const onM = v => {
+    const m = +v;
+    setIM(m);
+    // Clamp day if it exceeds new month's max
+    const max = new Date(iY || now.getFullYear(), m, 0).getDate();
+    const nd = iD > max ? '' : iD;
+    setID(nd);
+    notify(iY, m, nd);
+  };
+  const onD = v => { const d = +v; setID(d); notify(iY, iM, d); };
 
-  const sel = 'border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white text-slate-700';
+  const sel = 'border border-slate-200 rounded-lg px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white text-slate-700 appearance-none';
   return (
     <div className={SPAN_CLS[span] || ''}>
       <label className={labelCls}>{label}</label>
       <div className="flex gap-1.5">
-        <select value={day} onChange={e => emit(year, month, +e.target.value)} className={sel + ' w-20'}>
+        <select value={iD} onChange={e => onD(e.target.value)} className={sel + ' w-20'}>
           <option value="">DD</option>
           {days.map(n => <option key={n} value={n}>{String(n).padStart(2,'0')}</option>)}
         </select>
-        <select value={month} onChange={e => emit(year, +e.target.value, day)} className={sel + ' flex-1'}>
+        <select value={iM} onChange={e => onM(e.target.value)} className={sel + ' flex-1'}>
           <option value="">Month</option>
           {MONTHS_FULL.map((mn, i) => <option key={i+1} value={i+1}>{mn}</option>)}
         </select>
-        <select value={year} onChange={e => emit(+e.target.value, month, day)} className={sel + ' w-24'}>
+        <select value={iY} onChange={e => onY(e.target.value)} className={sel + ' w-24'}>
           <option value="">YYYY</option>
           {years.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
@@ -489,7 +512,7 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
 
         {/* ── Bank Details ── */}
         <EmpSection title="Bank Details">
-          <div className="col-span-3">
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className={labelCls}>Bank Name *</label>
             <select value={form.bank_name || ''} onChange={e => set('bank_name', e.target.value)} className={inputCls}>
               <option value="">— Select Bank —</option>
@@ -595,14 +618,14 @@ function EmployeesTab({ openAdd, onAddHandled, centerId = '' }) {
       <Toast msg={toast.msg} type={toast.type} />
 
       {/* Top bar */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4 sm:mb-5">
         <input placeholder="Search by name, code, email…" value={search} onChange={e => setSearch(e.target.value)}
           className={inputCls + ' max-w-xs'} />
-        <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className={inputCls + ' w-44'}>
+        <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className={inputCls + ' w-full sm:w-44'}>
           <option value="">All Departments</option>
           {depts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
         </select>
-        <select value={centerFilter} onChange={e => setCenterFilter(e.target.value)} className={inputCls + ' w-40'}>
+        <select value={centerFilter} onChange={e => setCenterFilter(e.target.value)} className={inputCls + ' w-full sm:w-40'}>
           <option value="">All Centers</option>
           {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -845,14 +868,14 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
       <Toast msg={toast.msg} type={toast.type} />
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <select value={month} onChange={e => setMonth(+e.target.value)} className={inputCls + ' w-32'}>
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4 sm:mb-5">
+        <select value={month} onChange={e => setMonth(+e.target.value)} className={inputCls + ' w-full sm:w-32'}>
           {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
-        <select value={year} onChange={e => setYear(+e.target.value)} className={inputCls + ' w-24'}>
+        <select value={year} onChange={e => setYear(+e.target.value)} className={inputCls + ' w-full sm:w-24'}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <select value={centerFilter} onChange={e => setCenterFilter(e.target.value)} className={inputCls + ' w-40'}>
+        <select value={centerFilter} onChange={e => setCenterFilter(e.target.value)} className={inputCls + ' w-full sm:w-40'}>
           <option value="">All Centers</option>
           {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -922,7 +945,7 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
                                   onClick={() => markCell(emp, d)}
                                   disabled={future || busy}
                                   title={st ? `${ATT_DOT[st]?.title} — click to change` : (future ? 'Future date' : 'Not marked — click to mark')}
-                                  className="inline-block w-6 h-6 rounded-md transition-all hover:scale-110 disabled:opacity-30 disabled:cursor-default focus:outline-none focus:ring-1 focus:ring-teal-400"
+                                  className="inline-block w-8 h-8 sm:w-6 sm:h-6 rounded-md transition-all hover:scale-110 disabled:opacity-30 disabled:cursor-default focus:outline-none focus:ring-1 focus:ring-teal-400"
                                   style={{ background: busy ? '#e2e8f0' : st ? ATT_DOT[st].bg : future ? '#f8fafc' : '#f1f5f9' }}
                                 />
                               </td>
@@ -1283,13 +1306,13 @@ function PayrollTab({ centerId = '' }) {
         <div className="flex flex-wrap gap-3">
           <div>
             <label className={labelCls}>Month</label>
-            <select value={month} onChange={e => { setMonth(+e.target.value); setCalculations(null); }} className={inputCls + ' w-32'}>
+            <select value={month} onChange={e => { setMonth(+e.target.value); setCalculations(null); }} className={inputCls + ' w-full sm:w-32'}>
               {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
             </select>
           </div>
           <div>
             <label className={labelCls}>Year</label>
-            <select value={year} onChange={e => { setYear(+e.target.value); setCalculations(null); }} className={inputCls + ' w-24'}>
+            <select value={year} onChange={e => { setYear(+e.target.value); setCalculations(null); }} className={inputCls + ' w-full sm:w-24'}>
               {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
@@ -1356,7 +1379,7 @@ function PayrollTab({ centerId = '' }) {
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">Payroll Breakdown</h3>
             {calcSummary && (
-              <div className="flex gap-4 text-xs">
+              <div className="flex flex-wrap gap-2 sm:gap-4 text-xs">
                 <span className="text-slate-500">Total Employees: <strong className="text-slate-800">{calcSummary.total_employees}</strong></span>
                 <span className="text-slate-500">Total Gross: <strong className="text-teal-700">{fmt(calcSummary.total_gross)}</strong></span>
                 <span className="text-slate-500">Total Net: <strong className="text-green-700">{fmt(calcSummary.total_net)}</strong></span>
@@ -1599,15 +1622,15 @@ function LeaveTab({ centerId = '' }) {
       <Toast msg={toast.msg} type={toast.type} />
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={inputCls + ' w-36'}>
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4 sm:mb-5">
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={inputCls + ' w-full sm:w-36'}>
           <option value="">All Status</option>
           <option value="PENDING">Pending</option>
           <option value="APPROVED">Approved</option>
           <option value="REJECTED">Rejected</option>
           <option value="CANCELLED">Cancelled</option>
         </select>
-        <select value={empFilter} onChange={e => setEmpFilter(e.target.value)} className={inputCls + ' w-52'}>
+        <select value={empFilter} onChange={e => setEmpFilter(e.target.value)} className={inputCls + ' w-full sm:w-52'}>
           <option value="">All Employees</option>
           {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
@@ -1705,7 +1728,7 @@ function LeaveTab({ centerId = '' }) {
                 {leaveTypes.map(lt => <option key={lt.id} value={lt.id}>{lt.name} ({lt.days_per_year} days/yr)</option>)}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <DateInput label="From *" value={applyForm.from_date} onChange={v => setAF('from_date', v)} minYear={new Date().getFullYear() - 1} maxYear={new Date().getFullYear() + 1} />
               <DateInput label="To *" value={applyForm.to_date} onChange={v => setAF('to_date', v)} minYear={new Date().getFullYear() - 1} maxYear={new Date().getFullYear() + 1} />
             </div>
@@ -1795,27 +1818,27 @@ export default function HR() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Page Header */}
-      <div className="px-6 pt-4 pb-0"
+      <div className="px-3 sm:px-6 pt-3 sm:pt-4 pb-0"
         style={{ background: 'linear-gradient(135deg,#1e3a5f 0%,#0f766e 60%,#0d9488 100%)' }}>
         <div className="max-w-screen-xl mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center justify-between mb-3 gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </div>
-              <div>
-                <h1 className="text-lg font-bold text-white tracking-tight">Human Resource Management</h1>
-                <p className="text-teal-200 text-xs mt-0.5">Employees · Attendance · Leave · Payroll</p>
+              <div className="min-w-0">
+                <h1 className="text-sm sm:text-lg font-bold text-white tracking-tight truncate">HR Management</h1>
+                <p className="text-teal-200 text-xs mt-0.5 hidden sm:block">Employees · Attendance · Leave · Payroll</p>
               </div>
             </div>
             {isCorp && (
               <select
                 value={centerId}
                 onChange={e => setCenterId(e.target.value)}
-                className="bg-white/15 text-white border border-white/30 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-white/40 min-w-[200px] cursor-pointer">
+                className="bg-white/15 text-white border border-white/30 rounded-xl px-2 sm:px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-white/40 w-32 sm:min-w-[200px] cursor-pointer flex-shrink-0">
                 <option value="">All Centers</option>
                 {centers.filter(c => c.active !== false).map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -1824,11 +1847,11 @@ export default function HR() {
             )}
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-1">
+          {/* Tabs — horizontal scroll on mobile */}
+          <div className="flex gap-0.5 overflow-x-auto pb-0 scrollbar-hide">
             {TABS.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className="px-5 py-2 text-sm font-semibold rounded-t-xl transition-all"
+                className="px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-t-xl transition-all whitespace-nowrap flex-shrink-0"
                 style={activeTab === tab.id
                   ? { background: '#f8fafc', color: '#0d9488' }
                   : { background: 'transparent', color: 'rgba(255,255,255,0.75)' }}>
@@ -1840,7 +1863,7 @@ export default function HR() {
       </div>
 
       {/* Tab content */}
-      <div className="max-w-screen-xl mx-auto px-6 py-6">
+      <div className="max-w-screen-xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
         {activeTab === 'dashboard'  && <DashboardTab onTabSwitch={switchTab} />}
         {activeTab === 'employees'  && (
           <EmployeesTab

@@ -55,7 +55,9 @@ module.exports = {
   },
   safelist: [
     'col-span-2', 'col-span-3',
+    'sm:col-span-2', 'lg:col-span-3',
     'grid-cols-2', 'grid-cols-3', 'grid-cols-4', 'grid-cols-6',
+    'sm:grid-cols-2', 'lg:grid-cols-3',
   ],
   plugins: [],
 }
