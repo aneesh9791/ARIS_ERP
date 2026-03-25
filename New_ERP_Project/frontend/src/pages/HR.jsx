@@ -401,9 +401,6 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
   const onDeptChange = (deptId) => {
     const dept = depts.find(d => d.id == deptId);
     setForm(f => ({ ...f, department_id: deptId, department: dept?.name || '' }));
-    // Reload designations for this department
-    api(`/api/payroll/designations${deptId ? `?department_id=${deptId}` : ''}`)
-      .then(r => r.ok ? r.json() : { designations: [] }).then(d => setDesigs(d.designations || []));
   };
 
   const onDesigChange = (desigId) => {
