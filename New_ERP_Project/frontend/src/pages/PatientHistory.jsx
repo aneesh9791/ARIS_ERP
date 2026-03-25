@@ -40,9 +40,10 @@ const printInvoice = (bill, items) => {
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;color:#1e293b;background:#fff}
     .page{width:210mm;min-height:297mm;margin:auto;padding:18mm 14mm}
-    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0d9488;padding-bottom:14px;margin-bottom:20px}
-    .brand{display:flex;align-items:center;gap:12px}
-    .brand img{height:52px;width:auto}
+    .hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0d9488;padding-bottom:14px;margin-bottom:20px}
+    .hdr-left{flex:1}
+    .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 16px}
+    .hdr-right{flex:1;text-align:right}
     .co-name{font-size:20px;font-weight:700}
     .co-sub{font-size:11px;color:#64748b;margin-top:2px}
     .inv-title{font-size:22px;font-weight:800;color:#0d9488;text-align:right}
@@ -62,15 +63,16 @@ const printInvoice = (bill, items) => {
     .badge.pending{background:#fef3c7;color:#92400e}
   </style></head><body><div class="page">
   <div class="hdr">
-    <div class="brand">
-      ${logo.customLogo ? `<img src="${logo.customLogo}" alt="logo"/>` : ''}
-      <div>
-        <div class="co-name">${co.company_name || 'ARIS Healthcare'}</div>
-        ${co.address_line1 ? `<div class="co-sub">${co.address_line1}${co.city ? ', ' + co.city : ''}</div>` : ''}
-        ${co.phone ? `<div class="co-sub">Ph: ${co.phone}${co.gstin ? ' | GSTIN: ' + co.gstin : ''}</div>` : ''}
-      </div>
+    <div class="hdr-left">
+      <div class="co-name">${co.company_name || 'ARIS Healthcare'}</div>
+      ${co.address_line1 ? `<div class="co-sub">${co.address_line1}${co.city ? ', ' + co.city : ''}</div>` : ''}
+      ${co.phone ? `<div class="co-sub">Ph: ${co.phone}</div>` : ''}
+      ${co.gstin ? `<div class="co-sub" style="font-weight:600;color:#475569">GSTIN: ${co.gstin}</div>` : ''}
     </div>
-    <div>
+    <div class="hdr-center">
+      ${logo.customLogo ? `<img src="${logo.customLogo}" alt="logo" style="max-height:64px;max-width:160px;object-fit:contain;"/>` : ''}
+    </div>
+    <div class="hdr-right">
       <div class="inv-title">INVOICE</div>
       <div class="inv-meta">
         <b>Bill #:</b> ${bill.invoice_number || '—'}<br>

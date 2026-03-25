@@ -53,11 +53,7 @@ const PrintBill = ({ bill, patient, onClose }) => {
     const coName     = co.company_name || 'ARIS Healthcare';
     const coAddr     = [co.address_line1, co.address_line2].filter(Boolean).join(', ');
     const coCityLine = [co.city, co.state, co.pincode].filter(Boolean).join(', ');
-    const coTaxLine  = [
-      co.gstin      ? `GSTIN: ${co.gstin}`       : '',
-      co.pan_number ? `PAN: ${co.pan_number}`     : '',
-      co.tan        ? `TAN: ${co.tan}`            : '',
-    ].filter(Boolean).join('  |  ');
+    const coTaxLine  = co.gstin ? `GSTIN: ${co.gstin}` : '';
     const coContact  = [co.phone ? `Ph: ${co.phone}` : '', co.email || ''].filter(Boolean).join('  |  ');
 
     const billHeader = co.bill_header_text || '';
@@ -79,13 +75,14 @@ const PrintBill = ({ bill, patient, onClose }) => {
       .hdr-band{background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);color:#fff;text-align:center;padding:7px 14mm;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border-bottom:3px solid #0f766e}
 
       /* Main header */
-      .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 14mm 10px;border-bottom:3px solid ${AC}}
-      .hdr-left{display:flex;align-items:center;gap:12px}
+      .hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 14mm 10px;border-bottom:3px solid ${AC}}
+      .hdr-left{flex:1}
+      .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 16px}
       .co-info{display:flex;flex-direction:column;gap:2px}
       .co-name{font-size:16px;font-weight:800;color:#1e293b;line-height:1.2}
       .co-line{font-size:9px;color:#64748b;line-height:1.5}
       .co-tax{font-size:9px;color:#475569;font-weight:600}
-      .hdr-right{text-align:right;flex-shrink:0}
+      .hdr-right{text-align:right;flex-shrink:0;flex:1}
       .inv-title{font-size:26px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
       .inv-meta{margin-top:6px;font-size:10px;line-height:1.9;color:#475569}
       .inv-meta b{color:#1e293b}
@@ -135,7 +132,6 @@ const PrintBill = ({ bill, patient, onClose }) => {
       <!-- Company Header -->
       <div class="hdr">
         <div class="hdr-left">
-          ${logoSrc ? `<img src="${logoSrc}" style="max-height:56px;max-width:140px;object-fit:contain;flex-shrink:0;" />` : ''}
           <div class="co-info">
             <div class="co-name">${coName}</div>
             ${coAddr     ? `<div class="co-line">${coAddr}</div>` : ''}
@@ -143,6 +139,9 @@ const PrintBill = ({ bill, patient, onClose }) => {
             ${coTaxLine  ? `<div class="co-tax">${coTaxLine}</div>` : ''}
             ${coContact  ? `<div class="co-line">${coContact}</div>` : ''}
           </div>
+        </div>
+        <div class="hdr-center">
+          ${logoSrc ? `<img src="${logoSrc}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
         </div>
         <div class="hdr-right">
           <div class="inv-title">INVOICE</div>
