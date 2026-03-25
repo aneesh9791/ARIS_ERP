@@ -1779,24 +1779,38 @@ function LeaveTab({ centerId = '' }) {
 // ════════════════════════════════════════════════════════════════
 // ROOT — HR PAGE
 // ════════════════════════════════════════════════════════════════
-const TABS = [
-  { id: 'dashboard',  label: 'Dashboard' },
-  { id: 'employees',  label: 'Employees' },
-  { id: 'attendance', label: 'Attendance' },
-  { id: 'payroll',    label: 'Payroll' },
-  { id: 'leave',      label: 'Leave' },
+const HR_FULL_ROLES = ['SUPER_ADMIN', 'CENTER_MANAGER', 'HR_MANAGER'];
+
+const ALL_TABS = [
+  { id: 'dashboard',  label: 'Dashboard',  perms: null }, // visible to all
+  { id: 'employees',  label: 'Employees',  perms: ['EMPLOYEE_VIEW','EMPLOYEE_CREATE','EMPLOYEE_EDIT'] },
+  { id: 'attendance', label: 'Attendance', perms: ['ATTENDANCE_VIEW'] },
+  { id: 'payroll',    label: 'Payroll',    perms: ['PAYROLL_VIEW','PAYROLL_CREATE','PAYROLL_APPROVE'] },
+  { id: 'leave',      label: 'Leave',      perms: ['LEAVE_APPLY','LEAVE_APPROVE'] },
 ];
 
+function getVisibleTabs(user) {
+  const role = user?.role || '';
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const fullAccess = HR_FULL_ROLES.includes(role) || perms.includes('ALL_ACCESS');
+  return ALL_TABS.filter(t => {
+    if (t.perms === null) return true;               // dashboard always shown
+    if (fullAccess) return true;
+    return t.perms.some(p => perms.includes(p));
+  });
+}
+
 export default function HR() {
-  const { isCorp, userCenterId } = (() => {
+  const { isCorp, userCenterId, user } = (() => {
     try {
       const u = JSON.parse(localStorage.getItem('user') || '{}');
       const cid = String(u.center_id || u.centerId || '');
-      return { isCorp: !cid, userCenterId: cid };
-    } catch { return { isCorp: false, userCenterId: '' }; }
+      return { isCorp: !cid, userCenterId: cid, user: u };
+    } catch { return { isCorp: false, userCenterId: '', user: {} }; }
   })();
 
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const TABS = getVisibleTabs(user);
+  const [activeTab, setActiveTab] = useState(() => TABS[0]?.id || 'dashboard');
   const [empAction, setEmpAction]   = useState(null);   // 'add'
   const [attAction, setAttAction]   = useState(null);   // 'mark'
   const [centerId, setCenterId]     = useState(userCenterId);
@@ -1810,6 +1824,7 @@ export default function HR() {
   }, [isCorp]);
 
   const switchTab = (tab, action) => {
+    if (!TABS.find(t => t.id === tab)) return; // ignore if not permitted
     setActiveTab(tab);
     if (tab === 'employees' && action === 'add') setEmpAction('add');
     if (tab === 'attendance' && action === 'mark') setAttAction('mark');
