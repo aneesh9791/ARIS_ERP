@@ -481,6 +481,7 @@ const PatientForm = ({ onSave, onCancel }) => {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Patients() {
   const isCorp = (() => { try { const u = JSON.parse(localStorage.getItem('user') || '{}'); return !u.center_id && !u.centerId; } catch { return false; } })();
+  const myCenter = (() => { try { const u = JSON.parse(localStorage.getItem('user') || '{}'); return u.center_id || u.centerId || null; } catch { return null; } })();
   const { has } = getPermissions();
 
   const [mode, setMode]           = useState('idle'); // idle | register | billing
@@ -537,7 +538,8 @@ export default function Patients() {
     const t = setTimeout(async () => {
       setSearching(true);
       try {
-        const r = await api(`/api/patients/quick-search?search_term=${encodeURIComponent(query)}`);
+        const centerParam = !isCorp && myCenter ? `&center_id=${encodeURIComponent(myCenter)}` : '';
+        const r = await api(`/api/patients/quick-search?search_term=${encodeURIComponent(query)}${centerParam}`);
         const d = await r.json();
         setResults(d.patients || d || []);
       } catch { setResults([]); }
@@ -625,7 +627,7 @@ export default function Patients() {
     try {
       const body = {
         patient_id: patient.id,
-        center_id: billingCenterId || patient.center_id || centers[0]?.id,
+        center_id: (!isCorp && myCenter) ? myCenter : (billingCenterId || patient.center_id || centers[0]?.id),
         study_codes: cart.map(s => s.study_code),
         addon_contrast_lines: contrastLines.length > 0 ? contrastLines.map(l => ({ id: l.id, name: l.name, price: Number(l.price), qty: l.qty })) : null,
         addon_dicom: dicomChecked && dicomItem ? { id: dicomItem.id, name: dicomItem.name, price: Number(dicomItem.price), qty: 1 } : null,
