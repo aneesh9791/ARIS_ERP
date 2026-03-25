@@ -133,7 +133,7 @@ const Modal = ({ title, onClose, children, wide }) => (
 // ════════════════════════════════════════════════════════════════
 // TAB 1 — DASHBOARD
 // ════════════════════════════════════════════════════════════════
-function DashboardTab({ onTabSwitch }) {
+function DashboardTab({ onTabSwitch, canMark = false }) {
   const [employees, setEmployees] = useState([]);
   const [todayAttendance, setTodayAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -257,14 +257,16 @@ function DashboardTab({ onTabSwitch }) {
             </svg>
             Add Employee
           </button>
-          <button onClick={() => onTabSwitch('attendance', 'mark')}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-sm transition-opacity hover:opacity-90"
-            style={{ background: '#0369a1' }}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Mark Attendance
-          </button>
+          {canMark && (
+            <button onClick={() => onTabSwitch('attendance', 'mark')}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-sm transition-opacity hover:opacity-90"
+              style={{ background: '#0369a1' }}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Mark Attendance
+            </button>
+          )}
           <button onClick={() => onTabSwitch('payroll', null)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-sm transition-opacity hover:opacity-90"
             style={{ background: '#7c3aed' }}>
@@ -737,7 +739,7 @@ const ATT_DOT = {
 };
 const ATT_CYCLE = ['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY', 'WEEKEND'];
 
-function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
+function AttendanceTab({ openMark, onMarkHandled, centerId = '', canMark = false }) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -815,7 +817,7 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
   // Click a cell → cycle to next status; skip WEEKEND if contract limit reached
   const markCell = async (emp, day) => {
     const key = `${emp.id}-${day}`;
-    if (marking[key] || isFuture(day)) return;
+    if (!canMark || marking[key] || isFuture(day)) return;
     const existing = attLookup[emp.id]?.[day];
     const cur = existing?.status;
     let idx = cur ? (ATT_CYCLE.indexOf(cur) + 1) % ATT_CYCLE.length : 0;
@@ -890,14 +892,16 @@ function AttendanceTab({ openMark, onMarkHandled, centerId = '' }) {
           ))}
         </div>
         <div className="flex-1" />
-        <button onClick={() => setShowMarkModal(true)}
-          className="px-4 py-2 rounded-xl text-white text-sm font-semibold flex items-center gap-2 hover:opacity-90"
-          style={{ background: '#0369a1' }}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          Mark Attendance
-        </button>
+        {canMark && (
+          <button onClick={() => setShowMarkModal(true)}
+            className="px-4 py-2 rounded-xl text-white text-sm font-semibold flex items-center gap-2 hover:opacity-90"
+            style={{ background: '#0369a1' }}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Mark Attendance
+          </button>
+        )}
       </div>
 
       {loading ? <Spin /> : (
@@ -1782,9 +1786,9 @@ function LeaveTab({ centerId = '' }) {
 const HR_FULL_ROLES = ['SUPER_ADMIN', 'CENTER_MANAGER', 'HR_MANAGER'];
 
 const ALL_TABS = [
-  { id: 'dashboard',  label: 'Dashboard',  perms: null }, // visible to all
+  { id: 'dashboard',  label: 'Dashboard',  perms: ['HR_DASHBOARD_VIEW'] },
   { id: 'employees',  label: 'Employees',  perms: ['EMPLOYEE_VIEW','EMPLOYEE_CREATE','EMPLOYEE_EDIT'] },
-  { id: 'attendance', label: 'Attendance', perms: ['ATTENDANCE_VIEW'] },
+  { id: 'attendance', label: 'Attendance', perms: ['ATTENDANCE_VIEW','ATTENDANCE_MARK'] },
   { id: 'payroll',    label: 'Payroll',    perms: ['PAYROLL_VIEW','PAYROLL_CREATE','PAYROLL_APPROVE'] },
   { id: 'leave',      label: 'Leave',      perms: ['LEAVE_APPLY','LEAVE_APPROVE'] },
 ];
@@ -1810,6 +1814,9 @@ export default function HR() {
   })();
 
   const TABS = getVisibleTabs(user);
+  const userPerms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const hasFullAccess = HR_FULL_ROLES.includes(user?.role) || userPerms.includes('ALL_ACCESS');
+  const canMark = hasFullAccess || userPerms.includes('ATTENDANCE_MARK');
   const [activeTab, setActiveTab] = useState(() => TABS[0]?.id || 'dashboard');
   const [empAction, setEmpAction]   = useState(null);   // 'add'
   const [attAction, setAttAction]   = useState(null);   // 'mark'
@@ -1879,7 +1886,7 @@ export default function HR() {
 
       {/* Tab content */}
       <div className="max-w-screen-xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
-        {activeTab === 'dashboard'  && <DashboardTab onTabSwitch={switchTab} />}
+        {activeTab === 'dashboard'  && <DashboardTab onTabSwitch={switchTab} canMark={canMark} />}
         {activeTab === 'employees'  && (
           <EmployeesTab
             openAdd={empAction === 'add'}
@@ -1892,6 +1899,7 @@ export default function HR() {
             openMark={attAction === 'mark'}
             onMarkHandled={() => setAttAction(null)}
             centerId={centerId}
+            canMark={canMark}
           />
         )}
         {activeTab === 'payroll'    && <PayrollTab centerId={centerId} />}

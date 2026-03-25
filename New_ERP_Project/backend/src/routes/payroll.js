@@ -35,6 +35,13 @@ const allowLeaveApprove = (req, res, next) => {
   return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
 };
 
+// Allows HR_WRITE roles OR users with ATTENDANCE_MARK permission
+const allowAttendanceMark = (req, res, next) => {
+  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+  if (HR_WRITE.includes(req.user?.role) || perms.includes('ALL_ACCESS') || perms.includes('ATTENDANCE_MARK')) return next();
+  return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
+};
+
 // EMPLOYEE MASTER AND PAYROLL MODULE
 
 // Get all employees
@@ -370,7 +377,7 @@ router.delete('/employees/:id', authorize(HR_WRITE), async (req, res) => {
 // ATTENDANCE MARKING
 
 // Mark attendance
-router.post('/attendance', authorize(HR_WRITE), [
+router.post('/attendance', allowAttendanceMark, [
   body('employee_id').isInt(),
   body('attendance_date').isISO8601().toDate(),
   body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY', 'WEEKEND']),
@@ -453,7 +460,7 @@ router.post('/attendance', authorize(HR_WRITE), [
 });
 
 // Update attendance
-router.put('/attendance/:id', authorize(HR_WRITE), [
+router.put('/attendance/:id', allowAttendanceMark, [
   body('status').isIn(['PRESENT', 'ABSENT', 'LEAVE', 'HALF_DAY', 'WEEKEND']),
   body('notes').optional().trim().isLength({ min: 2, max: 200 })
 ], async (req, res) => {
