@@ -5,7 +5,12 @@ const { logger } = require('../config/logger');
 const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authorizePermission('MASTER_DATA_VIEW'));
+// GET requests are open to all authenticated users (needed for bill print, dropdowns, etc.)
+// Write operations require MASTER_DATA_VIEW permission
+router.use((req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  return authorizePermission('MASTER_DATA_VIEW')(req, res, next);
+});
 
 // Settings Management Class
 class SettingsManager {
