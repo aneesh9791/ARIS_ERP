@@ -47,7 +47,9 @@ const printInvoice = (bill, items) => {
     .hdr-left{flex:1}
     .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 16px}
     .hdr-right{flex:1;text-align:right}
-    .co-name{font-size:20px;font-weight:700}
+    .co-name{font-size:20px}
+    .co-name .brand-main{font-weight:900}
+    .co-name .brand-suffix{font-weight:400}
     .co-sub{font-size:11px;color:#64748b;margin-top:2px}
     .inv-title{font-size:22px;font-weight:800;color:#0d9488;text-align:right}
     .inv-meta{font-size:12px;text-align:right;margin-top:4px;line-height:1.7}
@@ -67,7 +69,7 @@ const printInvoice = (bill, items) => {
   </style></head><body><div class="page">
   <div class="hdr">
     <div class="hdr-left">
-      <div class="co-name">${co.company_name || 'ARIS Healthcare'}</div>
+      <div class="co-name">${(() => { const n = co.company_name || 'ARIS Healthcare'; const i = n.toLowerCase().lastIndexOf('tech'); return i > 0 ? `<span class="brand-main">${n.slice(0,i)}</span><span class="brand-suffix">${n.slice(i)}</span>` : `<span class="brand-main">${n}</span>`; })()}</div>
       ${co.address_line1 ? `<div class="co-sub">${co.address_line1}${co.city ? ', ' + co.city : ''}</div>` : ''}
       ${co.phone ? `<div class="co-sub">Ph: ${co.phone}</div>` : ''}
       ${co.gstin ? `<div class="co-sub" style="font-weight:600;color:#475569">GSTIN: ${co.gstin}</div>` : ''}
