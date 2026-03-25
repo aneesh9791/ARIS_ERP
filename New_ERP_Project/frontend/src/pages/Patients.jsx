@@ -117,8 +117,15 @@ const PrintBill = ({ bill, patient, onClose }) => {
       .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:5px;padding:7px 11px;margin-bottom:12px;font-size:10px;color:#134e4a}
 
       /* Terms */
-      .terms-box{border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:18px;font-size:9px;color:#94a3b8;line-height:1.6}
-      .terms-box b{color:#64748b}
+      .terms-box{margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;margin-bottom:12px}
+      .terms-hdr{font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+      .t-line{display:flex;gap:5px;font-size:8.5px;color:#94a3b8;line-height:1.65;padding:1px 0}
+      .t-num{flex-shrink:0;color:#64748b;font-weight:700;min-width:14px}
+
+      /* Signature */
+      .sig-row{display:flex;justify-content:space-between;margin-top:24px;padding-top:10px}
+      .sig-box{text-align:center;width:160px}
+      .sig-line{border-top:1px solid #334155;padding-top:5px;font-size:9px;color:#64748b}
 
       /* Footer band */
       .ftr-band{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);border-top:3px solid #0f766e;padding:6px 14mm;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:rgba(255,255,255,0.9)}
@@ -180,7 +187,12 @@ const PrintBill = ({ bill, patient, onClose }) => {
 
         ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${bill.notes}</div>` : ''}
 
-        ${termsText ? `<div class="terms-box"><b>Terms &amp; Conditions:</b><br>${termsText}</div>` : ''}
+        ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${l.trim().replace(/^\d+[\.\)]\s*/,'')}</span></div>`).join('')}</div>` : ''}
+
+        <div class="sig-row">
+          <div style="flex:1"></div>
+          <div class="sig-box"><div class="sig-line">Authorised Signatory</div></div>
+        </div>
 
       </div>
 
