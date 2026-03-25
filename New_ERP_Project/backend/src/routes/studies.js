@@ -55,7 +55,7 @@ router.get('/accession/:accession_number', async (req, res) => {
 });
 
 // Generate accession number manually
-router.post('/:id/generate-accession', [
+router.post('/:id/generate-accession', authorizePermission('STUDY_WRITE'), [
   body('reason').optional().trim().isLength({ max: 200 })
 ], async (req, res) => {
   try {

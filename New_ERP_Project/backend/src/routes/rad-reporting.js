@@ -6,7 +6,7 @@ const financeService = require('../services/financeService');
 const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authorizePermission('RADIOLOGY_REPORT_VIEW'));
+router.use(authorizePermission('RADIOLOGY_REPORT', 'RADIOLOGY_VIEW'));
 
 // GET /api/rad-reporting/studies  — active studies from study_definitions
 router.get('/studies', async (_req, res) => {

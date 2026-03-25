@@ -182,7 +182,7 @@ router.get('/transactions', async (req, res) => {
 // ════════════════════════════════════════════════════════════════════════════
 // POST /api/equity/transactions  —  create + auto-post JE
 // ════════════════════════════════════════════════════════════════════════════
-router.post('/transactions', authorizePermission('EQUITY_CREATE'), async (req, res) => {
+router.post('/transactions', authorizePermission('EQUITY_WRITE'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

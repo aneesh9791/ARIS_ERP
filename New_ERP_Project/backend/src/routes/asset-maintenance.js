@@ -145,7 +145,7 @@ const contractValidators = [
   body('preventive_visits_yr').optional({ checkFalsy: true }).isInt({ min: 0 }).toInt(),
 ];
 
-router.post('/:assetId/contracts', contractValidators, async (req, res) => {
+router.post('/:assetId/contracts', authorizePermission('ASSET_MAINTENANCE_WRITE'), contractValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   try {
@@ -186,7 +186,7 @@ router.post('/:assetId/contracts', contractValidators, async (req, res) => {
 });
 
 // ── PUT /api/asset-maintenance/contracts/:id ──────────────────────────────────
-router.put('/contracts/:id', contractValidators, async (req, res) => {
+router.put('/contracts/:id', authorizePermission('ASSET_MAINTENANCE_WRITE'), contractValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   try {
@@ -226,7 +226,7 @@ router.put('/contracts/:id', contractValidators, async (req, res) => {
 });
 
 // ── DELETE /api/asset-maintenance/contracts/:id ───────────────────────────────
-router.delete('/contracts/:id', async (req, res) => {
+router.delete('/contracts/:id', authorizePermission('ASSET_MAINTENANCE_WRITE'), async (req, res) => {
   try {
     const result = await pool.query(
       `UPDATE asset_maintenance_contracts SET active=false, updated_at=NOW() WHERE id=$1 AND active=true RETURNING id`,
@@ -280,7 +280,7 @@ const logValidators = [
   body('parts').optional().isArray(),
 ];
 
-router.post('/:assetId/logs', logValidators, async (req, res) => {
+router.post('/:assetId/logs', authorizePermission('ASSET_MAINTENANCE_WRITE'), logValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   const client = await pool.connect();
@@ -358,7 +358,7 @@ router.post('/:assetId/logs', logValidators, async (req, res) => {
 });
 
 // ── PUT /api/asset-maintenance/logs/:id ───────────────────────────────────────
-router.put('/logs/:id', logValidators, async (req, res) => {
+router.put('/logs/:id', authorizePermission('ASSET_MAINTENANCE_WRITE'), logValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   const client = await pool.connect();
@@ -441,7 +441,7 @@ router.put('/logs/:id', logValidators, async (req, res) => {
 });
 
 // ── DELETE /api/asset-maintenance/logs/:id ────────────────────────────────────
-router.delete('/logs/:id', async (req, res) => {
+router.delete('/logs/:id', authorizePermission('ASSET_MAINTENANCE_WRITE'), async (req, res) => {
   try {
     const result = await pool.query(
       `UPDATE asset_maintenance_logs SET active=false, updated_at=NOW() WHERE id=$1 AND active=true RETURNING id`,

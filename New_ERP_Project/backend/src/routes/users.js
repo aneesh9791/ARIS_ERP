@@ -4,16 +4,11 @@ const { body, validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
 const { logger } = require('../config/logger');
-const { authorize } = require('../middleware/auth');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS) || 12;
-
-// Roles that may manage users
-const USER_ADMIN_ROLES = ['SUPER_ADMIN', 'CENTER_MANAGER', 'HR_MANAGER'];
-// Only SUPER_ADMIN may assign privileged roles
-const PRIVILEGED_ROLES = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
 
 // ── GET /api/users ─────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
@@ -125,7 +120,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // ── POST /api/users ────────────────────────────────────────────────────────────
-router.post('/', authorize(USER_ADMIN_ROLES), [
+router.post('/', authorizePermission('USER_WRITE'), [
   body('username').trim().isLength({ min: 3, max: 50 }).withMessage('Username 3–50 chars'),
   body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Name required'),
   body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
@@ -172,7 +167,7 @@ router.post('/', authorize(USER_ADMIN_ROLES), [
 });
 
 // ── PUT /api/users/:id ────────────────────────────────────────────────────────
-router.put('/:id', authorize(USER_ADMIN_ROLES), [
+router.put('/:id', authorizePermission('USER_WRITE'), [
   body('name').optional().trim().isLength({ min: 2, max: 100 }),
   body('email').optional().isEmail().normalizeEmail(),
   body('role').optional().notEmpty(),
@@ -240,7 +235,7 @@ router.put('/:id', authorize(USER_ADMIN_ROLES), [
 });
 
 // ── DELETE /api/users/:id (soft delete) ───────────────────────────────────────
-router.delete('/:id', authorize(['SUPER_ADMIN', 'HR_MANAGER']), async (req, res) => {
+router.delete('/:id', authorizePermission('USER_WRITE'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -268,7 +263,7 @@ router.delete('/:id', authorize(['SUPER_ADMIN', 'HR_MANAGER']), async (req, res)
 });
 
 // ── POST /api/users/:id/unlock ────────────────────────────────────────────────
-router.post('/:id/unlock', authorize(USER_ADMIN_ROLES), async (req, res) => {
+router.post('/:id/unlock', authorizePermission('USER_WRITE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE users SET locked_until = NULL, failed_login_attempts = 0, updated_at = NOW()
