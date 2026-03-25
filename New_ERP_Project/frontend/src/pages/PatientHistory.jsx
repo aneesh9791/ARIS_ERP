@@ -31,168 +31,84 @@ const StatusBadge = ({ status }) => {
 };
 
 // ── Print invoice ──────────────────────────────────────────────────────────────
-const printInvoice = async (bill, items) => {
-  let co = {};
-  try {
-    const r = await fetch('/api/settings/company', { headers: { Authorization: `Bearer ${token()}` } });
-    const d = await r.json();
-    co = d.company || {};
-  } catch { /* ignore */ }
-  if (!co.company_name) {
-    try { co = { ...co, ...JSON.parse(localStorage.getItem('companyInfo') || '{}') }; } catch { /* ignore */ }
-  }
-
-  const lgc = (() => { try { return JSON.parse(localStorage.getItem('logoConfig')) || {}; } catch { return {}; } })();
-  const logoSrc = lgc.customLogo || co.logo_path || null;
-
-  const coName     = co.company_name || 'ARIS Healthcare';
-  const coAddr     = [co.address_line1, co.address_line2].filter(Boolean).join(', ');
-  const coCityLine = [co.city, co.state, co.pincode].filter(Boolean).join(', ');
-  const coTaxLine  = co.gstin ? `GSTIN: ${co.gstin}` : '';
-  const coContact  = [co.phone ? `Ph: ${co.phone}` : '', co.email || ''].filter(Boolean).join('  |  ');
-  const billHeader = co.bill_header_text || '';
-  const billFooter = co.bill_footer_text || 'Thank you for choosing our services. Wishing you good health!';
-  const termsText  = co.terms_and_conditions || '';
-  const termsLines = termsText ? termsText.split(/\r?\n/).filter(l => l.trim()) : [];
-
-  const sc = bill.payment_status === 'PAID' ? 'paid' : bill.payment_status === 'CANCELLED' ? 'canc' : bill.payment_status === 'REFUNDED' ? 'refd' : 'pend';
+const printInvoice = (bill, items) => {
+  const co = (() => { try { return JSON.parse(localStorage.getItem('companyInfo')) || {}; } catch { return {}; } })();
+  const logo = (() => { try { return JSON.parse(localStorage.getItem('logoConfig')) || {}; } catch { return {}; } })();
   const w = window.open('', '_blank');
-  const html = `<!DOCTYPE html><html><head>
-  <meta charset="utf-8">
-  <title>Invoice ${bill.invoice_number}</title>
+  const html = `<!DOCTYPE html><html><head><title>Invoice ${bill.invoice_number}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;background:#fff;font-size:12px}
-    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-    .page{width:210mm;min-height:297mm;margin:0 auto;padding-bottom:22mm;position:relative;background:#fff}
-    .wm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:100px;font-weight:900;color:rgba(13,148,136,0.05);letter-spacing:-4px;pointer-events:none;z-index:0;white-space:nowrap}
-    .accent{height:5px;background:linear-gradient(90deg,#134e4a,#0d9488,#14b8a6,#0d9488,#134e4a)}
-    .bill-hdr{background:#f0fdfa;border-bottom:1px solid #99f6e4;padding:6px 16mm;font-size:10px;font-weight:700;color:#0f766e;text-align:center;letter-spacing:.1em;text-transform:uppercase}
-    .hdr{display:flex;align-items:center;gap:14px;padding:14px 16mm 12px;border-bottom:2px solid #f1f5f9}
-    .hdr-left{flex:1;min-width:0}
-    .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 10px}
+    body{font-family:Arial,sans-serif;color:#1e293b;background:#fff}
+    .page{width:210mm;min-height:297mm;margin:auto;padding:18mm 14mm}
+    .hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0d9488;padding-bottom:14px;margin-bottom:20px}
+    .hdr-left{flex:1}
+    .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 16px}
     .hdr-right{flex:1;text-align:right}
-    .co-name{font-size:19px;font-weight:900;color:#0f766e;line-height:1.15;letter-spacing:-.3px;margin-top:5px}
-    .co-tag{font-size:9px;color:#0d9488;font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
-    .co-addr{font-size:9.5px;color:#64748b;line-height:1.75;margin-top:4px}
-    .co-gstin{font-size:9.5px;color:#334155;font-weight:700;margin-top:2px}
-    .inv-lbl{font-size:30px;font-weight:900;color:#0d9488;letter-spacing:-1.5px;line-height:1}
-    .inv-meta{margin-top:7px;font-size:10px;line-height:1.9;color:#64748b}
-    .inv-meta b{color:#0f172a}
-    .b-paid{display:inline-block;padding:2px 9px;border-radius:20px;font-size:8.5px;font-weight:800;background:#dcfce7;color:#15803d;border:1px solid #86efac}
-    .b-pend{display:inline-block;padding:2px 9px;border-radius:20px;font-size:8.5px;font-weight:800;background:#fef3c7;color:#b45309;border:1px solid #fcd34d}
-    .b-canc{display:inline-block;padding:2px 9px;border-radius:20px;font-size:8.5px;font-weight:800;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5}
-    .b-refd{display:inline-block;padding:2px 9px;border-radius:20px;font-size:8.5px;font-weight:800;background:#e0f2fe;color:#075985;border:1px solid #7dd3fc}
-    .body{padding:0 16mm}
-    .pt-card{border:1px solid #e2e8f0;border-radius:9px;overflow:hidden;margin:14px 0}
-    .pt-card-hdr{background:linear-gradient(90deg,#0f766e,#0d9488);color:#fff;padding:7px 13px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em}
-    .pt-grid{display:grid;grid-template-columns:repeat(3,1fr)}
-    .pt-cell{padding:8px 13px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9}
-    .pt-cell:nth-child(3n){border-right:none}
-    .pt-lbl{font-size:7.5px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.07em}
-    .pt-val{font-size:12px;font-weight:600;color:#0f172a;margin-top:2px}
-    .tbl-wrap{margin:6px 0 4px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0}
-    table{width:100%;border-collapse:collapse}
-    thead tr{background:linear-gradient(90deg,#0f766e,#0d9488)}
-    th{padding:9px 11px;text-align:left;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.07em}
-    th:last-child,td:last-child{text-align:right}
-    tbody tr{border-bottom:1px solid #f1f5f9}
-    tbody tr:nth-child(even){background:#f8fafc}
-    tbody tr:last-child{border-bottom:none}
-    td{padding:9px 11px;font-size:11.5px;color:#334155}
-    .tot-wrap{display:flex;justify-content:flex-end;margin:12px 0 14px}
-    .tot-box{width:255px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
-    .tot-row{display:flex;justify-content:space-between;padding:6px 14px;font-size:11px;border-bottom:1px solid #f1f5f9;color:#475569}
-    .tot-row.disc{color:#16a34a}
-    .tot-grand{display:flex;justify-content:space-between;padding:10px 14px;background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff;font-size:14.5px;font-weight:800}
-    .notes{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;font-size:10px;color:#78350f;margin-bottom:12px}
-    .notes b{color:#92400e}
-    .terms{margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;margin-bottom:12px}
-    .terms-hdr{font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
-    .t-line{display:flex;gap:5px;font-size:8.5px;color:#94a3b8;line-height:1.65;padding:1px 0}
-    .t-num{flex-shrink:0;color:#64748b;font-weight:700;min-width:14px}
-    .sig-row{display:flex;justify-content:space-between;margin-top:22px;padding-top:10px}
-    .sig-box{text-align:center;width:160px}
-    .sig-line{border-top:1px solid #334155;padding-top:5px;font-size:9px;color:#64748b}
-    .ftr{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#134e4a 0%,#0d9488 50%,#134e4a 100%);padding:7px 16mm;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:rgba(255,255,255,.9)}
-    .ftr-mid{font-style:italic;color:rgba(255,255,255,.75);flex:1;text-align:center;padding:0 10px}
-  </style>
-  </head><body>
-  <div class="wm">${bill.payment_status}</div>
-  <div class="page">
-    <div class="accent"></div>
-    ${billHeader ? `<div class="bill-hdr">${billHeader}</div>` : ''}
-    <div class="hdr">
-      <div class="hdr-left">
-        ${logoSrc ? `<img src="${logoSrc}" style="max-height:60px;max-width:160px;object-fit:contain;display:block;" />` : ''}
-        <div class="co-name">${coName}</div>
-        ${co.tagline ? `<div class="co-tag">${co.tagline}</div>` : ''}
-        <div class="co-addr">
-          ${[coAddr, coCityLine].filter(Boolean).join(' • ')}
-          ${coContact ? `<br>${coContact}` : ''}
-        </div>
-        ${coTaxLine ? `<div class="co-gstin">${coTaxLine}</div>` : ''}
-      </div>
-      <div class="hdr-center">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
-          <div style="width:52px;height:52px;border-radius:50%;border:2.5px solid #0d9488;background:#f0fdfa;display:flex;align-items:center;justify-content:center">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="#f59e0b"><circle cx="12" cy="6.5" r="3"/><path d="M12 12c-4.418 0-7.5 2.015-7.5 3.5V17h15v-1.5C19.5 14.015 16.418 12 12 12z"/></svg>
-          </div>
-          <div style="text-align:center;line-height:1.2">
-            <div style="font-size:21px;font-weight:900;color:#0f766e;letter-spacing:-.5px">ARIS</div>
-            <div style="font-size:8.5px;font-weight:700"><span style="color:#f59e0b">Diagnostic</span>&nbsp;<span style="color:#0d9488">Centre</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="hdr-right">
-        <div class="inv-lbl">INVOICE</div>
-        <div class="inv-meta">
-          <b>Bill&nbsp;#</b>&nbsp;${bill.invoice_number || '—'}<br>
-          <b>Date</b>&nbsp;${fmtDate(bill.bill_date)}<br>
-          <b>Mode</b>&nbsp;${bill.payment_mode || '—'}${bill.payment_reference ? ' · ' + bill.payment_reference : ''}<br>
-          ${bill.accession_number ? `<b>Accession</b>&nbsp;${bill.accession_number}<br>` : ''}
-          <b>Status</b>&nbsp;<span class="b-${sc}">${bill.payment_status}</span>
-        </div>
+    .co-name{font-size:20px;font-weight:700}
+    .co-sub{font-size:11px;color:#64748b;margin-top:2px}
+    .inv-title{font-size:22px;font-weight:800;color:#0d9488;text-align:right}
+    .inv-meta{font-size:12px;text-align:right;margin-top:4px;line-height:1.7}
+    .pt-box{background:#f8fafc;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px 20px}
+    .pt-label{font-size:9px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.05em}
+    .pt-val{font-size:13px;font-weight:600;margin-top:1px}
+    table{width:100%;border-collapse:collapse;margin-bottom:18px}
+    th{background:#0f766e;color:#fff;padding:9px 12px;text-align:left;font-size:12px}
+    td{padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}
+    td:last-child,th:last-child{text-align:right}
+    .totals{margin-left:auto;width:270px}
+    .tot-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid #f1f5f9}
+    .grand{display:flex;justify-content:space-between;font-size:17px;font-weight:800;color:#0d9488;border-top:2px solid #0d9488;padding-top:8px;margin-top:6px}
+    .footer{margin-top:48px;border-top:1px solid #e2e8f0;padding-top:12px;font-size:11px;color:#94a3b8;text-align:center}
+    .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:#dcfce7;color:#166534}
+    .badge.pending{background:#fef3c7;color:#92400e}
+  </style></head><body><div class="page">
+  <div class="hdr">
+    <div class="hdr-left">
+      <div class="co-name">${co.company_name || 'ARIS Healthcare'}</div>
+      ${co.address_line1 ? `<div class="co-sub">${co.address_line1}${co.city ? ', ' + co.city : ''}</div>` : ''}
+      ${co.phone ? `<div class="co-sub">Ph: ${co.phone}</div>` : ''}
+      ${co.gstin ? `<div class="co-sub" style="font-weight:600;color:#475569">GSTIN: ${co.gstin}</div>` : ''}
+    </div>
+    <div class="hdr-center">
+      ${logo.customLogo ? `<img src="${logo.customLogo}" alt="logo" style="max-height:64px;max-width:160px;object-fit:contain;"/>` : ''}
+    </div>
+    <div class="hdr-right">
+      <div class="inv-title">INVOICE</div>
+      <div class="inv-meta">
+        <b>Bill #:</b> ${bill.invoice_number || '—'}<br>
+        <b>Date:</b> ${fmtDate(bill.bill_date)}<br>
+        ${bill.accession_number ? `<b>Accession:</b> ${bill.accession_number}<br>` : ''}
+        <b>Status:</b> <span class="badge ${bill.payment_status !== 'PAID' ? 'pending' : ''}">${bill.payment_status}</span>
       </div>
     </div>
-    <div class="body">
-      <div class="pt-card">
-        <div class="pt-card-hdr">Patient Information</div>
-        <div class="pt-grid">
-          ${[['Patient Name', bill.patient_name || '—'], ['PID', bill.pid || '—'], ['Phone', bill.patient_phone || '—'], ['Gender', bill.gender || '—'], ['Age', calcAge(bill.date_of_birth)], ['Payment Mode', bill.payment_mode || '—']].map(([l,v]) => `<div class="pt-cell"><div class="pt-lbl">${l}</div><div class="pt-val">${v}</div></div>`).join('')}
-        </div>
-      </div>
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr><th style="width:30px">#</th><th>Study / Service</th><th>Modality</th><th>Amount</th></tr></thead>
-          <tbody>
-            ${items.map((s, i) => `<tr><td>${i+1}</td><td>${s.study_name}</td><td style="color:#64748b;font-size:10.5px">${s.modality || '—'}</td><td>${fmt(s.amount)}</td></tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-      <div class="tot-wrap">
-        <div class="tot-box">
-          <div class="tot-row"><span>Subtotal</span><span>${fmt(bill.subtotal)}</span></div>
-          ${bill.discount_amount > 0 ? `<div class="tot-row disc"><span>Discount</span><span>− ${fmt(bill.discount_amount)}</span></div>` : ''}
-          ${bill.total_gst > 0 ? `<div class="tot-row"><span>GST (18%)</span><span>${fmt(bill.total_gst)}</span></div>` : ''}
-          <div class="tot-grand"><span>Total Amount</span><span>${fmt(bill.total_amount)}</span></div>
-        </div>
-      </div>
-      ${bill.notes ? `<div class="notes"><b>Notes:</b> ${bill.notes}</div>` : ''}
-      ${termsLines.length ? `<div class="terms"><div class="terms-hdr">Terms &amp; Conditions</div>${termsLines.map((l,i) => `<div class="t-line"><span class="t-num">${i+1}.</span><span>${l.trim()}</span></div>`).join('')}</div>` : ''}
-      <div class="sig-row">
-        <div class="sig-box"><div class="sig-line">Patient / Guardian Signature</div></div>
-        <div class="sig-box"><div class="sig-line">Authorised Signatory</div></div>
-      </div>
-    </div>
-    <div class="ftr">
-      <span style="white-space:nowrap">${coName}</span>
-      <span class="ftr-mid">${billFooter}</span>
-      <span style="white-space:nowrap">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
-    </div>
+  </div>
+  <div class="pt-box">
+    ${[
+      ['Patient', bill.patient_name],
+      ['PID', bill.pid || '—'],
+      ['Phone', bill.patient_phone || '—'],
+      ['Gender', bill.gender || '—'],
+      ['Age', calcAge(bill.date_of_birth)],
+      ['Payment', bill.payment_mode + (bill.payment_reference ? ' · ' + bill.payment_reference : '')],
+    ].map(([l, v]) => `<div><div class="pt-label">${l}</div><div class="pt-val">${v}</div></div>`).join('')}
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Study / Service</th><th>Modality</th><th>Amount</th></tr></thead>
+    <tbody>
+      ${items.map((s, i) => `<tr><td>${i + 1}</td><td>${s.study_name}</td><td>${s.modality || '—'}</td><td>${fmt(s.amount)}</td></tr>`).join('')}
+    </tbody>
+  </table>
+  <div class="totals">
+    <div class="tot-row"><span>Subtotal</span><span>${fmt(bill.subtotal)}</span></div>
+    ${bill.discount_amount > 0 ? `<div class="tot-row" style="color:#16a34a"><span>Discount</span><span>- ${fmt(bill.discount_amount)}</span></div>` : ''}
+    ${bill.total_gst > 0 ? `<div class="tot-row"><span>GST</span><span>${fmt(bill.total_gst)}</span></div>` : ''}
+    <div class="grand"><span>Total</span><span>${fmt(bill.total_amount)}</span></div>
+  </div>
+  ${bill.notes ? `<p style="margin-top:16px;font-size:12px;color:#64748b">Notes: ${bill.notes}</p>` : ''}
+  <div class="footer">${co.bill_footer_text || 'Thank you for choosing our services. Wishing you good health!'}</div>
   </div></body></html>`;
-  w.document.documentElement.innerHTML = html;
-  setTimeout(() => w.print(), 500);
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(() => w.print(), 400);
 };
 
 // ── Update Payment Status Modal ────────────────────────────────────────────────
