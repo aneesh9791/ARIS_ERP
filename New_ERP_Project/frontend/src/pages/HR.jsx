@@ -136,7 +136,7 @@ function DashboardTab({ onTabSwitch }) {
     try {
       const [empRes, attRes] = await Promise.all([
         api('/api/payroll/employees?active_only=true'),
-        api(`/api/payroll/attendance?month=${now.getMonth() + 1}&year=${now.getFullYear()}`),
+        api(`/api/payroll/attendance?from_date=${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01&to_date=${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-31`),
       ]);
       const empData = empRes.ok ? await empRes.json() : { employees: [] };
       const attData = attRes.ok ? await attRes.json() : { attendance: [] };
@@ -270,10 +270,27 @@ function DashboardTab({ onTabSwitch }) {
   );
 }
 
+// ── Employee form sub-components — defined at module level so they never
+//    get recreated on re-render (prevents focus/cursor loss on input)
+const EmpSection = ({ title, children }) => (
+  <div className="mb-5">
+    <h4 className="text-xs font-bold text-teal-700 uppercase tracking-widest mb-3 pb-1 border-b border-teal-50">{title}</h4>
+    <div className="grid grid-cols-2 gap-3">{children}</div>
+  </div>
+);
+
+const EmpFLD = ({ label, fkey, type = 'text', full, form, onChange }) => (
+  <div className={full ? 'col-span-2' : ''}>
+    <label className={labelCls}>{label}</label>
+    <input type={type} value={form[fkey] || ''} onChange={e => onChange(fkey, e.target.value)} className={inputCls} />
+  </div>
+);
+
 // ════════════════════════════════════════════════════════════════
 // EMPLOYEE FORM MODAL
 // ════════════════════════════════════════════════════════════════
 const EMPTY_EMP = {
+  employee_code: '',
   name: '', email: '', phone: '', date_of_birth: '', address: '',
   emergency_contact_name: '', emergency_contact_phone: '',
   department: '', department_id: '', designation_id: '', position: '',
@@ -311,7 +328,7 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
   };
 
   const validate = () => {
-    const req = ['name', 'email', 'phone', 'center_id', 'date_of_joining', 'basic_salary', 'pan_number', 'aadhaar_number', 'bank_name', 'bank_account_number', 'ifsc_code'];
+    const req = ['employee_code', 'name', 'email', 'phone', 'center_id', 'date_of_joining', 'basic_salary', 'pan_number', 'aadhaar_number', 'bank_name', 'bank_account_number', 'ifsc_code'];
     for (const k of req) {
       if (!form[k]?.toString().trim()) return `Field "${k.replace(/_/g, ' ')}" is required.`;
     }
@@ -345,35 +362,22 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
     setSaving(false);
   };
 
-  const Section = ({ title, children }) => (
-    <div className="mb-5">
-      <h4 className="text-xs font-bold text-teal-700 uppercase tracking-widest mb-3 pb-1 border-b border-teal-50">{title}</h4>
-      <div className="grid grid-cols-2 gap-3">{children}</div>
-    </div>
-  );
-
-  const FLD = ({ label, fkey, type = 'text', full }) => (
-    <div className={full ? 'col-span-2' : ''}>
-      <label className={labelCls}>{label}</label>
-      <input type={type} value={form[fkey] || ''} onChange={e => set(fkey, e.target.value)} className={inputCls} />
-    </div>
-  );
-
   return (
     <Modal title={isEdit ? 'Edit Employee' : 'Add Employee'} onClose={onClose} wide>
       {err && <div className="mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</div>}
       <div className="max-h-[65vh] overflow-y-auto pr-1">
-        <Section title="Personal Information">
-          <FLD label="Full Name *" fkey="name" />
-          <FLD label="Email *" fkey="email" type="email" />
-          <FLD label="Phone *" fkey="phone" />
-          <FLD label="Date of Birth" fkey="date_of_birth" type="date" />
-          <FLD label="Emergency Contact Name" fkey="emergency_contact_name" />
-          <FLD label="Emergency Contact Phone" fkey="emergency_contact_phone" />
-          <FLD label="Address" fkey="address" full />
-        </Section>
+        <EmpSection title="Personal Information">
+          <EmpFLD label="Full Name *" fkey="name" form={form} onChange={set} />
+          <EmpFLD label="Email *" fkey="email" type="email" form={form} onChange={set} />
+          <EmpFLD label="Phone *" fkey="phone" form={form} onChange={set} />
+          <EmpFLD label="Date of Birth" fkey="date_of_birth" type="date" form={form} onChange={set} />
+          <EmpFLD label="Emergency Contact Name" fkey="emergency_contact_name" form={form} onChange={set} />
+          <EmpFLD label="Emergency Contact Phone" fkey="emergency_contact_phone" form={form} onChange={set} />
+          <EmpFLD label="Address" fkey="address" full form={form} onChange={set} />
+        </EmpSection>
 
-        <Section title="Job Details">
+        <EmpSection title="Job Details">
+          <EmpFLD label="Employee Code *" fkey="employee_code" form={form} onChange={set} />
           <div>
             <label className={labelCls}>Department *</label>
             <select value={form.department_id || ''} onChange={e => onDeptChange(e.target.value)} className={inputCls}>
@@ -404,16 +408,16 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
               {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <FLD label="Date of Joining *" fkey="date_of_joining" type="date" />
-          <FLD label="Basic Salary *" fkey="basic_salary" type="number" />
-        </Section>
+          <EmpFLD label="Date of Joining *" fkey="date_of_joining" type="date" form={form} onChange={set} />
+          <EmpFLD label="Basic Salary *" fkey="basic_salary" type="number" form={form} onChange={set} />
+        </EmpSection>
 
-        <Section title="Identity Documents">
-          <FLD label="PAN Number *" fkey="pan_number" />
-          <FLD label="Aadhaar Number *" fkey="aadhaar_number" />
-        </Section>
+        <EmpSection title="Identity Documents">
+          <EmpFLD label="PAN Number *" fkey="pan_number" form={form} onChange={set} />
+          <EmpFLD label="Aadhaar Number *" fkey="aadhaar_number" form={form} onChange={set} />
+        </EmpSection>
 
-        <Section title="Bank Details">
+        <EmpSection title="Bank Details">
           <div>
             <label className={labelCls}>Bank Name *</label>
             <select value={form.bank_name || ''} onChange={e => set('bank_name', e.target.value)} className={inputCls}>
@@ -421,9 +425,9 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
               {INDIAN_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
-          <FLD label="Account Number *" fkey="bank_account_number" />
-          <FLD label="IFSC Code *" fkey="ifsc_code" />
-        </Section>
+          <EmpFLD label="Account Number *" fkey="bank_account_number" form={form} onChange={set} />
+          <EmpFLD label="IFSC Code *" fkey="ifsc_code" form={form} onChange={set} />
+        </EmpSection>
 
         <div>
           <label className={labelCls}>Notes</label>
@@ -967,12 +971,21 @@ function MarkAttendanceModal({ employees, onClose, onSaved }) {
 // ════════════════════════════════════════════════════════════════
 // TAB 4 — PAYROLL
 // ════════════════════════════════════════════════════════════════
+
+// Defined at module level to prevent re-render/focus issues
+const ParamField = ({ label, fkey, step = '0.01', params, onChange }) => (
+  <div>
+    <label className={labelCls}>{label}</label>
+    <input type="number" step={step} value={params[fkey]} onChange={e => onChange(fkey, e.target.value)} className={inputCls} />
+  </div>
+);
+
 const DEFAULT_PARAMS = {
   basic_salary_multiplier: '1',
   hra_percentage: '40',
   da_percentage: '10',
   pf_percentage: '12',
-  esi_percentage: '1.75',
+  esi_percentage: '0.75',
   professional_tax: '200',
 };
 
@@ -982,6 +995,7 @@ function PayrollTab({ centerId = '' }) {
   const [year, setYear] = useState(now.getFullYear());
   const [centerFilter, setCenterFilter] = useState(centerId);
   const [centers, setCenters] = useState([]);
+  const [benefitsEnabled, setBenefitsEnabled] = useState(false); // OFF by default — small org
   const [params, setParams] = useState({ ...DEFAULT_PARAMS });
   const [calculations, setCalculations] = useState(null);
   const [calcSummary, setCalcSummary] = useState(null);
@@ -1010,7 +1024,7 @@ function PayrollTab({ centerId = '' }) {
     const params2 = new URLSearchParams({ month, year });
     if (centerFilter) params2.set('center_id', centerFilter);
     try {
-      const res = await api(`/api/payroll/payroll/register?${params2}`);
+      const res = await api(`/api/payroll/register?${params2}`);
       const d = res.ok ? await res.json() : { records: [] };
       setRegister(d.records || []);
     } catch (_) {}
@@ -1031,13 +1045,13 @@ function PayrollTab({ centerId = '' }) {
         month: +month,
         year: +year,
         basic_salary_multiplier: parseFloat(params.basic_salary_multiplier),
-        hra_percentage: parseFloat(params.hra_percentage),
-        da_percentage: parseFloat(params.da_percentage),
-        pf_percentage: parseFloat(params.pf_percentage),
-        esi_percentage: parseFloat(params.esi_percentage),
-        professional_tax: parseFloat(params.professional_tax),
+        hra_percentage:   benefitsEnabled ? parseFloat(params.hra_percentage)   : 0,
+        da_percentage:    benefitsEnabled ? parseFloat(params.da_percentage)    : 0,
+        pf_percentage:    benefitsEnabled ? parseFloat(params.pf_percentage)    : 0,
+        esi_percentage:   benefitsEnabled ? parseFloat(params.esi_percentage)   : 0,
+        professional_tax: benefitsEnabled ? parseFloat(params.professional_tax) : 0,
       };
-      const res = await api('/api/payroll/payroll/calculate', { method: 'POST', body: JSON.stringify(body) });
+      const res = await api('/api/payroll/calculate', { method: 'POST', body: JSON.stringify(body) });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         showToast(d.message || d.error || 'Calculation failed', 'error');
@@ -1058,7 +1072,7 @@ function PayrollTab({ centerId = '' }) {
     setApproveLoading(true);
     try {
       const body = { center_id: +centerFilter, month: +month, year: +year };
-      const res = await api('/api/payroll/payroll/approve', { method: 'POST', body: JSON.stringify(body) });
+      const res = await api('/api/payroll/approve', { method: 'POST', body: JSON.stringify(body) });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         showToast(d.message || d.error || 'Approval failed', 'error');
@@ -1074,13 +1088,6 @@ function PayrollTab({ centerId = '' }) {
 
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const YEARS = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i);
-
-  const ParamField = ({ label, fkey, step = '0.01' }) => (
-    <div>
-      <label className={labelCls}>{label}</label>
-      <input type="number" step={step} value={params[fkey]} onChange={e => setP(fkey, e.target.value)} className={inputCls} />
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -1116,15 +1123,35 @@ function PayrollTab({ centerId = '' }) {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">Step 1 — Calculate Payroll</h3>
-          <span className="text-xs text-slate-400">Configure salary components, then click Calculate</span>
+          <span className="text-xs text-slate-400">Configure components, then click Calculate</span>
         </div>
+
+        {/* Statutory Benefits Toggle */}
+        <div className="flex items-center gap-3 mb-4 p-3 rounded-xl border border-slate-200 bg-slate-50">
+          <button
+            type="button"
+            onClick={() => setBenefitsEnabled(v => !v)}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${benefitsEnabled ? 'bg-teal-500' : 'bg-slate-300'}`}
+          >
+            <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${benefitsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+          <div>
+            <span className="text-sm font-semibold text-slate-700">Statutory Benefits</span>
+            <span className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full ${benefitsEnabled ? 'bg-teal-100 text-teal-700' : 'bg-slate-200 text-slate-500'}`}>
+              {benefitsEnabled ? 'Enabled — HRA, DA, PF, ESI, Prof Tax applied' : 'Disabled — Basic salary only, no deductions'}
+            </span>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-          <ParamField label="HRA %" fkey="hra_percentage" />
-          <ParamField label="DA %" fkey="da_percentage" />
-          <ParamField label="PF %" fkey="pf_percentage" />
-          <ParamField label="ESI %" fkey="esi_percentage" />
-          <ParamField label="Prof Tax (₹)" fkey="professional_tax" step="1" />
-          <ParamField label="Salary Multiplier" fkey="basic_salary_multiplier" />
+          <ParamField label="Salary Multiplier" fkey="basic_salary_multiplier" params={params} onChange={setP} />
+          {benefitsEnabled && <>
+            <ParamField label="HRA %" fkey="hra_percentage" params={params} onChange={setP} />
+            <ParamField label="DA %" fkey="da_percentage" params={params} onChange={setP} />
+            <ParamField label="PF %" fkey="pf_percentage" params={params} onChange={setP} />
+            <ParamField label="ESI %" fkey="esi_percentage" params={params} onChange={setP} />
+            <ParamField label="Prof Tax (₹)" fkey="professional_tax" step="1" params={params} onChange={setP} />
+          </>}
         </div>
         <button onClick={calculate} disabled={calcLoading}
           className="px-6 py-2.5 rounded-xl text-white font-semibold text-sm disabled:opacity-60 hover:opacity-90 flex items-center gap-2"
@@ -1156,7 +1183,10 @@ function PayrollTab({ centerId = '' }) {
             <table className="min-w-full text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  {['Employee', 'Dept', 'Basic', 'HRA', 'DA', 'Gross', 'PF', 'ESI', 'Prof Tax', 'Net Salary'].map(h => (
+                  {['Employee', 'Dept', 'Days', 'Basic',
+                    ...(benefitsEnabled ? ['HRA', 'DA', 'Gross'] : []),
+                    ...(benefitsEnabled ? ['PF', 'ESI', 'Prof Tax'] : []),
+                    'Net Salary'].map(h => (
                     <th key={h} className="px-3 py-3 text-left font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -1166,24 +1196,26 @@ function PayrollTab({ centerId = '' }) {
                   <tr key={i} className="hover:bg-teal-50/20 transition-colors">
                     <td className="px-3 py-3 font-semibold text-slate-800 whitespace-nowrap">{row.employee_name || row.name}</td>
                     <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{row.department}</td>
-                    <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{fmt(row.basic_salary)}</td>
-                    <td className="px-3 py-3 text-blue-600 whitespace-nowrap">{fmt(row.hra)}</td>
-                    <td className="px-3 py-3 text-indigo-600 whitespace-nowrap">{fmt(row.da)}</td>
-                    <td className="px-3 py-3 font-bold text-teal-700 whitespace-nowrap">{fmt(row.gross_salary)}</td>
-                    <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.pf_deduction)}</td>
-                    <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.esi_deduction)}</td>
-                    <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.professional_tax)}</td>
+                    <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{row.attendance_summary?.present_days ?? '—'}</td>
+                    <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{fmt(row.earnings?.basic_salary ?? row.basic_salary)}</td>
+                    {benefitsEnabled && <>
+                      <td className="px-3 py-3 text-blue-600 whitespace-nowrap">{fmt(row.earnings?.hra ?? row.hra)}</td>
+                      <td className="px-3 py-3 text-indigo-600 whitespace-nowrap">{fmt(row.earnings?.da ?? row.da)}</td>
+                      <td className="px-3 py-3 font-bold text-teal-700 whitespace-nowrap">{fmt(row.earnings?.prorated_gross_salary ?? row.gross_salary)}</td>
+                      <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.deductions?.pf ?? row.pf_deduction)}</td>
+                      <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.deductions?.esi ?? row.esi_deduction)}</td>
+                      <td className="px-3 py-3 text-red-500 whitespace-nowrap">-{fmt(row.deductions?.professional_tax ?? row.professional_tax)}</td>
+                    </>}
                     <td className="px-3 py-3 font-bold text-green-700 whitespace-nowrap">{fmt(row.net_salary)}</td>
                   </tr>
                 ))}
-                {/* Totals row */}
                 {calcSummary && (
                   <tr className="bg-teal-50 border-t-2 border-teal-200 font-bold">
                     <td className="px-3 py-3 text-teal-800 uppercase text-xs tracking-wide">TOTALS</td>
                     <td className="px-3 py-3 text-teal-600">{calcSummary.total_employees} employees</td>
-                    <td colSpan={3} />
-                    <td className="px-3 py-3 text-teal-800">{fmt(calcSummary.total_gross)}</td>
-                    <td colSpan={3} />
+                    <td />
+                    <td />
+                    {benefitsEnabled && <><td /><td /><td className="px-3 py-3 text-teal-800">{fmt(calcSummary.total_gross)}</td><td /><td /><td /></>}
                     <td className="px-3 py-3 text-green-800">{fmt(calcSummary.total_net)}</td>
                   </tr>
                 )}

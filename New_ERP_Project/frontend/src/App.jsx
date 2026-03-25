@@ -93,7 +93,7 @@ function App() {
               <Route path="finance"          element={<ProtectedRoute permission="JE_VIEW"               element={<Finance />} />} />
               <Route path="equity"           element={<ProtectedRoute permission="EQUITY_VIEW"           element={<Equity />} />} />
               <Route path="petty-cash"       element={<ProtectedRoute permission="PETTY_CASH_VIEW"       element={<PettyCash />} />} />
-              <Route path="hr"               element={<ProtectedRoute permission="EMPLOYEE_VIEW"         element={<HR />} />} />
+              <Route path="hr"               element={<ProtectedRoute permission={['EMPLOYEE_VIEW','ATTENDANCE_VIEW','LEAVE_APPLY']} element={<HR />} />} />
               <Route path="payroll"          element={<ProtectedRoute permission="PAYROLL_VIEW"          element={<Payroll />} />} />
               <Route path="assets"           element={<ProtectedRoute permission="ASSET_VIEW"            element={<Assets />} />} />
               <Route path="asset-maintenance"element={<ProtectedRoute permission="ASSET_MAINTENANCE_VIEW"element={<AssetMaintenance />} />} />

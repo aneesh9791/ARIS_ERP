@@ -76,7 +76,7 @@ const NAV_GROUPS = [
     key: 'hr',
     section: 'HRMS',
     items: [
-      { to: '/hr', label: 'HR & Payroll', iconKey: 'hr', permission: 'EMPLOYEE_VIEW' },
+      { to: '/hr', label: 'HR & Payroll', iconKey: 'hr', permission: ['EMPLOYEE_VIEW','ATTENDANCE_VIEW','LEAVE_APPLY'] },
     ],
   },
   {

@@ -1427,6 +1427,7 @@ async function postPayrollJE(summary, createdBy, centerId) {
   const pfMap  = await getMapping('PAYROLL_RUN', 'PF');
   const esiMap = await getMapping('PAYROLL_RUN', 'ESI');
   const tdsMap = await getMapping('PAYROLL_RUN', 'TDS');
+  const ptMap  = await getMapping('PAYROLL_RUN', 'PROF_TAX');
 
   const gross      = parseFloat(Number(summary.totalGross    || 0).toFixed(2));
   const net        = parseFloat(Number(summary.totalNet      || 0).toFixed(2));
@@ -1435,6 +1436,7 @@ async function postPayrollJE(summary, createdBy, centerId) {
   const emplrPF    = parseFloat(Number(summary.totalPF       || 0).toFixed(2));
   const emplrESI   = parseFloat(Number(summary.totalESI      || 0).toFixed(2));
   const tds        = parseFloat(Number(summary.totalTDS      || 0).toFixed(2));
+  const profTax    = parseFloat(Number(summary.totalProfTax  || 0).toFixed(2));
   const totalPF    = parseFloat((empPF  + emplrPF ).toFixed(2));
   const totalESI   = parseFloat((empESI + emplrESI).toFixed(2));
 
@@ -1549,13 +1551,23 @@ async function postPayrollJE(summary, createdBy, centerId) {
     });
   }
 
-  // ── Rounding balance ────────────────────────────────────────────────────
+  // Professional Tax payable (deducted from employees, remitted to state govt)
+  if (profTax > 0 && ptMap?.credit_account_id) {
+    lines.push({
+      accountId:   ptMap.credit_account_id,
+      debit:       0,
+      credit:      profTax,
+      centerId,
+      description: `Professional tax collected — ${summary.periodLabel}`,
+    });
+  }
+
+  // ── Balance check — log warning if JE doesn't balance (should not happen) ──
   const totalDr = parseFloat(lines.reduce((s, l) => s + Number(l.debit  || 0), 0).toFixed(2));
   const totalCr = parseFloat(lines.reduce((s, l) => s + Number(l.credit || 0), 0).toFixed(2));
   const diff = parseFloat((totalDr - totalCr).toFixed(2));
-  if (Math.abs(diff) > 0.001) {
-    const netLine = lines.find(l => l.accountId === salPayableAccId && l.credit > 0);
-    if (netLine) netLine.credit = parseFloat((netLine.credit + diff).toFixed(2));
+  if (Math.abs(diff) > 0.01) {
+    logger.warn(`postPayrollJE: JE imbalance of ₹${diff} for ${summary.periodLabel} — check salary components`, { totalDr, totalCr });
   }
 
   return createAndPostJE({

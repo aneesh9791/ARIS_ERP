@@ -10,6 +10,13 @@ const router = express.Router();
 const HR_WRITE      = ['SUPER_ADMIN', 'CENTER_MANAGER', 'HR_MANAGER'];
 const PAYROLL_ADMIN = ['SUPER_ADMIN', 'CENTER_MANAGER'];
 
+// Allows HR_WRITE roles OR users with LEAVE_APPLY permission
+const allowLeaveApply = (req, res, next) => {
+  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+  if (HR_WRITE.includes(req.user?.role) || perms.includes('ALL_ACCESS') || perms.includes('LEAVE_APPLY')) return next();
+  return res.status(403).json({ success: false, message: 'Insufficient permissions', error: 'INSUFFICIENT_PERMISSIONS' });
+};
+
 // EMPLOYEE MASTER AND PAYROLL MODULE
 
 // Get all employees
@@ -88,7 +95,7 @@ router.get('/employees', async (req, res) => {
 
 // Create new employee
 router.post('/employees', authorize(HR_WRITE), [
-  body('employee_code').trim().isLength({ min: 2, max: 20 }),
+  body('employee_code').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 20 }),
   body('name').trim().isLength({ min: 3, max: 100 }),
   body('email').trim().isEmail().normalizeEmail(),
   body('phone').trim().isLength({ min: 10, max: 20 }),
@@ -104,12 +111,12 @@ router.post('/employees', authorize(HR_WRITE), [
   body('ifsc_code').trim().isLength({ min: 11, max: 11 }),
   body('pan_number').trim().isLength({ min: 10, max: 10 }),
   body('aadhaar_number').trim().isLength({ min: 12, max: 12 }),
-  body('date_of_birth').isISO8601().toDate(),
+  body('date_of_birth').optional({ checkFalsy: true }).isISO8601().toDate(),
   body('date_of_joining').isISO8601().toDate(),
-  body('address').trim().isLength({ min: 10, max: 500 }),
-  body('emergency_contact_name').trim().isLength({ min: 3, max: 100 }),
-  body('emergency_contact_phone').trim().isLength({ min: 10, max: 20 }),
-  body('notes').optional().trim().isLength({ min: 2, max: 500 })
+  body('address').optional({ checkFalsy: true }).trim().isLength({ max: 500 }),
+  body('emergency_contact_name').optional({ checkFalsy: true }).trim().isLength({ max: 100 }),
+  body('emergency_contact_phone').optional({ checkFalsy: true }).trim().isLength({ max: 20 }),
+  body('notes').optional().trim().isLength({ max: 500 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -118,15 +125,23 @@ router.post('/employees', authorize(HR_WRITE), [
     }
 
     const {
-      employee_code, name, email, phone,
+      name, email, phone,
       department = null, department_id = null, designation_id = null,
       employment_type = 'FULL_TIME', position = null,
       center_id, basic_salary,
       bank_account_number, bank_name, ifsc_code,
       pan_number, aadhaar_number,
-      date_of_birth, date_of_joining, address,
-      emergency_contact_name, emergency_contact_phone, notes,
+      date_of_birth = null, date_of_joining, address = null,
+      emergency_contact_name = null, emergency_contact_phone = null, notes,
     } = req.body;
+
+    // Auto-generate employee_code if not provided
+    let employee_code = req.body.employee_code?.trim();
+    if (!employee_code) {
+      const countRes = await pool.query('SELECT COUNT(*) FROM employees');
+      const seq = parseInt(countRes.rows[0].count) + 1;
+      employee_code = 'EMP' + String(seq).padStart(3, '0');
+    }
 
     // Check if employee code already exists
     const existingEmployee = await pool.query(
@@ -214,12 +229,12 @@ router.put('/employees/:id', authorize(HR_WRITE), [
   body('ifsc_code').trim().isLength({ min: 11, max: 11 }),
   body('pan_number').trim().isLength({ min: 10, max: 10 }),
   body('aadhaar_number').trim().isLength({ min: 12, max: 12 }),
-  body('date_of_birth').isISO8601().toDate(),
+  body('date_of_birth').optional({ checkFalsy: true }).isISO8601().toDate(),
   body('date_of_joining').isISO8601().toDate(),
-  body('address').trim().isLength({ min: 10, max: 500 }),
-  body('emergency_contact_name').trim().isLength({ min: 3, max: 100 }),
-  body('emergency_contact_phone').trim().isLength({ min: 10, max: 20 }),
-  body('notes').optional().trim().isLength({ min: 2, max: 500 })
+  body('address').optional({ checkFalsy: true }).trim().isLength({ max: 500 }),
+  body('emergency_contact_name').optional({ checkFalsy: true }).trim().isLength({ max: 100 }),
+  body('emergency_contact_phone').optional({ checkFalsy: true }).trim().isLength({ max: 20 }),
+  body('notes').optional().trim().isLength({ max: 500 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -634,7 +649,7 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
       hra_percentage = 40,
       da_percentage = 10,
       pf_percentage = 12,
-      esi_percentage = 1.75,
+      esi_percentage = 0.75,
       professional_tax = 200
     } = req.body;
 
@@ -659,24 +674,42 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
 
     const employeesResult = await pool.query(employeesQuery, [month, year, center_id]);
 
+    // Calculate actual working days in the month (exclude Sat/Sun)
+    const workingDaysInMonth = (() => {
+      let count = 0;
+      const d = new Date(year, month - 1, 1);
+      while (d.getMonth() === month - 1) {
+        const dow = d.getDay();
+        if (dow !== 0 && dow !== 6) count++;
+        d.setDate(d.getDate() + 1);
+      }
+      return count || 22;
+    })();
+
     const payrollCalculations = employeesResult.rows.map(employee => {
-      const basicSalary = employee.basic_salary * basic_salary_multiplier;
+      const basicSalary = parseFloat(employee.basic_salary) * basic_salary_multiplier;
       const hra = basicSalary * (hra_percentage / 100);
       const da = basicSalary * (da_percentage / 100);
       const grossSalary = basicSalary + hra + da;
-      
-      // Calculate working days (considering weekends and holidays)
-      const workingDaysInMonth = 22; // Simplified calculation
-      const actualWorkingDays = employee.present_days + (employee.half_day_days * 0.5);
-      const attendanceRatio = actualWorkingDays / workingDaysInMonth;
-      
-      const proRatedGrossSalary = grossSalary * attendanceRatio;
-      
-      const pf = Math.min(basicSalary * (pf_percentage / 100), 15000); // PF capped at 15000
-      const esi = proRatedGrossSalary * (esi_percentage / 100);
-      const totalDeductions = pf + esi + professional_tax;
-      
-      const netSalary = proRatedGrossSalary - totalDeductions;
+
+      // Prorate based on actual working days attended (present + 0.5 × half_day + leave)
+      const paidDays = parseFloat(employee.present_days || 0)
+                     + parseFloat(employee.half_day_days || 0) * 0.5
+                     + parseFloat(employee.leave_days || 0);
+      const attendanceRatio = workingDaysInMonth > 0 ? Math.min(paidDays / workingDaysInMonth, 1) : 1;
+
+      const proRatedGrossSalary = parseFloat((grossSalary * attendanceRatio).toFixed(2));
+
+      // PF: 12% of basic, employee share capped at ₹1,800/month (12% of ₹15,000 ceiling)
+      const pf = parseFloat(Math.min(basicSalary * (pf_percentage / 100), 1800).toFixed(2));
+      // ESI: 0.75% of gross (employee share) — applicable only if gross ≤ ₹21,000
+      const esi = proRatedGrossSalary <= 21000
+        ? parseFloat((proRatedGrossSalary * (esi_percentage / 100)).toFixed(2))
+        : 0;
+      const profTax = parseFloat(professional_tax);
+      const totalDeductions = parseFloat((pf + esi + profTax).toFixed(2));
+
+      const netSalary = parseFloat((proRatedGrossSalary - totalDeductions).toFixed(2));
 
       return {
         employee_id: employee.id,
@@ -690,7 +723,7 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
           absent_days: employee.absent_days,
           leave_days: employee.leave_days,
           half_day_days: employee.half_day_days,
-          attendance_percentage: Math.round((actualWorkingDays / workingDaysInMonth) * 100)
+          attendance_percentage: Math.round((paidDays / workingDaysInMonth) * 100)
         },
         earnings: {
           basic_salary: basicSalary,
@@ -751,8 +784,8 @@ router.post('/payroll/calculate', authorize(HR_WRITE), [
           calc.earnings.prorated_gross_salary,
           calc.deductions.pf, calc.deductions.esi, calc.deductions.professional_tax,
           calc.deductions.total_deductions, calc.net_salary,
-          22, calc.attendance_summary.present_days, calc.attendance_summary.leave_days,
-          center_id, (calc.department || '').toUpperCase() || null,
+          workingDaysInMonth, calc.attendance_summary.present_days, calc.attendance_summary.leave_days,
+          center_id, calc.department ? calc.department.toUpperCase() : 'GENERAL',
           req.user?.id
         ]
       );
@@ -804,14 +837,16 @@ router.post('/payroll/approve', authorize(PAYROLL_ADMIN), [
       return res.status(404).json({ success: false, error: 'No DRAFT payroll records found for this period. Run calculation first.' });
     }
 
-    const totalGross   = rows.reduce((s, r) => s + parseFloat(r.gross_salary),   0);
-    const totalNet     = rows.reduce((s, r) => s + parseFloat(r.net_salary),     0);
-    const employeePF   = rows.reduce((s, r) => s + parseFloat(r.pf_deduction),   0);
-    const employeeESI  = rows.reduce((s, r) => s + parseFloat(r.esi_deduction),  0);
+    const totalGross   = rows.reduce((s, r) => s + parseFloat(r.gross_salary),     0);
+    const totalNet     = rows.reduce((s, r) => s + parseFloat(r.net_salary),       0);
+    const employeePF   = rows.reduce((s, r) => s + parseFloat(r.pf_deduction),     0);
+    const employeeESI  = rows.reduce((s, r) => s + parseFloat(r.esi_deduction),    0);
+    const totalProfTax = rows.reduce((s, r) => s + parseFloat(r.professional_tax || 0), 0);
     const totalTDS     = rows.reduce((s, r) => s + parseFloat(r.tds_deduction || 0), 0);
-    // Employer statutory contributions mirror employee PF/ESI (12% / 3.25%)
+    // Employer PF = 12% of basic (same ceiling as employee) = mirrors employeePF
     const totalPF      = employeePF;
-    const totalESI     = employeeESI * (3.25 / 1.75); // employer ESI rate
+    // Employer ESI = 3.25% of gross; employee ESI = 0.75% of gross → ratio 3.25/0.75
+    const totalESI     = parseFloat((employeeESI * (3.25 / 0.75)).toFixed(2));
     const periodLabel  = `${year}-${String(month).padStart(2,'0')}`;
 
     // Build per-category gross breakdown for GL segregation
@@ -826,7 +861,7 @@ router.post('/payroll/approve', authorize(PAYROLL_ADMIN), [
     let jeId = null;
     try {
       const je = await financeService.postPayrollJE(
-        { totalGross, totalNet, totalPF, totalESI, employeePF, employeeESI, totalTDS, byCategory, periodLabel },
+        { totalGross, totalNet, totalPF, totalESI, employeePF, employeeESI, totalTDS, totalProfTax, byCategory, periodLabel },
         req.user?.id,
         center_id
       );
@@ -1057,7 +1092,7 @@ router.get('/leave-requests', async (req, res) => {
 });
 
 // ── POST /leave-requests ──────────────────────────────────────────────────────
-router.post('/leave-requests', authorize(HR_WRITE), [
+router.post('/leave-requests', allowLeaveApply, [
   body('employee_id').isInt({ min: 1 }),
   body('leave_type_id').isInt({ min: 1 }),
   body('from_date').isDate(),
@@ -1122,12 +1157,12 @@ router.put('/leave-requests/:id/approve', authorize(HR_WRITE), async (req, res) 
         `UPDATE leave_requests SET status='APPROVED', approved_by=$1, approved_at=NOW(), updated_at=NOW() WHERE id=$2`,
         [req.user?.id || null, id]
       );
-      // Update balance
+      // Update balance — on conflict just add the used days; on insert use days_per_year as entitlement
       await client.query(
         `INSERT INTO leave_balances (employee_id, leave_type_id, year, entitlement, used, carried_forward)
          VALUES ($1, $2, $3, $4, $5, 0)
          ON CONFLICT (employee_id, leave_type_id, year)
-         DO UPDATE SET used = leave_balances.used + $5, updated_at = NOW()`,
+         DO UPDATE SET used = leave_balances.used + EXCLUDED.used, updated_at = NOW()`,
         [lr.rows[0].employee_id, lr.rows[0].leave_type_id, year, lr.rows[0].days_per_year, lr.rows[0].days]
       );
       // Mark attendance as LEAVE for approved days
