@@ -8,7 +8,15 @@ const api = (path, opts = {}) => fetch(path, {
   headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json', ...opts.headers },
 });
 const fmt  = n => `₹${parseFloat(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-const fmtD = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// Parse YYYY-MM-DD directly to avoid timezone off-by-one
+const fmtD = d => {
+  if (!d) return '—';
+  const s = String(d).slice(0, 10);
+  const [y, m, day] = s.split('-');
+  if (!y || !m || !day) return '—';
+  return `${parseInt(day)} ${MONTHS_SHORT[parseInt(m, 10) - 1]} ${y}`;
+};
 
 const INDIAN_BANKS = [
   // Public Sector
@@ -287,6 +295,49 @@ const EmpFLD = ({ label, fkey, type = 'text', full, form, onChange }) => (
   </div>
 );
 
+// 3-dropdown date picker — avoids native browser date input inconsistencies
+// Value is always YYYY-MM-DD string or ''
+const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DateInput = ({ label, value, onChange, minYear, maxYear, full }) => {
+  const now = new Date();
+  const [y, m, d] = value ? value.split('-') : ['', '', ''];
+  const year  = y ? parseInt(y, 10)  : '';
+  const month = m ? parseInt(m, 10)  : '';
+  const day   = d ? parseInt(d, 10)  : '';
+
+  const minY = minYear || 1950;
+  const maxY = maxYear || now.getFullYear();
+  const years = Array.from({ length: maxY - minY + 1 }, (_, i) => maxY - i);
+  const daysInMonth = (year && month) ? new Date(year, month, 0).getDate() : 31;
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  const emit = (ny, nm, nd) => {
+    if (ny && nm && nd) onChange(`${ny}-${String(nm).padStart(2,'0')}-${String(nd).padStart(2,'0')}`);
+    else onChange('');
+  };
+
+  const sel = 'border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white text-slate-700';
+  return (
+    <div className={full ? 'col-span-2' : ''}>
+      <label className={labelCls}>{label}</label>
+      <div className="flex gap-1.5">
+        <select value={day} onChange={e => emit(year, month, +e.target.value)} className={sel + ' w-20'}>
+          <option value="">DD</option>
+          {days.map(n => <option key={n} value={n}>{String(n).padStart(2,'0')}</option>)}
+        </select>
+        <select value={month} onChange={e => emit(year, +e.target.value, day)} className={sel + ' flex-1'}>
+          <option value="">Month</option>
+          {MONTHS_FULL.map((mn, i) => <option key={i+1} value={i+1}>{mn}</option>)}
+        </select>
+        <select value={year} onChange={e => emit(+e.target.value, month, day)} className={sel + ' w-24'}>
+          <option value="">YYYY</option>
+          {years.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+};
+
 // ════════════════════════════════════════════════════════════════
 // EMPLOYEE FORM MODAL
 // ════════════════════════════════════════════════════════════════
@@ -372,7 +423,7 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
           <EmpFLD label="Full Name *" fkey="name" form={form} onChange={set} />
           <EmpFLD label="Email *" fkey="email" type="email" form={form} onChange={set} />
           <EmpFLD label="Phone *" fkey="phone" form={form} onChange={set} />
-          <EmpFLD label="Date of Birth" fkey="date_of_birth" type="date" form={form} onChange={set} />
+          <DateInput label="Date of Birth" value={form.date_of_birth || ''} onChange={v => set('date_of_birth', v)} minYear={1950} maxYear={new Date().getFullYear() - 18} />
           <EmpFLD label="Emergency Contact Name" fkey="emergency_contact_name" form={form} onChange={set} />
           <EmpFLD label="Emergency Contact Phone" fkey="emergency_contact_phone" form={form} onChange={set} />
           <EmpFLD label="Address" fkey="address" full form={form} onChange={set} />
@@ -417,7 +468,7 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
               {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <EmpFLD label="Date of Joining *" fkey="date_of_joining" type="date" form={form} onChange={set} />
+          <DateInput label="Date of Joining *" value={form.date_of_joining || ''} onChange={v => set('date_of_joining', v)} minYear={2000} maxYear={new Date().getFullYear() + 1} />
           <EmpFLD label="Basic Salary *" fkey="basic_salary" type="number" form={form} onChange={set} />
         </EmpSection>
 
@@ -1032,9 +1083,9 @@ function MarkAttendanceModal({ employees, onClose, onSaved }) {
   return (
     <Modal title="Mark Attendance" onClose={onClose} wide>
       {err && <div className="mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</div>}
-      <div className="mb-4">
-        <label className={labelCls}>Attendance Date</label>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls + ' max-w-xs'} />
+      <div className="mb-4 max-w-sm">
+        <DateInput label="Attendance Date" value={date} onChange={setDate}
+          minYear={new Date().getFullYear() - 1} maxYear={new Date().getFullYear()} />
       </div>
       <div className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-100">
         {employees.length === 0 && <p className="text-slate-400 text-sm p-4">No employees to mark</p>}
@@ -1642,14 +1693,8 @@ function LeaveTab({ centerId = '' }) {
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>From *</label>
-                <input type="date" value={applyForm.from_date} onChange={e => setAF('from_date', e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>To *</label>
-                <input type="date" value={applyForm.to_date} onChange={e => setAF('to_date', e.target.value)} className={inputCls} />
-              </div>
+              <DateInput label="From *" value={applyForm.from_date} onChange={v => setAF('from_date', v)} minYear={new Date().getFullYear() - 1} maxYear={new Date().getFullYear() + 1} />
+              <DateInput label="To *" value={applyForm.to_date} onChange={v => setAF('to_date', v)} minYear={new Date().getFullYear() - 1} maxYear={new Date().getFullYear() + 1} />
             </div>
             <div>
               <label className={labelCls}>Reason</label>
