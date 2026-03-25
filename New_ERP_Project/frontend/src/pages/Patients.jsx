@@ -148,7 +148,17 @@ const PrintBill = ({ bill, patient, onClose }) => {
             ${coContact  ? `<div class="co-line">${coContact}</div>` : ''}
           </div>
         </div>
-        <div class="hdr-center"></div>
+        <div class="hdr-center">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+            <div style="width:52px;height:52px;border-radius:50%;border:2px solid #0d9488;background:#f0fdfa;display:flex;align-items:center;justify-content:center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="#f59e0b" aria-hidden="true"><circle cx="12" cy="6.5" r="3"/><path d="M12 12c-4.418 0-7.5 2.015-7.5 3.5V17h15v-1.5C19.5 14.015 16.418 12 12 12z"/></svg>
+            </div>
+            <div style="text-align:center;line-height:1.2">
+              <div style="font-size:20px;font-weight:900;color:#0f766e;letter-spacing:-0.5px">ARIS</div>
+              <div style="font-size:9px;font-weight:600"><span style="color:#f59e0b">Diagnostic</span> <span style="color:#0d9488">Centre</span></div>
+            </div>
+          </div>
+        </div>
         <div class="hdr-right">
           <div class="inv-title">INVOICE</div>
           <div class="inv-meta">

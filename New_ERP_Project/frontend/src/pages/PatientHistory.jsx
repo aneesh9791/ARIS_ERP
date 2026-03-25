@@ -63,7 +63,11 @@ const printInvoice = (bill, items) => {
     .totals{margin-left:auto;width:270px}
     .tot-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid #f1f5f9}
     .grand{display:flex;justify-content:space-between;font-size:17px;font-weight:800;color:#0d9488;border-top:2px solid #0d9488;padding-top:8px;margin-top:6px}
-    .footer{margin-top:48px;border-top:1px solid #e2e8f0;padding-top:12px;font-size:11px;color:#94a3b8;text-align:center}
+    .footer{margin-top:32px;border-top:1px solid #e2e8f0;padding-top:12px;font-size:11px;color:#94a3b8;text-align:center}
+    .terms-box{border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:16px;font-size:9px;color:#94a3b8}
+    .terms-box b{color:#64748b;display:block;margin-bottom:4px}
+    .terms-line{padding:2px 0;line-height:1.5;display:flex;gap:6px}
+    .terms-line .term-num{flex-shrink:0;color:#64748b;font-weight:600}
     .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:#dcfce7;color:#166534}
     .badge.pending{background:#fef3c7;color:#92400e}
   </style></head><body><div class="page">
@@ -74,7 +78,17 @@ const printInvoice = (bill, items) => {
       ${co.phone ? `<div class="co-sub">Ph: ${co.phone}</div>` : ''}
       ${co.gstin ? `<div class="co-sub" style="font-weight:600;color:#475569">GSTIN: ${co.gstin}</div>` : ''}
     </div>
-    <div class="hdr-center"></div>
+    <div class="hdr-center">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+        <div style="width:52px;height:52px;border-radius:50%;border:2px solid #0d9488;background:#f0fdfa;display:flex;align-items:center;justify-content:center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="#f59e0b" aria-hidden="true"><circle cx="12" cy="6.5" r="3"/><path d="M12 12c-4.418 0-7.5 2.015-7.5 3.5V17h15v-1.5C19.5 14.015 16.418 12 12 12z"/></svg>
+        </div>
+        <div style="text-align:center;line-height:1.2">
+          <div style="font-size:20px;font-weight:900;color:#0f766e;letter-spacing:-0.5px">ARIS</div>
+          <div style="font-size:9px;font-weight:600"><span style="color:#f59e0b">Diagnostic</span> <span style="color:#0d9488">Centre</span></div>
+        </div>
+      </div>
+    </div>
     <div class="hdr-right">
       <div class="inv-title">INVOICE</div>
       <div class="inv-meta">
@@ -108,6 +122,7 @@ const printInvoice = (bill, items) => {
     <div class="grand"><span>Total</span><span>${fmt(bill.total_amount)}</span></div>
   </div>
   ${bill.notes ? `<p style="margin-top:16px;font-size:12px;color:#64748b">Notes: ${bill.notes}</p>` : ''}
+  ${(() => { const t = co.terms_and_conditions || ''; return t ? `<div class="terms-box"><b>Terms &amp; Conditions:</b>${t.split(/\r?\n/).filter(l => l.trim()).map((l, i) => `<div class="terms-line"><span class="term-num">${i+1}.</span><span>${l.trim()}</span></div>`).join('')}</div>` : ''; })()}
   <div class="footer">${co.bill_footer_text || 'Thank you for choosing our services. Wishing you good health!'}</div>
   </div></body></html>`;
   w.document.open(); w.document.write(html); w.document.close();
