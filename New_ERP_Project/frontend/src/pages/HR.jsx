@@ -66,7 +66,7 @@ const STATUS_CFG = {
   PAID:     { bg: '#ede9fe', color: '#5b21b6', label: 'Paid' },
 };
 
-const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white';
+const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white appearance-none text-slate-700';
 const labelCls = 'block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide';
 
 const Badge = ({ status, customLabel }) => {
@@ -291,9 +291,10 @@ const EmpSection = ({ title, children }) => (
   </div>
 );
 
+const SPAN_CLS = { 1: '', 2: 'col-span-2', 3: 'col-span-3' };
 // span: 1 (default) | 2 | 3 (full row)
 const EmpFLD = ({ label, fkey, type = 'text', span = 1, maxLength, form, onChange }) => (
-  <div className={span === 3 ? 'col-span-3' : span === 2 ? 'col-span-2' : ''}>
+  <div className={SPAN_CLS[span] || ''}>
     <label className={labelCls}>{label}</label>
     <input type={type} value={form[fkey] || ''} maxLength={maxLength}
       onChange={e => onChange(fkey, e.target.value)} className={inputCls} />
@@ -323,7 +324,7 @@ const DateInput = ({ label, value, onChange, minYear, maxYear, span = 1 }) => {
 
   const sel = 'border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white text-slate-700';
   return (
-    <div className={span === 3 ? 'col-span-3' : span === 2 ? 'col-span-2' : ''}>
+    <div className={SPAN_CLS[span] || ''}>
       <label className={labelCls}>{label}</label>
       <div className="flex gap-1.5">
         <select value={day} onChange={e => emit(year, month, +e.target.value)} className={sel + ' w-20'}>
