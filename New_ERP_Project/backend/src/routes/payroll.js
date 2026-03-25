@@ -109,7 +109,7 @@ router.post('/employees', authorize(HR_WRITE), [
   body('employee_code').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 20 }),
   body('name').trim().isLength({ min: 3, max: 100 }),
   body('email').trim().isEmail().normalizeEmail(),
-  body('phone').trim().isLength({ min: 10, max: 20 }),
+  body('phone').trim().isLength({ min: 10, max: 10 }).withMessage('Phone must be exactly 10 digits'),
   body('department').optional({ checkFalsy: true }).trim().isLength({ max: 50 }),
   body('department_id').optional({ nullable: true }).isInt(),
   body('designation_id').optional({ nullable: true }).isInt(),
@@ -126,7 +126,7 @@ router.post('/employees', authorize(HR_WRITE), [
   body('date_of_joining').isISO8601().toDate(),
   body('address').optional({ checkFalsy: true }).trim().isLength({ max: 500 }),
   body('emergency_contact_name').optional({ checkFalsy: true }).trim().isLength({ max: 100 }),
-  body('emergency_contact_phone').optional({ checkFalsy: true }).trim().isLength({ max: 20 }),
+  body('emergency_contact_phone').optional({ checkFalsy: true }).trim().isLength({ max: 10 }),
   body('notes').optional().trim().isLength({ max: 500 })
 ], async (req, res) => {
   try {
@@ -230,7 +230,7 @@ router.post('/employees', authorize(HR_WRITE), [
 router.put('/employees/:id', authorize(HR_WRITE), [
   body('name').trim().isLength({ min: 3, max: 100 }),
   body('email').trim().isEmail().normalizeEmail(),
-  body('phone').trim().isLength({ min: 10, max: 20 }),
+  body('phone').trim().isLength({ min: 10, max: 10 }).withMessage('Phone must be exactly 10 digits'),
   body('department').optional({ checkFalsy: true }).trim().isLength({ max: 50 }),
   body('department_id').optional({ nullable: true }).isInt(),
   body('designation_id').optional({ nullable: true }).isInt(),
@@ -247,7 +247,7 @@ router.put('/employees/:id', authorize(HR_WRITE), [
   body('date_of_joining').isISO8601().toDate(),
   body('address').optional({ checkFalsy: true }).trim().isLength({ max: 500 }),
   body('emergency_contact_name').optional({ checkFalsy: true }).trim().isLength({ max: 100 }),
-  body('emergency_contact_phone').optional({ checkFalsy: true }).trim().isLength({ max: 20 }),
+  body('emergency_contact_phone').optional({ checkFalsy: true }).trim().isLength({ max: 10 }),
   body('notes').optional().trim().isLength({ max: 500 })
 ], async (req, res) => {
   try {

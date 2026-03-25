@@ -282,23 +282,28 @@ function DashboardTab({ onTabSwitch }) {
 // ── Employee form sub-components — defined at module level so they never
 //    get recreated on re-render (prevents focus/cursor loss on input)
 const EmpSection = ({ title, children }) => (
-  <div className="mb-5">
-    <h4 className="text-xs font-bold text-teal-700 uppercase tracking-widest mb-3 pb-1 border-b border-teal-50">{title}</h4>
-    <div className="grid grid-cols-2 gap-3">{children}</div>
+  <div className="mb-6">
+    <div className="flex items-center gap-2 mb-3">
+      <h4 className="text-xs font-bold text-teal-700 uppercase tracking-widest">{title}</h4>
+      <div className="flex-1 h-px bg-teal-50" />
+    </div>
+    <div className="grid grid-cols-3 gap-x-4 gap-y-3">{children}</div>
   </div>
 );
 
-const EmpFLD = ({ label, fkey, type = 'text', full, form, onChange }) => (
-  <div className={full ? 'col-span-2' : ''}>
+// span: 1 (default) | 2 | 3 (full row)
+const EmpFLD = ({ label, fkey, type = 'text', span = 1, maxLength, form, onChange }) => (
+  <div className={span === 3 ? 'col-span-3' : span === 2 ? 'col-span-2' : ''}>
     <label className={labelCls}>{label}</label>
-    <input type={type} value={form[fkey] || ''} onChange={e => onChange(fkey, e.target.value)} className={inputCls} />
+    <input type={type} value={form[fkey] || ''} maxLength={maxLength}
+      onChange={e => onChange(fkey, e.target.value)} className={inputCls} />
   </div>
 );
 
 // 3-dropdown date picker — avoids native browser date input inconsistencies
 // Value is always YYYY-MM-DD string or ''
 const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const DateInput = ({ label, value, onChange, minYear, maxYear, full }) => {
+const DateInput = ({ label, value, onChange, minYear, maxYear, span = 1 }) => {
   const now = new Date();
   const [y, m, d] = value ? value.split('-') : ['', '', ''];
   const year  = y ? parseInt(y, 10)  : '';
@@ -318,7 +323,7 @@ const DateInput = ({ label, value, onChange, minYear, maxYear, full }) => {
 
   const sel = 'border border-slate-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white text-slate-700';
   return (
-    <div className={full ? 'col-span-2' : ''}>
+    <div className={span === 3 ? 'col-span-3' : span === 2 ? 'col-span-2' : ''}>
       <label className={labelCls}>{label}</label>
       <div className="flex gap-1.5">
         <select value={day} onChange={e => emit(year, month, +e.target.value)} className={sel + ' w-20'}>
@@ -418,17 +423,20 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
   return (
     <Modal title={isEdit ? 'Edit Employee' : 'Add Employee'} onClose={onClose} wide>
       {err && <div className="mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</div>}
-      <div className="max-h-[65vh] overflow-y-auto pr-1">
+      <div className="max-h-[70vh] overflow-y-auto pr-2">
+
+        {/* ── Personal Information ── */}
         <EmpSection title="Personal Information">
-          <EmpFLD label="Full Name *" fkey="name" form={form} onChange={set} />
-          <EmpFLD label="Email *" fkey="email" type="email" form={form} onChange={set} />
-          <EmpFLD label="Phone *" fkey="phone" form={form} onChange={set} />
+          <EmpFLD label="Full Name *" fkey="name" span={2} form={form} onChange={set} />
+          <EmpFLD label="Phone *" fkey="phone" type="tel" maxLength={10} form={form} onChange={set} />
+          <EmpFLD label="Email *" fkey="email" type="email" span={2} form={form} onChange={set} />
           <DateInput label="Date of Birth" value={form.date_of_birth || ''} onChange={v => set('date_of_birth', v)} minYear={1950} maxYear={new Date().getFullYear() - 18} />
-          <EmpFLD label="Emergency Contact Name" fkey="emergency_contact_name" form={form} onChange={set} />
-          <EmpFLD label="Emergency Contact Phone" fkey="emergency_contact_phone" form={form} onChange={set} />
-          <EmpFLD label="Address" fkey="address" full form={form} onChange={set} />
+          <EmpFLD label="Emergency Contact Name" form={form} fkey="emergency_contact_name" onChange={set} />
+          <EmpFLD label="Emergency Contact Phone" fkey="emergency_contact_phone" type="tel" maxLength={10} form={form} onChange={set} />
+          <EmpFLD label="Address" fkey="address" span={3} form={form} onChange={set} />
         </EmpSection>
 
+        {/* ── Job Details ── */}
         <EmpSection title="Job Details">
           <EmpFLD label="Employee Code *" fkey="employee_code" form={form} onChange={set} />
           <div>
@@ -446,6 +454,13 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
             </select>
           </div>
           <div>
+            <label className={labelCls}>Center *</label>
+            <select value={form.center_id} onChange={e => set('center_id', e.target.value)} className={inputCls}>
+              <option value="">Select…</option>
+              {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
             <label className={labelCls}>Employment Type *</label>
             <select value={form.employment_type || 'FULL_TIME'} onChange={e => set('employment_type', e.target.value)} className={inputCls}>
               <option value="FULL_TIME">Full Time</option>
@@ -455,45 +470,42 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
             </select>
           </div>
           <div>
-            <label className={labelCls}>Weekly Off Days (Contract)</label>
+            <label className={labelCls}>Weekly Off Days</label>
             <input type="number" min={0} max={6} step={1}
               value={form.weekly_offs ?? 1}
               onChange={e => set('weekly_offs', +e.target.value)}
-              className={inputCls} placeholder="e.g. 1" />
+              className={inputCls} placeholder="0–6" />
           </div>
-          <div>
-            <label className={labelCls}>Center *</label>
-            <select value={form.center_id} onChange={e => set('center_id', e.target.value)} className={inputCls}>
-              <option value="">Select…</option>
-              {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <DateInput label="Date of Joining *" value={form.date_of_joining || ''} onChange={v => set('date_of_joining', v)} minYear={2000} maxYear={new Date().getFullYear() + 1} />
-          <EmpFLD label="Basic Salary *" fkey="basic_salary" type="number" form={form} onChange={set} />
+          <DateInput label="Date of Joining *" value={form.date_of_joining || ''} onChange={v => set('date_of_joining', v)} minYear={2000} maxYear={new Date().getFullYear() + 1} span={2} />
+          <EmpFLD label="Basic Salary (₹) *" fkey="basic_salary" type="number" form={form} onChange={set} />
         </EmpSection>
 
+        {/* ── Identity Documents ── */}
         <EmpSection title="Identity Documents">
-          <EmpFLD label="PAN Number *" fkey="pan_number" form={form} onChange={set} />
-          <EmpFLD label="Aadhaar Number *" fkey="aadhaar_number" form={form} onChange={set} />
+          <EmpFLD label="PAN Number *" fkey="pan_number" maxLength={10} form={form} onChange={set} />
+          <EmpFLD label="Aadhaar Number *" fkey="aadhaar_number" maxLength={12} form={form} onChange={set} />
         </EmpSection>
 
+        {/* ── Bank Details ── */}
         <EmpSection title="Bank Details">
-          <div>
+          <div className="col-span-3">
             <label className={labelCls}>Bank Name *</label>
             <select value={form.bank_name || ''} onChange={e => set('bank_name', e.target.value)} className={inputCls}>
               <option value="">— Select Bank —</option>
               {INDIAN_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
-          <EmpFLD label="Account Number *" fkey="bank_account_number" form={form} onChange={set} />
+          <EmpFLD label="Account Number *" fkey="bank_account_number" span={2} form={form} onChange={set} />
           <EmpFLD label="IFSC Code *" fkey="ifsc_code" form={form} onChange={set} />
         </EmpSection>
 
+        {/* ── Notes ── */}
         <div>
           <label className={labelCls}>Notes</label>
           <textarea value={form.notes || ''} onChange={e => set('notes', e.target.value)} rows={2}
             className={inputCls + ' resize-none'} />
         </div>
+
       </div>
       <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-slate-100">
         <button onClick={onClose} className="px-4 py-2 rounded-xl text-slate-600 bg-slate-100 hover:bg-slate-200 text-sm font-semibold">Cancel</button>
