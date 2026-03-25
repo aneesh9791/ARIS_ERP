@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/db');
 const { logger } = require('../config/logger');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -57,7 +58,7 @@ const checkPermission = (permission) => {
 // ROLE MANAGEMENT
 
 // Get all roles
-router.get('/roles', async (req, res) => {
+router.get('/roles', authorizePermission('USER_VIEW', 'USER_WRITE'), async (req, res) => {
   try {
     const { active_only = 'true' } = req.query;
     
@@ -94,7 +95,7 @@ router.get('/roles', async (req, res) => {
 });
 
 // Create new role
-router.post('/roles', [
+router.post('/roles', authorizePermission('USER_WRITE'), [
   body('role').trim().isLength({ min: 2, max: 50 }),
   body('role_name').trim().isLength({ min: 3, max: 100 }),
   body('description').trim().isLength({ min: 5, max: 500 }),
@@ -184,7 +185,7 @@ router.post('/roles', [
 });
 
 // Update role
-router.put('/roles/:id', [
+router.put('/roles/:id', authorizePermission('USER_WRITE'), [
   body('role_name').trim().isLength({ min: 3, max: 100 }),
   body('description').trim().isLength({ min: 5, max: 500 }),
   body('permissions').isArray(),
@@ -271,7 +272,7 @@ router.put('/roles/:id', [
 });
 
 // Delete role (soft delete)
-router.delete('/roles/:id', async (req, res) => {
+router.delete('/roles/:id', authorizePermission('USER_WRITE'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -361,7 +362,7 @@ router.get('/report-types', async (req, res) => {
 // USER ROLE ASSIGNMENT
 
 // Assign role to user
-router.post('/users/:userId/assign-role', [
+router.post('/users/:userId/assign-role', authorizePermission('USER_WRITE'), [
   body('role').trim().isLength({ min: 2, max: 50 }),
   body('center_id').optional().isInt()
 ], async (req, res) => {
@@ -900,7 +901,7 @@ async function getValidReportTypes() {
 // ─── USER MANAGEMENT ─────────────────────────────────────────────────────────
 
 // GET all users with role info
-router.get('/users', async (req, res) => {
+router.get('/users', authorizePermission('USER_VIEW', 'USER_WRITE'), async (req, res) => {
   try {
     const { active_only = 'true' } = req.query;
     const where = active_only === 'true' ? 'WHERE u.active = true' : '';
@@ -922,7 +923,7 @@ router.get('/users', async (req, res) => {
 });
 
 // POST create user
-router.post('/users', [
+router.post('/users', authorizePermission('USER_WRITE'), [
   body('username').trim().isLength({ min: 3, max: 50 }).withMessage('Username must be 3–50 characters'),
   body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
@@ -975,7 +976,7 @@ router.post('/users', [
 });
 
 // PUT update user
-router.put('/users/:id', [
+router.put('/users/:id', authorizePermission('USER_WRITE'), [
   body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
   body('role').trim().isLength({ min: 2, max: 50 }).withMessage('Role is required'),
   body('first_name').optional({ checkFalsy: true }).trim(),
@@ -1031,7 +1032,7 @@ router.put('/users/:id', [
 });
 
 // POST reset user password
-router.post('/users/:id/reset-password', [
+router.post('/users/:id/reset-password', authorizePermission('USER_WRITE'), [
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
 ], async (req, res) => {
   try {
@@ -1057,7 +1058,7 @@ router.post('/users/:id/reset-password', [
 });
 
 // DELETE user (soft delete)
-router.delete('/users/:id', async (req, res) => {
+router.delete('/users/:id', authorizePermission('USER_WRITE'), async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -1074,7 +1075,7 @@ router.delete('/users/:id', async (req, res) => {
 });
 
 // ── GET /api/rbac/audit-trail ─────────────────────────────────────────────────
-router.get('/audit-trail', async (req, res) => {
+router.get('/audit-trail', authorizePermission('USER_VIEW', 'USER_WRITE'), async (req, res) => {
   try {
     const { entity_type, entity_id, user_id, action, days = 30, limit = 200, offset = 0 } = req.query;
     const conds = [`at.timestamp > NOW() - ($1 || ' days')::INTERVAL`];

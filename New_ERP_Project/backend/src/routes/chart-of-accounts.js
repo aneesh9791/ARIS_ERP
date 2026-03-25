@@ -2,10 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/db');
 const { logger } = require('../config/logger');
-const { authorize } = require('../middleware/auth');
-
-// Roles allowed to mutate the Chart of Accounts
-const COA_WRITE_ROLES = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -908,7 +905,7 @@ router.get('/accounts', async (req, res) => {
 });
 
 // Create account
-router.post('/accounts', authorize(COA_WRITE_ROLES), [
+router.post('/accounts', authorizePermission('COA_WRITE'), [
   body('account_code').trim().isLength({ min: 2, max: 20 }),
   body('account_name').trim().isLength({ min: 3, max: 100 }),
   body('account_type').isIn(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE']),
@@ -966,7 +963,7 @@ router.get('/transaction-types', async (req, res) => {
 });
 
 // Create journal entry
-router.post('/journal-entries', authorize(['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']), [
+router.post('/journal-entries', authorizePermission('JE_WRITE'), [
   body('entry_date').isISO8601().toDate(),
   body('transaction_type_id').isInt(),
   body('description').trim().isLength({ min: 5, max: 500 }),
@@ -1173,7 +1170,7 @@ router.get('/reconciliation/:account_id', async (req, res) => {
 });
 
 // Create account reconciliation
-router.post('/reconciliation', authorize(['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']), [
+router.post('/reconciliation', authorizePermission('JE_WRITE'), [
   body('account_id').isInt(),
   body('reconciliation_date').isISO8601().toDate(),
   body('statement_balance').isFloat(),

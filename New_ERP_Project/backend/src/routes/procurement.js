@@ -4,14 +4,9 @@ const { body, validationResult } = require('express-validator');
 const pool    = require('../config/db');
 const { logger } = require('../config/logger');
 const financeService = require('../services/financeService');
-const { authorize, authorizePermission } = require('../middleware/auth');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-const PROC_WRITE   = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'INVENTORY_MANAGER', 'PROCUREMENT_MANAGER'];
-const PROC_ADMIN   = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'PROCUREMENT_MANAGER'];
-// Approval routes: any role that carries PR_APPROVE_L1 or PR_APPROVE_L2 permission
-const PROC_APPROVE = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'PROCUREMENT_MANAGER'];
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const ok  = (res, data)        => res.json({ success: true, ...data });
@@ -172,7 +167,7 @@ router.get('/approval-matrix', async (req, res) => {
   } catch (e) { logger.error('Approval matrix error', e); err(res, 'Server error', 500); }
 });
 
-router.post('/approval-matrix', authorize(PROC_ADMIN), [
+router.post('/approval-matrix', authorizePermission('SYSTEM_ADMIN'), [
   body('user_id').isInt().toInt(),
   body('level').isInt({ min: 1, max: 2 }).toInt(),
   body('center_id').optional({ nullable: true }).custom(v => v === null || v === undefined || v === '' || Number.isInteger(Number(v))).withMessage('center_id must be an integer or null'),
@@ -193,7 +188,7 @@ router.post('/approval-matrix', authorize(PROC_ADMIN), [
   } catch (e) { logger.error('Approval matrix add error', e); err(res, 'Server error', 500); }
 });
 
-router.delete('/approval-matrix/:id', authorize(PROC_ADMIN), async (req, res) => {
+router.delete('/approval-matrix/:id', authorizePermission('SYSTEM_ADMIN'), async (req, res) => {
   try {
     await pool.query(`UPDATE approval_matrix SET active=false WHERE id=$1`, [req.params.id]);
     ok(res, {});
@@ -282,7 +277,7 @@ router.get('/prs/:id', async (req, res) => {
 });
 
 // ── POST /api/procurement/prs ─────────────────────────────────────────────────
-router.post('/prs', authorize(PROC_WRITE), [
+router.post('/prs', authorizePermission('PR_WRITE'), [
   body('title').optional({ checkFalsy: true }).trim().isLength({ max: 200 }),
   body('justification').trim().isLength({ min: 10, max: 2000 }).withMessage('Justification must be at least 10 characters'),
   body('center_id').optional({ checkFalsy: true }).isInt().withMessage('Center is required'),
@@ -333,7 +328,7 @@ router.post('/prs', authorize(PROC_WRITE), [
 });
 
 // ── PATCH /api/procurement/prs/:id ───────────────────────────────────────────
-router.patch('/prs/:id', authorize(PROC_WRITE), [
+router.patch('/prs/:id', authorizePermission('PR_WRITE'), [
   body('title').optional().trim().isLength({ min: 5, max: 200 }),
   body('justification').optional().trim().isLength({ min: 10, max: 2000 }),
   body('items').optional().isArray({ min: 1 }),
@@ -380,7 +375,7 @@ router.patch('/prs/:id', authorize(PROC_WRITE), [
 });
 
 // ── POST /api/procurement/prs/:id/submit ─────────────────────────────────────
-router.post('/prs/:id/submit', authorize(PROC_WRITE), async (req, res) => {
+router.post('/prs/:id/submit', authorizePermission('PR_WRITE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT pr.*, c.name as center_name FROM purchase_requisitions pr
@@ -412,7 +407,7 @@ router.post('/prs/:id/submit', authorize(PROC_WRITE), async (req, res) => {
 });
 
 // ── POST /api/procurement/prs/:id/approve ────────────────────────────────────
-router.post('/prs/:id/approve', authorize(PROC_APPROVE), [
+router.post('/prs/:id/approve', authorizePermission('PR_APPROVE'), [
   body('comments').optional().trim().isLength({ max: 500 }),
 ], async (req, res) => {
   try {
@@ -500,7 +495,7 @@ router.post('/prs/:id/approve', authorize(PROC_APPROVE), [
 });
 
 // ── POST /api/procurement/prs/:id/reject ─────────────────────────────────────
-router.post('/prs/:id/reject', authorize(PROC_APPROVE), [
+router.post('/prs/:id/reject', authorizePermission('PR_APPROVE'), [
   body('reason').trim().isLength({ min: 5, max: 500 }),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -554,7 +549,7 @@ router.post('/prs/:id/reject', authorize(PROC_APPROVE), [
 });
 
 // ── POST /api/procurement/prs/:id/cancel ─────────────────────────────────────
-router.post('/prs/:id/cancel', authorize(PROC_WRITE), async (req, res) => {
+router.post('/prs/:id/cancel', authorizePermission('PR_WRITE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT * FROM purchase_requisitions WHERE id=$1 AND active=true`, [req.params.id]
@@ -632,7 +627,7 @@ router.get('/pos/:id', async (req, res) => {
 });
 
 // ── POST /api/procurement/pos ─────────────────────────────────────────────────
-router.post('/pos', authorize(PROC_WRITE), [
+router.post('/pos', authorizePermission('PO_WRITE'), [
   body('pr_id').optional({ nullable: true, checkFalsy: true }).isInt(),
   body('vendor_name').trim().isLength({ min: 2, max: 200 }).withMessage('Vendor name is required'),
   body('center_id').optional({ checkFalsy: true }).isInt(),
@@ -726,7 +721,7 @@ router.post('/pos', authorize(PROC_WRITE), [
 
 // ── POST /api/procurement/pos/:id/submit ─────────────────────────────────────
 // Creator submits DRAFT PO for approval → PENDING_APPROVAL, notifies L2 approvers
-router.post('/pos/:id/submit', authorize(PROC_WRITE), async (req, res) => {
+router.post('/pos/:id/submit', authorizePermission('PO_WRITE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT po.*, c.name AS center_name FROM procurement_orders po
@@ -881,7 +876,7 @@ router.post('/pos/:id/reject-approval', authorizePermission('PO_APPROVE'), [
 
 // ── PATCH /api/procurement/pos/:id ───────────────────────────────────────────
 // Edit a DRAFT PO (e.g. after sent back for revision)
-router.patch('/pos/:id', authorize(PROC_WRITE), [
+router.patch('/pos/:id', authorizePermission('PO_WRITE'), [
   body('vendor_name').optional().trim().isLength({ min: 2, max: 200 }),
   body('quotation_ref').optional().trim().isLength({ min: 1 }).withMessage('Quotation reference is required'),
   body('items').optional().isArray({ min: 1 }),
@@ -983,7 +978,7 @@ const PO_TRANSITIONS = {
   CANCELLED:        [],
 };
 
-router.patch('/pos/:id/status', authorize(PROC_ADMIN), [
+router.patch('/pos/:id/status', authorizePermission('PO_APPROVE'), [
   body('status').isIn(['DRAFT','PENDING_APPROVAL','ISSUED','ACKNOWLEDGED','COMPLETED','CANCELLED']),
 ], async (req, res) => {
   try {

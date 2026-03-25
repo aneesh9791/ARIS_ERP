@@ -546,6 +546,7 @@ function EmployeeModal({ emp, centers, onClose, onSaved }) {
 // TAB 2 — EMPLOYEES
 // ════════════════════════════════════════════════════════════════
 function EmployeesTab({ openAdd, onAddHandled, centerId = '' }) {
+  const { has } = getPermissions();
   const [employees, setEmployees] = useState([]);
   const [centers, setCenters] = useState([]);
   const [depts, setDepts] = useState([]);
@@ -636,6 +637,7 @@ function EmployeesTab({ openAdd, onAddHandled, centerId = '' }) {
           <span className="text-xs font-semibold text-slate-600">Active Only</span>
         </label>
         <div className="flex-1" />
+        {has('EMPLOYEE_WRITE') && (
         <button onClick={() => { setEditEmp(null); setShowModal(true); }}
           className="px-4 py-2 rounded-xl text-white text-sm font-semibold flex items-center gap-2 hover:opacity-90"
           style={{ background: '#0d9488' }}>
@@ -644,6 +646,7 @@ function EmployeesTab({ openAdd, onAddHandled, centerId = '' }) {
           </svg>
           Add Employee
         </button>
+        )}
       </div>
 
       {/* Table */}

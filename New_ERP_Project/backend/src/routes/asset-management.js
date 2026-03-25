@@ -3,12 +3,9 @@ const { body, validationResult } = require('express-validator');
 const pool   = require('../config/db');
 const { logger } = require('../config/logger');
 const financeService = require('../services/financeService');
-const { authorize } = require('../middleware/auth');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-const ASSET_WRITE = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'PROCUREMENT_MANAGER'];
-const ASSET_ADMIN = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER'];
 
 const CATEGORIES = ['FA_MED_NEW','FA_MED_REFURB','FA_IT','FA_FURNITURE','FA_VEHICLE','FA_CIVIL','FA_SOFTWARE','FA_APPLIANCE'];
 
@@ -51,7 +48,7 @@ router.get('/settings', async (_req, res) => {
 });
 
 // ── PUT /api/asset-management/settings/:code ───────────────────────────────
-router.put('/settings/:code', authorize(ASSET_ADMIN),
+router.put('/settings/:code', authorizePermission('ASSET_WRITE'),
   body('useful_life_years').isInt({ min: 1, max: 50 }).withMessage('Useful life must be 1–50 years'),
   async (req, res) => {
     const errs = validationResult(req);
@@ -135,7 +132,7 @@ const assetValidators = [
 ];
 
 // ── POST /api/asset-management ─────────────────────────────────────────────
-router.post('/', authorize(ASSET_WRITE), assetValidators, async (req, res) => {
+router.post('/', authorizePermission('ASSET_WRITE'), assetValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   try {
@@ -228,7 +225,7 @@ router.post('/', authorize(ASSET_WRITE), assetValidators, async (req, res) => {
 });
 
 // ── PUT /api/asset-management/:id ─────────────────────────────────────────
-router.put('/:id', authorize(ASSET_WRITE), assetValidators, async (req, res) => {
+router.put('/:id', authorizePermission('ASSET_WRITE'), assetValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   try {
@@ -276,7 +273,7 @@ router.put('/:id', authorize(ASSET_WRITE), assetValidators, async (req, res) => 
 // ── POST /api/asset-management/depreciation/run ─────────────────────────────
 // Runs monthly straight-line depreciation for all active assets.
 // Idempotent — safe to re-run for the same period.
-router.post('/depreciation/run', authorize(ASSET_ADMIN), async (req, res) => {
+router.post('/depreciation/run', authorizePermission('ASSET_WRITE'), async (req, res) => {
   try {
     const { year, month, center_id } = req.body;
     const now = new Date();
@@ -324,7 +321,7 @@ router.get('/depreciation/history', async (req, res) => {
 // ── POST /api/asset-management/:id/dispose ────────────────────────────────
 // Dispose an asset: post disposal JE (DR Accum Depr / CR Fixed Asset / G/L on sale)
 // then mark asset as DISPOSED.
-router.post('/:id/dispose', authorize(ASSET_ADMIN), [
+router.post('/:id/dispose', authorizePermission('ASSET_DISPOSE'), [
   body('disposal_date').isDate().withMessage('Disposal date is required'),
   body('sale_proceeds').isFloat({ min: 0 }).withMessage('Sale proceeds must be ≥ 0').toFloat(),
   body('notes').optional({ checkFalsy: true }).trim(),
@@ -403,7 +400,7 @@ router.post('/:id/dispose', authorize(ASSET_ADMIN), [
 
 // ── DELETE /api/asset-management/:id ──────────────────────────────────────
 // Soft-delete without financial entries (for data corrections only)
-router.delete('/:id', authorize(ASSET_ADMIN), async (req, res) => {
+router.delete('/:id', authorizePermission('ASSET_DISPOSE'), async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(

@@ -3,12 +3,9 @@ const { body, validationResult } = require('express-validator');
 const pool = require('../config/db');
 const { logger } = require('../config/logger');
 const financeService = require('../services/financeService');
-const { authorize } = require('../middleware/auth');
+const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
-
-const BILLING_WRITE = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'RECEPTIONIST'];
-const BILLING_ADMIN = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
 
 // BILLING MODULE - Indian Currency with GST and Accession Number Support
 
@@ -23,7 +20,7 @@ const generateInvoiceNumber = (centerId, type = 'INV') => {
 };
 
 // Enhanced create patient bill/invoice with accession number support
-router.post('/patient-bill', authorize(BILLING_WRITE), [
+router.post('/patient-bill', authorizePermission('BILLING_WRITE'), [
   body('patient_id').trim().isLength({ min: 1, max: 50 }),
   body('center_id').isInt(),
   body('study_codes').isArray(),
@@ -483,7 +480,7 @@ router.post('/patient-bill', authorize(BILLING_WRITE), [
 });
 
 // Update bill payment status with accession number generation
-router.patch('/:id/payment', authorize(BILLING_WRITE), [
+router.patch('/:id/payment', authorizePermission('BILLING_WRITE'), [
   body('payment_status').isIn(['BILLED', 'PAID', 'CANCELLED', 'REFUNDED']),
   body('payment_mode').optional().isIn(['CASH', 'UPI', 'BANK_TRANSFER', 'CARD', 'INSURANCE', 'COMBINED']),
   body('payment_reference').optional({ nullable: true, checkFalsy: true }).trim().isLength({ max: 100 }),
@@ -763,7 +760,7 @@ router.patch('/:id/payment', authorize(BILLING_WRITE), [
 });
 
 // Cancel or Refund a bill — clears ACC# (cancel only), writes audit trail, soft-deletes
-router.post('/:id/void', authorize(BILLING_ADMIN), [
+router.post('/:id/void', authorizePermission('BILLING_REFUND'), [
   body('action').isIn(['CANCELLED', 'REFUNDED']),
   body('reason').trim().isLength({ min: 3, max: 200 }),
 ], async (req, res) => {
@@ -1071,7 +1068,7 @@ router.get('/accession/:accession_number', async (req, res) => {
 // ─── Quick Bill (simple form → patient_bills) ──────────────────────────────────
 // Used by the Billing page quick-create modal.
 // Requires patient_id (looked up from patient search), uses authenticated user's center.
-router.post('/', authorize(BILLING_WRITE), [
+router.post('/', authorizePermission('BILLING_WRITE'), [
   body('patient_id').isInt({ min: 1 }),
   body('amount').isFloat({ min: 0 }),
   body('service').optional().trim().isLength({ max: 200 }),
@@ -1159,8 +1156,7 @@ router.post('/', authorize(BILLING_WRITE), [
 
 // ─── GET /study-addons?study_code=XXX ────────────────────────────────────────
 // Returns contrast and DICOM add-on prices for a given study code.
-const BILLING_READ = ['SUPER_ADMIN', 'CENTER_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'RECEPTIONIST', 'RADIOLOGIST', 'TECHNICIAN'];
-router.get('/study-addons', authorize(BILLING_READ), async (req, res) => {
+router.get('/study-addons', authorizePermission('BILLING_VIEW'), async (req, res) => {
   try {
     const { study_code } = req.query;
     if (!study_code) {
