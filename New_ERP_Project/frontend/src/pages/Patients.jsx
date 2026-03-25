@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getPermissions } from '../utils/permissions';
 
 const token = () => localStorage.getItem('token');
 const api = (path, opts = {}) => fetch(path, {
@@ -469,6 +470,7 @@ const PatientForm = ({ onSave, onCancel }) => {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Patients() {
   const isCorp = (() => { try { const u = JSON.parse(localStorage.getItem('user') || '{}'); return !u.center_id && !u.centerId; } catch { return false; } })();
+  const { has } = getPermissions();
 
   const [mode, setMode]           = useState('idle'); // idle | register | billing
   const [query, setQuery]         = useState('');
@@ -718,13 +720,15 @@ export default function Patients() {
               </div>
             )}
           </div>
-          <button onClick={() => { setMode('register'); setPatient(null); setCart([]); setBillResult(null); }}
-            className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white text-sm font-bold rounded-xl hover:bg-teal-700 shadow-sm flex-shrink-0">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Patient
-          </button>
+          {has('PATIENT_WRITE') && (
+            <button onClick={() => { setMode('register'); setPatient(null); setCart([]); setBillResult(null); }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white text-sm font-bold rounded-xl hover:bg-teal-700 shadow-sm flex-shrink-0">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Patient
+            </button>
+          )}
         </div>
       </div>
 
@@ -742,10 +746,12 @@ export default function Patients() {
             <p className="text-sm text-slate-400 mt-2 max-w-md">
               Search for an existing patient by name, phone or PID — or register a new patient to begin billing.
             </p>
-            <button onClick={() => setMode('register')}
-              className="mt-6 px-6 py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-sm text-sm">
-              + Register New Patient
-            </button>
+            {has('PATIENT_WRITE') && (
+              <button onClick={() => setMode('register')}
+                className="mt-6 px-6 py-3 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 shadow-sm text-sm">
+                + Register New Patient
+              </button>
+            )}
           </div>
         )}
 

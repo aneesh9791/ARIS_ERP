@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import VendorModal from '../components/VendorModal';
 import { today } from '../utils/serverDate';
 
+import { getPermissions } from '../utils/permissions';
 const token = () => localStorage.getItem('token');
 const api = async (path, opts = {}) => {
   const res = await fetch(path, {
@@ -1112,6 +1113,7 @@ const PRForm = ({ centers, onSaved, onCancel, editPR = null }) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 const PRDetail = ({ prId, onClose, onUpdated }) => {
   const user = currentUser();
+  const { has: hasPerm } = getPermissions();
   const [data, setData]       = useState(null);
   const [action, setAction]   = useState(null); // 'approve'|'reject'
   const [comments, setComm]   = useState('');
@@ -1158,8 +1160,8 @@ const PRDetail = ({ prId, onClose, onUpdated }) => {
 
   const { pr, items = [], approvals = [] } = data;
   const st = PR_STATUS[pr.status] || {};
-  const canApprove = ['SUBMITTED', 'L1_APPROVED'].includes(pr.status);
-  const canSubmit  = pr.status === 'DRAFT' && pr.requested_by === parseInt(user.id);
+  const canApprove = ['SUBMITTED', 'L1_APPROVED'].includes(pr.status) && hasPerm('PR_APPROVE');
+  const canSubmit  = pr.status === 'DRAFT' && pr.requested_by === parseInt(user.id) && hasPerm('PR_WRITE');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.6)' }}>
@@ -1880,6 +1882,7 @@ const CorpBadge = ({ code }) => code === 'CORP'
   : null;
 
 export default function Procurement() {
+  const { has } = getPermissions();
   const [tab, setTab]         = useState('prs');
   const [prs, setPrs]         = useState([]);
   const [pos, setPos]         = useState([]);
@@ -2227,14 +2230,14 @@ export default function Procurement() {
             ))}
           </div>
           <div className="flex gap-2">
-            {tab === 'prs' && (
+            {tab === 'prs' && has('PR_WRITE') && (
               <button onClick={() => setShowPRForm(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-bold shadow-sm"
                 style={{ background: 'linear-gradient(135deg,#0f766e,#0d9488)' }}>
                 <span>+</span> New PR
               </button>
             )}
-            {tab === 'pos' && (
+            {tab === 'pos' && has('PO_WRITE') && (
               <button onClick={() => setShowPOForm('manual')}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-bold shadow-sm"
                 style={{ background: 'linear-gradient(135deg,#1e3a5f,#2563eb)' }}>
@@ -2327,7 +2330,7 @@ export default function Procurement() {
                                 className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-teal-50 hover:text-teal-700 font-semibold transition-colors">
                                 View
                               </button>
-                              {pr.status === 'APPROVED' && (
+                              {pr.status === 'APPROVED' && has('PO_WRITE') && (
                                 <button onClick={() => setShowPOForm(pr.id)}
                                   className="text-xs px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold transition-colors whitespace-nowrap">
                                   + PO
@@ -2662,11 +2665,13 @@ export default function Procurement() {
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                 <button onClick={() => setGrnModal(null)}
                   className="px-4 py-2 rounded-xl text-slate-600 bg-slate-100 hover:bg-slate-200 text-sm font-semibold">Cancel</button>
+                {has('GRN_WRITE') && (
                 <button onClick={createGRN} disabled={grnSaving}
                   className="px-5 py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-60 hover:opacity-90"
                   style={{ background: 'linear-gradient(135deg,#0f766e,#0d9488)' }}>
                   {grnSaving ? 'Saving…' : 'Create GRN (Draft)'}
                 </button>
+                )}
               </div>
             </div>
           </div>
@@ -2679,6 +2684,7 @@ export default function Procurement() {
 // ── PO Detail Modal ────────────────────────────────────────────────────────────
 function PODetailModal({ poId, onClose, onUpdated, onEdit, onReceive }) {
   const user    = currentUser();
+  const { has: hasPerm } = getPermissions();
   const [data, setData]         = useState(null);
   const [saving, setSaving]     = useState(false);
   const [actionMode, setAction] = useState(null); // 'reject'
@@ -2737,8 +2743,8 @@ function PODetailModal({ poId, onClose, onUpdated, onEdit, onReceive }) {
 
   const isCreator   = parseInt(user.id) === parseInt(po.created_by);
   const isL2        = ['SUPER_ADMIN','CENTER_MANAGER','PROCUREMENT_L2','PROCUREMENT_MANAGER'].includes(role);
-  const canSubmit   = po.status === 'DRAFT' && (isCreator || ['SUPER_ADMIN','CENTER_MANAGER'].includes(role));
-  const canApprove  = po.status === 'PENDING_APPROVAL' && isL2;
+  const canSubmit   = po.status === 'DRAFT' && (isCreator || ['SUPER_ADMIN','CENTER_MANAGER'].includes(role)) && hasPerm('PO_WRITE');
+  const canApprove  = po.status === 'PENDING_APPROVAL' && isL2 && hasPerm('PO_APPROVE');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.6)' }}>

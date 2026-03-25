@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { getPermissions } from '../utils/permissions';
 
 const AUTH_HEADER = () => {
   const token = localStorage.getItem('token');
@@ -610,6 +611,7 @@ const PatientSearchModal = ({ onPatientSelect, onClose }) => {
 
 // ─── Main Study Management Component ─────────────────────────────────────────
 const StudyManagement = () => {
+  const { has } = getPermissions();
   const [studies, setStudies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showPatientSearch, setShowPatientSearch] = useState(false);
@@ -883,6 +885,8 @@ const StudyManagement = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <button className="text-teal-600 hover:text-teal-900 mr-3">View</button>
+                        {has('STUDY_WRITE') && (
+                        <>
                         <button className="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
                         {s.status === 'SCHEDULED' && (
                           <button
@@ -906,6 +910,8 @@ const StudyManagement = () => {
                         >
                           Delete
                         </button>
+                        </>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getPermissions } from '../utils/permissions';
 
 const token = () => localStorage.getItem('token');
 const hdrs = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
@@ -321,6 +322,7 @@ const IssueModal = ({ bill, onClose, onSaved }) => {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 const Stock = () => {
+  const { has } = getPermissions();
   const [activeTab, setActiveTab] = useState('levels');
 
   // Stock levels
@@ -502,6 +504,7 @@ const Stock = () => {
           <h1 className="text-xl font-bold text-slate-800">Stock Management</h1>
           <p className="text-sm text-slate-500 mt-0.5">Inventory levels and stock movements</p>
         </div>
+        {has('INVENTORY_WRITE') && (
         <button onClick={() => setShowModal(true)}
           className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -509,6 +512,7 @@ const Stock = () => {
           </svg>
           Record Movement
         </button>
+        )}
       </div>
 
       {/* KPIs */}
@@ -907,10 +911,12 @@ const Stock = () => {
                           className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500" />
                       </td>
                       <td className="px-4 py-2 text-center">
+                        {has('INVENTORY_WRITE') && (
                         <button onClick={addItem} disabled={!addItemId || addSaving}
                           className="bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg text-xs font-medium">
                           {addSaving ? 'Adding…' : 'Add'}
                         </button>
+                        )}
                       </td>
                     </tr>
 
@@ -933,11 +939,15 @@ const Stock = () => {
                         <td className="px-4 py-3 text-center">
                           {cfg.is_corporate_item ? (
                             <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">Active</span>
-                          ) : (
+                          ) : has('INVENTORY_WRITE') ? (
                             <button onClick={() => saveConfig(cfg.item_id, cfg.minimum_stock, cfg.reorder_level, !cfg.is_active)}
                               className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                               {cfg.is_active ? 'Active' : 'Inactive'}
                             </button>
+                          ) : (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                              {cfg.is_active ? 'Active' : 'Inactive'}
+                            </span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -967,7 +977,7 @@ const Stock = () => {
                             <span className="text-xs text-slate-400 italic">Corporate pool</span>
                           ) : (
                             <div className="flex items-center justify-center gap-2">
-                              {editingRow?.item_id === cfg.item_id ? (
+                              {has('INVENTORY_WRITE') && (editingRow?.item_id === cfg.item_id ? (
                                 <>
                                   <button onClick={() => { saveConfig(cfg.item_id, editingRow.minimum_stock, editingRow.reorder_level); setEditingRow(null); }}
                                     className="text-xs bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1 rounded-lg font-medium">Save</button>
@@ -981,7 +991,7 @@ const Stock = () => {
                                   <button onClick={() => removeConfig(cfg.item_id)}
                                     className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1">Remove</button>
                                 </>
-                              )}
+                              ))}
                             </div>
                           )}
                         </td>

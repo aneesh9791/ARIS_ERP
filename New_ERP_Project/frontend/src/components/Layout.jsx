@@ -76,7 +76,7 @@ const NAV_GROUPS = [
     key: 'hr',
     section: 'HRMS',
     items: [
-      { to: '/hr', label: 'HR & Payroll', iconKey: 'hr', permission: ['EMPLOYEE_VIEW','ATTENDANCE_VIEW','LEAVE_APPLY'] },
+      { to: '/hr', label: 'HR & Payroll', iconKey: 'hr', permission: ['HR_DASHBOARD_VIEW','EMPLOYEE_VIEW','ATTENDANCE_VIEW','ATTENDANCE_MARK','LEAVE_APPLY','LEAVE_APPROVE','PAYROLL_VIEW'] },
     ],
   },
   {
@@ -85,7 +85,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/assets',            label: 'Asset Management', iconKey: 'equipment',  permission: 'ASSET_VIEW' },
       { to: '/asset-maintenance', label: 'Asset Maintenance',iconKey: 'equipment',  permission: 'ASSET_MAINTENANCE_VIEW' },
-      { to: '/procurement',       label: 'Procurement',      iconKey: 'procurement',permission: 'PO_VIEW' },
+      { to: '/procurement',       label: 'Procurement',      iconKey: 'procurement',permission: ['PR_VIEW','PO_VIEW','GRN_VIEW'] },
       { to: '/stock',             label: 'Stock Management', iconKey: 'stock',      permission: 'INVENTORY_VIEW' },
       { to: '/item-master',       label: 'Item Master',      iconKey: 'itemMaster', permission: 'INVENTORY_VIEW' },
     ],
@@ -95,8 +95,8 @@ const NAV_GROUPS = [
     section: 'System',
     items: [
       { to: '/master-data',    label: 'Master Data',         iconKey: 'settings',                          permission: ['MASTER_DATA_VIEW','STUDY_CATALOG_VIEW','STUDY_PRICING_VIEW','RAD_REPORTING_MASTER_VIEW'] },
-      { to: '/settings/users', label: 'User Management',     iconKey: 'users',                             permission: 'USER_CREATE' },
-      { to: '/settings/roles', label: 'Roles & Permissions', iconKey: 'settings', iconKey2: 'settings2',  permission: 'USER_ASSIGN_ROLE' },
+      { to: '/settings/users', label: 'User Management',     iconKey: 'users',                             permission: ['USER_VIEW','USER_WRITE'] },
+      { to: '/settings/roles', label: 'Roles & Permissions', iconKey: 'settings', iconKey2: 'settings2',  permission: ['USER_VIEW','USER_WRITE'] },
       { to: '/settings/mwl',   label: 'MWL Gateway',         iconKey: 'mwl',                               permission: 'MWL_VIEW' },
       { to: '/settings',       label: 'Settings',            iconKey: 'settings', iconKey2: 'settings2',  permission: 'MASTER_DATA_VIEW' },
       { to: '/reports',        label: 'Reports',             iconKey: 'reports',                           permission: 'REPORTS_VIEW' },

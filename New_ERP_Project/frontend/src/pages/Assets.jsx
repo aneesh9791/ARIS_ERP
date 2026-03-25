@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getPermissions } from '../utils/permissions';
 
 const AUTH_HEADER = () => {
   const token = localStorage.getItem('token');
@@ -83,6 +84,7 @@ const DeprecBar = ({ asset }) => {
 
 // ── Main component ──────────────────────────────────────────────────────────
 const Assets = () => {
+  const { has } = getPermissions();
   const [assets,        setAssets]        = useState([]);
   const [centers,       setCenters]       = useState([]);
   const [activeTab,       setActiveTab]       = useState('ALL');
@@ -331,11 +333,13 @@ const Assets = () => {
             </div>
             <div className="flex items-center gap-2">
               {success && <span className="text-xs text-green-300 font-medium">{success}</span>}
-              <button onClick={openAdd}
-                className="inline-flex items-center gap-1.5 bg-white text-teal-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-colors">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4"/></svg>
-                Add Asset
-              </button>
+              {has('ASSET_WRITE') && (
+                <button onClick={openAdd}
+                  className="inline-flex items-center gap-1.5 bg-white text-teal-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-colors">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4"/></svg>
+                  Add Asset
+                </button>
+              )}
             </div>
           </div>
 
@@ -558,11 +562,11 @@ const Assets = () => {
                             </span>
                           )}
                           <div className="flex gap-3">
-                            <button onClick={() => openEdit(a)} className="text-teal-600 hover:text-teal-800 text-xs font-medium">Edit</button>
-                            {a.status !== 'DISPOSED' && (
+                            {has('ASSET_WRITE') && <button onClick={() => openEdit(a)} className="text-teal-600 hover:text-teal-800 text-xs font-medium">Edit</button>}
+                            {has('ASSET_DISPOSE') && a.status !== 'DISPOSED' && (
                               <button onClick={() => openDispose(a)} className="text-orange-500 hover:text-orange-700 text-xs font-medium">Dispose</button>
                             )}
-                            <button onClick={() => handleDelete(a)} className="text-red-500 hover:text-red-700 text-xs font-medium">Delete</button>
+                            {has('ASSET_DISPOSE') && <button onClick={() => handleDelete(a)} className="text-red-500 hover:text-red-700 text-xs font-medium">Delete</button>}
                           </div>
                         </div>
                       </td>

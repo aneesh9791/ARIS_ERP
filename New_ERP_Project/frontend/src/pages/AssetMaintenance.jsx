@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getPermissions } from '../utils/permissions';
 
 const AUTH_HEADER = () => {
   const token = localStorage.getItem('token');
@@ -137,6 +138,7 @@ const StatCard = ({ label, value, sub, icon, gradient }) => (
 
 // ─────────────────────────────────────────────────────────────────────────────
 const AssetMaintenance = () => {
+  const { has } = getPermissions();
   const [assets,        setAssets]        = useState([]);
   const [selected,      setSelected]      = useState(null);
   const [contracts,     setContracts]     = useState([]);
@@ -587,13 +589,13 @@ const AssetMaintenance = () => {
                       </button>
                     ))}
                     <div className="flex-1" />
-                    {activeTab === 'contracts' && (
+                    {activeTab === 'contracts' && has('ASSET_MAINTENANCE_WRITE') && (
                       <button onClick={openAddContract}
                         className="mb-2 flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white text-xs font-semibold rounded-xl hover:bg-teal-700 shadow-sm transition-colors">
                         <span className="text-base leading-none">+</span> Add Contract
                       </button>
                     )}
-                    {activeTab === 'logs' && (
+                    {activeTab === 'logs' && has('ASSET_MAINTENANCE_WRITE') && (
                       <button onClick={openAddLog}
                         className="mb-2 flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white text-xs font-semibold rounded-xl hover:bg-teal-700 shadow-sm transition-colors">
                         <span className="text-base leading-none">+</span> Log Event
@@ -664,6 +666,7 @@ const AssetMaintenance = () => {
                               )}
 
                               {/* Actions */}
+                              {has('ASSET_MAINTENANCE_WRITE') && (
                               <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
                                 <button onClick={() => openEditContract(c)}
                                   className="flex-1 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors">
@@ -674,6 +677,7 @@ const AssetMaintenance = () => {
                                   Delete
                                 </button>
                               </div>
+                              )}
                             </div>
                           );
                         })}
@@ -806,10 +810,12 @@ const AssetMaintenance = () => {
                                       {l.parts_cost > 0 && <p className="text-xs text-amber-600">Parts: {fmt(l.parts_cost)}</p>}
                                       {l.other_cost > 0 && <p className="text-xs text-slate-400">Other: {fmt(l.other_cost)}</p>}
                                     </div>
+                                    {has('ASSET_MAINTENANCE_WRITE') && (
                                     <button onClick={() => openEditLog(l)}
                                       className="px-3 py-1.5 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-sm transition-colors whitespace-nowrap">
                                       Update
                                     </button>
+                                    )}
                                   </div>
                                 </div>
                               </div>

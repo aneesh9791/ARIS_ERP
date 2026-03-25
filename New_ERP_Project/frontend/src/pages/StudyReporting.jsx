@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getPermissions } from '../utils/permissions';
 
 const token = () => localStorage.getItem('token');
 const hdrs = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
@@ -642,7 +643,7 @@ const StudyConsumablesModal = ({ study, onClose }) => {
 };
 
 // ── Study Row — desktop table row ──────────────────────────────────────────────
-const StudyRow = ({ study, onAction, showRate }) => (
+const StudyRow = ({ study, onAction, showRate, canReport }) => (
   <tr className="hover:bg-teal-50 border-b border-slate-100 transition-colors">
     <td className="px-4 py-3">
       <div className="font-medium text-slate-800">{study.patient_name}</div>
@@ -684,13 +685,13 @@ const StudyRow = ({ study, onAction, showRate }) => (
     )}
     <td className="px-4 py-3 text-right">
       <div className="flex flex-col items-end gap-1.5">
-        {study.exam_workflow_status === 'EXAM_SCHEDULED' && (
+        {canReport && study.exam_workflow_status === 'EXAM_SCHEDULED' && (
           <button onClick={() => onAction('exam-complete', study)}
             className="text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors">
             Mark Exam Completed
           </button>
         )}
-        {study.exam_workflow_status === 'EXAM_COMPLETED' && (
+        {canReport && study.exam_workflow_status === 'EXAM_COMPLETED' && (
           <button onClick={() => onAction('report-complete', study)}
             className="text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition-colors">
             Mark Report Completed
@@ -710,7 +711,7 @@ const StudyRow = ({ study, onAction, showRate }) => (
 );
 
 // ── Study Card — mobile card view ───────────────────────────────────────────────
-const StudyCard = ({ study, onAction, showRate }) => (
+const StudyCard = ({ study, onAction, showRate, canReport }) => (
   <div className="p-4 border-b border-slate-100 last:border-0">
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
@@ -742,13 +743,13 @@ const StudyCard = ({ study, onAction, showRate }) => (
     </div>
 
     <div className="mt-3">
-      {study.exam_workflow_status === 'EXAM_SCHEDULED' && (
+      {canReport && study.exam_workflow_status === 'EXAM_SCHEDULED' && (
         <button onClick={() => onAction('exam-complete', study)}
           className="w-full text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 px-3 py-2 rounded-lg transition-colors">
           Mark Exam Completed
         </button>
       )}
-      {study.exam_workflow_status === 'EXAM_COMPLETED' && (
+      {canReport && study.exam_workflow_status === 'EXAM_COMPLETED' && (
         <button onClick={() => onAction('report-complete', study)}
           className="w-full text-xs font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-3 py-2 rounded-lg transition-colors">
           Mark Report Completed
@@ -768,6 +769,7 @@ const StudyCard = ({ study, onAction, showRate }) => (
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 const StudyReporting = () => {
+  const { has } = getPermissions();
   const { isCorp, userCenterId } = (() => {
     try {
       const u = JSON.parse(localStorage.getItem('user') || '{}');
@@ -980,7 +982,7 @@ const StudyReporting = () => {
             {/* Mobile cards */}
             <div className="sm:hidden divide-y divide-slate-100">
               {filteredStudies.map(s => (
-                <StudyCard key={s.id} study={s} onAction={handleAction} showRate={activeTab !== 'scheduled'} />
+                <StudyCard key={s.id} study={s} onAction={handleAction} showRate={activeTab !== 'scheduled'} canReport={has('RADIOLOGY_REPORT')} />
               ))}
             </div>
             {/* Desktop table */}
@@ -1000,7 +1002,7 @@ const StudyReporting = () => {
                 </thead>
                 <tbody>
                   {filteredStudies.map(s => (
-                    <StudyRow key={s.id} study={s} onAction={handleAction} showRate={activeTab !== 'scheduled'} />
+                    <StudyRow key={s.id} study={s} onAction={handleAction} showRate={activeTab !== 'scheduled'} canReport={has('RADIOLOGY_REPORT')} />
                   ))}
                 </tbody>
               </table>

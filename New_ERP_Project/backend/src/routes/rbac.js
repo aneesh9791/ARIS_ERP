@@ -741,52 +741,66 @@ function permGroup(perm) {
 // All permissions that must always appear in the role editor, even if no role has them yet.
 // Add new module permissions here when a new module is built.
 const KNOWN_PERMISSIONS = [
-  // Patient & Study
-  'PATIENT_VIEW','PATIENT_CREATE','PATIENT_EDIT','PATIENT_DELETE',
-  'STUDY_VIEW','STUDY_CREATE','STUDY_EDIT',
-  'RADIOLOGY_VIEW','RADIOLOGY_REPORT','RADIOLOGY_APPROVE',
-  'RADIOLOGIST_VIEW','RADIOLOGIST_CREATE','RADIOLOGIST_EDIT',
-  // Billing & Finance
-  'BILLING_VIEW','BILLING_CREATE','BILLING_EDIT','BILLING_DELETE','BILLING_REFUND',
-  'BILL_VIEW','BILL_CREATE','BILL_EDIT',
-  'INSURANCE_VIEW','INSURANCE_CREATE','INSURANCE_EDIT',
-  'JE_VIEW','JE_CREATE','JE_EDIT','JE_APPROVE','JE_POST',
-  'COA_VIEW','COA_CREATE','COA_EDIT',
-  'PETTY_CASH_VIEW','PETTY_CASH_CREATE','PETTY_CASH_APPROVE',
-  'GST_VIEW','GST_RECONCILE',
-  'EXPENSE_VIEW','EXPENSE_CREATE','EXPENSE_APPROVE',
-  'EQUITY_VIEW','EQUITY_CREATE',
-  // MWL Gateway
-  'MWL_VIEW','MWL_MANAGE',
-  // HR & Payroll
-  'HR_DASHBOARD_VIEW',
-  'EMPLOYEE_VIEW','EMPLOYEE_CREATE','EMPLOYEE_EDIT',
-  'ATTENDANCE_VIEW','ATTENDANCE_MARK','LEAVE_APPLY','LEAVE_APPROVE',
-  'PAYROLL_VIEW','PAYROLL_CREATE','PAYROLL_APPROVE',
-  // Assets & Inventory
-  'ASSET_VIEW','ASSET_CREATE','ASSET_EDIT',
-  'ASSET_MAINTENANCE_VIEW','ASSET_MAINTENANCE_CREATE',
-  'LOANER_VIEW','LOANER_CREATE',
-  'INVENTORY_VIEW','INVENTORY_CREATE','INVENTORY_EDIT',
-  'PO_VIEW','PO_CREATE','PO_APPROVE',
-  'PR_VIEW','PR_CREATE',
-  'GRN_VIEW','GRN_CREATE',
-  // Center & Vendor
-  'CENTER_VIEW','CENTER_CREATE','CENTER_EDIT',
-  'VENDOR_VIEW','VENDOR_CREATE','VENDOR_EDIT',
-  // Service & Physician
-  'SERVICE_VIEW','SERVICE_CREATE','SERVICE_EDIT',
-  'PHYSICIAN_VIEW','PHYSICIAN_CREATE','PHYSICIAN_EDIT',
-  // Scanner & Equipment
-  'SCANNER_VIEW','SCANNER_CREATE','SCANNER_EDIT',
-  // Master Data, Reports & System
-  'MASTER_DATA_VIEW','MASTER_DATA_CREATE','MASTER_DATA_EDIT',
-  'STUDY_CATALOG_VIEW','STUDY_PRICING_VIEW','RAD_REPORTING_MASTER_VIEW',
-  'REPORTS_VIEW','REPORTS_EXPORT',
+  // ── Dashboard ──────────────────────────────────────────────────────────────
   'DASHBOARD_VIEW',
-  'WHATSAPP_VIEW','WHATSAPP_SEND',
-  'USER_VIEW','USER_CREATE','USER_EDIT','USER_DELETE','USER_ASSIGN_ROLE',
-  'SYSTEM_ADMIN','ALL_ACCESS',
+
+  // ── Patient & Study ────────────────────────────────────────────────────────
+  'PATIENT_VIEW',   'PATIENT_WRITE',
+  'STUDY_VIEW',     'STUDY_WRITE',
+
+  // ── Radiology Reporting ────────────────────────────────────────────────────
+  'RADIOLOGY_VIEW', 'RADIOLOGY_REPORT', 'RADIOLOGY_APPROVE',
+
+  // ── Billing & Insurance ────────────────────────────────────────────────────
+  'BILLING_VIEW',   'BILLING_WRITE',    'BILLING_REFUND',
+  'INSURANCE_VIEW', 'INSURANCE_WRITE',
+
+  // ── Finance ────────────────────────────────────────────────────────────────
+  'COA_VIEW',        'COA_WRITE',
+  'JE_VIEW',         'JE_WRITE',        'JE_APPROVE',
+  'GST_VIEW',        'GST_WRITE',
+  'PETTY_CASH_VIEW', 'PETTY_CASH_WRITE','PETTY_CASH_APPROVE',
+  'EQUITY_VIEW',     'EQUITY_WRITE',
+
+  // ── HR & Payroll ───────────────────────────────────────────────────────────
+  'HR_DASHBOARD_VIEW',
+  'EMPLOYEE_VIEW',   'EMPLOYEE_WRITE',
+  'ATTENDANCE_VIEW', 'ATTENDANCE_MARK',
+  'PAYROLL_VIEW',    'PAYROLL_WRITE',   'PAYROLL_APPROVE',
+  'LEAVE_APPLY',     'LEAVE_APPROVE',
+
+  // ── Assets ─────────────────────────────────────────────────────────────────
+  'ASSET_VIEW',             'ASSET_WRITE',             'ASSET_DISPOSE',
+  'ASSET_MAINTENANCE_VIEW', 'ASSET_MAINTENANCE_WRITE',
+  'LOANER_VIEW',            'LOANER_WRITE',
+
+  // ── Procurement ────────────────────────────────────────────────────────────
+  'PR_VIEW',  'PR_WRITE',  'PR_APPROVE',
+  'PO_VIEW',  'PO_WRITE',  'PO_APPROVE',
+  'GRN_VIEW', 'GRN_WRITE',
+
+  // ── Inventory / Stock ──────────────────────────────────────────────────────
+  'INVENTORY_VIEW', 'INVENTORY_WRITE',
+
+  // ── Vendors & Centers ──────────────────────────────────────────────────────
+  'VENDOR_VIEW', 'VENDOR_WRITE',
+  'CENTER_VIEW', 'CENTER_WRITE',
+
+  // ── Services, Physicians & Scanners ───────────────────────────────────────
+  'SERVICE_VIEW', 'SERVICE_WRITE',
+
+  // ── Master Data (sub-views for selective access) ───────────────────────────
+  'MASTER_DATA_VIEW',  'MASTER_DATA_WRITE',
+  'STUDY_CATALOG_VIEW','STUDY_PRICING_VIEW','RAD_REPORTING_MASTER_VIEW',
+
+  // ── Reports ────────────────────────────────────────────────────────────────
+  'REPORTS_VIEW', 'REPORTS_EXPORT',
+
+  // ── Integrations & System ──────────────────────────────────────────────────
+  'MWL_VIEW',       'MWL_WRITE',
+  'WHATSAPP_VIEW',  'WHATSAPP_SEND',
+  'USER_VIEW',      'USER_WRITE',
+  'SYSTEM_ADMIN',   'ALL_ACCESS',
 ];
 
 // Helper functions

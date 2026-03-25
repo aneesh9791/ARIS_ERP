@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getPermissions } from '../utils/permissions';
 
 
 const AUTH_HEADER = () => {
@@ -498,6 +499,7 @@ const NewBillModal = ({ onClose, onSaved }) => {
 
 // ─── Billing Page ──────────────────────────────────────────────────────────────
 const Billing = () => {
+  const { has } = getPermissions();
   const [bills, setBills] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -556,13 +558,15 @@ const Billing = () => {
               <p className="text-teal-200 text-sm mt-0.5">{total} bill{total !== 1 ? 's' : ''} total · Invoices &amp; payment tracking</p>
             </div>
           </div>
-          <button onClick={() => setShowModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-teal-700 bg-white hover:bg-teal-50 rounded-xl shadow-sm transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Bill
-          </button>
+          {has('BILLING_WRITE') && (
+            <button onClick={() => setShowModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-teal-700 bg-white hover:bg-teal-50 rounded-xl shadow-sm transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Bill
+            </button>
+          )}
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { getPermissions } from '../utils/permissions';
 import { createPortal } from 'react-dom';
 import { today as serverToday } from '../utils/serverDate';
 
@@ -371,6 +372,7 @@ const VoucherDetail = ({ v, onClose }) => (
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════
 const PettyCash = () => {
+  const { has } = getPermissions();
   const [tab,            setTab]            = useState('vouchers');   // 'vouchers' | 'pending'
   const [vouchers,       setVouchers]       = useState([]);
   const [pending,        setPending]        = useState([]);
@@ -462,7 +464,7 @@ const PettyCash = () => {
           {STATUS_LABEL[v.status]}
         </span>
       </td>
-      {showActions && (
+      {showActions && has('PETTY_CASH_APPROVE') && (
         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
           <div className="flex gap-1">
             <button onClick={() => approve(v)} disabled={approving === v.id}
@@ -476,7 +478,7 @@ const PettyCash = () => {
           </div>
         </td>
       )}
-      {!showActions && v.status === 'SUBMITTED' && (
+      {!showActions && v.status === 'SUBMITTED' && has('PETTY_CASH_WRITE') && (
         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
           <button onClick={() => deleteVoucher(v)}
             className="text-slate-400 hover:text-red-500 transition-colors">
@@ -498,13 +500,15 @@ const PettyCash = () => {
           <h1 className="text-lg font-bold text-slate-800">Petty Cash Vouchers</h1>
           <p className="text-xs text-slate-500 mt-0.5">Submit daily cash expenses for Finance approval</p>
         </div>
-        <button onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-          </svg>
-          New Voucher
-        </button>
+        {has('PETTY_CASH_WRITE') && (
+          <button onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            </svg>
+            New Voucher
+          </button>
+        )}
       </div>
 
       {/* Stat cards */}
