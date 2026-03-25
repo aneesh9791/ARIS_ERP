@@ -60,137 +60,176 @@ const PrintBill = ({ bill, patient, onClose }) => {
     const billFooter = co.bill_footer_text || 'Thank you for choosing our services. Wishing you good health!';
     const termsText  = co.terms_and_conditions || '';
 
-    const AC = '#0d9488';
+    const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+    const sc = bill.payment_status === 'PAID' ? 'paid' : bill.payment_status === 'CANCELLED' ? 'canc' : bill.payment_status === 'REFUNDED' ? 'refd' : 'pend';
+    const termsLines = termsText ? termsText.split(/\r?\n/).filter(l => l.trim()) : [];
     const w = window.open('', '_blank');
     const html = `<!DOCTYPE html><html><head>
     <meta charset="utf-8">
     <title>Invoice ${bill.bill_number}</title>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;font-size:12px}
+      body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;background:#fff;font-size:12px}
       @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-      .page{width:210mm;min-height:297mm;margin:0 auto;padding:0 0 24mm;position:relative}
+      .page{width:210mm;min-height:297mm;margin:0 auto;padding-bottom:22mm;position:relative;background:#fff}
 
-      /* Header band */
-      .hdr-band{background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);color:#fff;text-align:center;padding:7px 14mm;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border-bottom:3px solid #0f766e}
+      /* Watermark */
+      .wm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:100px;font-weight:900;color:rgba(13,148,136,0.05);letter-spacing:-4px;pointer-events:none;z-index:0;white-space:nowrap}
 
-      /* Main header */
-      .hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 14mm 10px;border-bottom:3px solid ${AC}}
-      .hdr-left{flex:1}
-      .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 16px}
-      .co-info{display:flex;flex-direction:column;gap:2px}
-      .co-name{font-size:16px;font-weight:800;color:#1e293b;line-height:1.2}
-      .co-line{font-size:9px;color:#64748b;line-height:1.5}
-      .co-tax{font-size:9px;color:#475569;font-weight:600}
-      .hdr-right{text-align:right;flex-shrink:0;flex:1}
-      .inv-title{font-size:26px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
-      .inv-meta{margin-top:6px;font-size:10px;line-height:1.9;color:#475569}
-      .inv-meta b{color:#1e293b}
-      .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:9px;font-weight:700}
-      .badge-paid{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
-      .badge-pending{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+      /* Accent line */
+      .accent{height:5px;background:linear-gradient(90deg,#134e4a,#0d9488,#14b8a6,#0d9488,#134e4a)}
+
+      /* Bill header text */
+      .bill-hdr{background:#f0fdfa;border-bottom:1px solid #99f6e4;padding:6px 16mm;font-size:10px;font-weight:700;color:#0f766e;text-align:center;letter-spacing:.1em;text-transform:uppercase}
+
+      /* Company header */
+      .hdr{display:flex;align-items:center;gap:14px;padding:14px 16mm 12px;border-bottom:2px solid #f1f5f9}
+      .hdr-left{flex:1;min-width:0}
+      .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 10px}
+      .hdr-right{flex:1;text-align:right}
+      .co-name{font-size:19px;font-weight:900;color:#0f766e;line-height:1.15;letter-spacing:-.3px;margin-top:5px}
+      .co-tag{font-size:9px;color:#0d9488;font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+      .co-addr{font-size:9.5px;color:#64748b;line-height:1.75;margin-top:4px}
+      .co-gstin{font-size:9.5px;color:#334155;font-weight:700;margin-top:2px}
+      .inv-lbl{font-size:30px;font-weight:900;color:#0d9488;letter-spacing:-1.5px;line-height:1}
+      .inv-meta{margin-top:7px;font-size:10px;line-height:1.9;color:#64748b}
+      .inv-meta b{color:#0f172a}
+
+      /* Badges */
+      .b-paid{display:inline-block;padding:2px 9px;border-radius:20px;font-size:8.5px;font-weight:800;background:#dcfce7;color:#15803d;border:1px solid #86efac}
+      .b-pend{display:inline-block;padding:2px 9px;border-radius:20px;font-size:8.5px;font-weight:800;background:#fef3c7;color:#b45309;border:1px solid #fcd34d}
+      .b-canc{display:inline-block;padding:2px 9px;border-radius:20px;font-size:8.5px;font-weight:800;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5}
+      .b-refd{display:inline-block;padding:2px 9px;border-radius:20px;font-size:8.5px;font-weight:800;background:#e0f2fe;color:#075985;border:1px solid #7dd3fc}
 
       /* Body */
-      .body{padding:0 14mm}
+      .body{padding:0 16mm}
 
-      /* Patient info box */
-      .pt-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:7px;padding:10px 14px;margin:12px 0;display:grid;grid-template-columns:repeat(3,1fr);gap:7px 18px}
-      .pt-label{font-size:8px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.05em}
-      .pt-val{font-size:12px;font-weight:600;margin-top:1px;color:#1e293b}
+      /* Patient card */
+      .pt-card{border:1px solid #e2e8f0;border-radius:9px;overflow:hidden;margin:14px 0}
+      .pt-card-hdr{background:linear-gradient(90deg,#0f766e,#0d9488);color:#fff;padding:7px 13px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em}
+      .pt-grid{display:grid;grid-template-columns:repeat(3,1fr)}
+      .pt-cell{padding:8px 13px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9}
+      .pt-cell:nth-child(3n){border-right:none}
+      .pt-lbl{font-size:7.5px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.07em}
+      .pt-val{font-size:12px;font-weight:600;color:#0f172a;margin-top:2px}
 
       /* Table */
-      table{width:100%;border-collapse:collapse;margin-bottom:14px}
-      thead tr{background:${AC}}
-      th{padding:8px 10px;text-align:left;font-size:9.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.05em}
-      th.r,td.r{text-align:right}
-      tbody tr:nth-child(even){background:#f0fdfa}
-      td{padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:11px;color:#334155}
+      .tbl-wrap{margin:6px 0 4px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0}
+      table{width:100%;border-collapse:collapse}
+      thead tr{background:linear-gradient(90deg,#0f766e,#0d9488)}
+      th{padding:9px 11px;text-align:left;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.07em}
+      th:last-child,td:last-child{text-align:right}
+      tbody tr{border-bottom:1px solid #f1f5f9}
+      tbody tr:nth-child(even){background:#f8fafc}
+      tbody tr:last-child{border-bottom:none}
+      td{padding:9px 11px;font-size:11.5px;color:#334155}
 
       /* Totals */
-      .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:14px}
-      .totals{width:240px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
-      .tot-row{display:flex;justify-content:space-between;padding:5px 11px;font-size:11px;border-bottom:1px solid #f1f5f9;color:#475569}
-      .tot-disc{color:#16a34a}
-      .grand{display:flex;justify-content:space-between;padding:8px 11px;background:${AC};color:#fff;font-size:14px;font-weight:800}
+      .tot-wrap{display:flex;justify-content:flex-end;margin:12px 0 14px}
+      .tot-box{width:255px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+      .tot-row{display:flex;justify-content:space-between;padding:6px 14px;font-size:11px;border-bottom:1px solid #f1f5f9;color:#475569}
+      .tot-row.disc{color:#16a34a}
+      .tot-grand{display:flex;justify-content:space-between;padding:10px 14px;background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff;font-size:14.5px;font-weight:800}
 
       /* Notes */
-      .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:5px;padding:7px 11px;margin-bottom:12px;font-size:10px;color:#134e4a}
+      .notes{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;font-size:10px;color:#78350f;margin-bottom:12px}
+      .notes b{color:#92400e}
 
       /* Terms */
-      .terms-box{border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:18px;font-size:9px;color:#94a3b8;line-height:1.6}
-      .terms-box b{color:#64748b}
+      .terms{margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;margin-bottom:12px}
+      .terms-hdr{font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+      .t-line{display:flex;gap:5px;font-size:8.5px;color:#94a3b8;line-height:1.65;padding:1px 0}
+      .t-num{flex-shrink:0;color:#64748b;font-weight:700;min-width:14px}
 
-      /* Footer band */
-      .ftr-band{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);border-top:3px solid #0f766e;padding:6px 14mm;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:rgba(255,255,255,0.9)}
-      .ftr-text{font-style:italic;color:rgba(255,255,255,0.75);flex:1;text-align:center;padding:0 12px}
+      /* Signature */
+      .sig-row{display:flex;justify-content:space-between;margin-top:22px;padding-top:10px}
+      .sig-box{text-align:center;width:160px}
+      .sig-line{border-top:1px solid #334155;padding-top:5px;font-size:9px;color:#64748b}
+
+      /* Footer */
+      .ftr{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#134e4a 0%,#0d9488 50%,#134e4a 100%);padding:7px 16mm;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:rgba(255,255,255,.9)}
+      .ftr-mid{font-style:italic;color:rgba(255,255,255,.75);flex:1;text-align:center;padding:0 10px}
     </style>
     </head><body>
+    <div class="wm">${bill.payment_status}</div>
     <div class="page">
+      <div class="accent"></div>
+      ${billHeader ? `<div class="bill-hdr">${billHeader}</div>` : ''}
 
-      ${billHeader ? `<div class="hdr-band">${billHeader}</div>` : ''}
-
-      <!-- Company Header -->
       <div class="hdr">
         <div class="hdr-left">
-          <div class="co-info">
-            <div class="co-name">${coName}</div>
-            ${coAddr     ? `<div class="co-line">${coAddr}</div>` : ''}
-            ${coCityLine ? `<div class="co-line">${coCityLine}</div>` : ''}
-            ${coTaxLine  ? `<div class="co-tax">${coTaxLine}</div>` : ''}
-            ${coContact  ? `<div class="co-line">${coContact}</div>` : ''}
+          ${logoSrc ? `<img src="${logoSrc}" style="max-height:60px;max-width:160px;object-fit:contain;display:block;" />` : ''}
+          <div class="co-name">${coName}</div>
+          ${co.tagline ? `<div class="co-tag">${co.tagline}</div>` : ''}
+          <div class="co-addr">
+            ${[coAddr, coCityLine].filter(Boolean).join(' • ')}
+            ${coContact ? `<br>${coContact}` : ''}
           </div>
+          ${coTaxLine ? `<div class="co-gstin">${coTaxLine}</div>` : ''}
         </div>
         <div class="hdr-center">
-          ${logoSrc ? `<img src="${logoSrc}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+            <div style="width:52px;height:52px;border-radius:50%;border:2.5px solid #0d9488;background:#f0fdfa;display:flex;align-items:center;justify-content:center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="#f59e0b"><circle cx="12" cy="6.5" r="3"/><path d="M12 12c-4.418 0-7.5 2.015-7.5 3.5V17h15v-1.5C19.5 14.015 16.418 12 12 12z"/></svg>
+            </div>
+            <div style="text-align:center;line-height:1.2">
+              <div style="font-size:21px;font-weight:900;color:#0f766e;letter-spacing:-.5px">ARIS</div>
+              <div style="font-size:8.5px;font-weight:700"><span style="color:#f59e0b">Diagnostic</span>&nbsp;<span style="color:#0d9488">Centre</span></div>
+            </div>
+          </div>
         </div>
         <div class="hdr-right">
-          <div class="inv-title">INVOICE</div>
+          <div class="inv-lbl">INVOICE</div>
           <div class="inv-meta">
-            <b>Bill #:</b> ${bill.bill_number || '—'}<br>
-            <b>Date:</b> ${new Date(bill.bill_date || Date.now()).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}<br>
-            <b>Status:</b>&nbsp;<span class="badge ${bill.payment_status === 'PAID' ? 'badge-paid' : 'badge-pending'}">${bill.payment_status}</span>
+            <b>Bill&nbsp;#</b>&nbsp;${bill.bill_number || '—'}<br>
+            <b>Date</b>&nbsp;${fmtDate(bill.bill_date || new Date())}<br>
+            <b>Mode</b>&nbsp;${bill.payment_mode || '—'}<br>
+            <b>Status</b>&nbsp;<span class="b-${sc}">${bill.payment_status}</span>
           </div>
         </div>
       </div>
 
       <div class="body">
-
-        <!-- Patient Details -->
-        <div class="pt-box">
-          ${[['Patient', patient.name], ['PID', patient.pid || '—'], ['Phone', patient.phone || '—'], ['Gender', patient.gender || '—'], ['Age', calcAge(patient.date_of_birth)], ['Payment Mode', bill.payment_mode || '—']].map(([l, v]) => `<div><div class="pt-label">${l}</div><div class="pt-val">${v}</div></div>`).join('')}
-        </div>
-
-        <!-- Services Table -->
-        <table>
-          <thead><tr><th style="width:28px">#</th><th>Study / Service</th><th>Code</th><th class="r">Amount</th></tr></thead>
-          <tbody>
-            ${(bill.study_details || []).map((s, i) => `<tr><td>${i + 1}</td><td>${s.study_name}</td><td>${s.study_code || '—'}</td><td class="r">${fmt(s.rate)}</td></tr>`).join('')}
-          </tbody>
-        </table>
-
-        <!-- Totals -->
-        <div class="totals-wrap">
-          <div class="totals">
-            <div class="tot-row"><span>Subtotal</span><span>${fmt(bill.subtotal)}</span></div>
-            ${bill.discount_amount > 0 ? `<div class="tot-row tot-disc"><span>Discount</span><span>− ${fmt(bill.discount_amount)}</span></div>` : ''}
-            ${bill.gst_amount > 0 ? `<div class="tot-row"><span>GST</span><span>${fmt(bill.gst_amount)}</span></div>` : ''}
-            <div class="grand"><span>Total</span><span>${fmt(bill.total_amount)}</span></div>
+        <div class="pt-card">
+          <div class="pt-card-hdr">Patient Information</div>
+          <div class="pt-grid">
+            ${[['Patient Name', patient.name || '—'], ['PID', patient.pid || '—'], ['Phone', patient.phone || '—'], ['Gender', patient.gender || '—'], ['Age', calcAge(patient.date_of_birth)], ['Ref. Physician', bill.referring_physician || '—']].map(([l,v]) => `<div class="pt-cell"><div class="pt-lbl">${l}</div><div class="pt-val">${v}</div></div>`).join('')}
           </div>
         </div>
 
-        ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${bill.notes}</div>` : ''}
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th style="width:30px">#</th><th>Study / Service</th><th>Type</th><th>Amount</th></tr></thead>
+            <tbody>
+              ${(bill.study_details || []).map((s, i) => `<tr><td>${i+1}</td><td>${s.study_name}</td><td style="color:#64748b;font-size:10.5px">${s.item_type === 'STUDY' ? (s.study_code || '—') : s.item_type || '—'}</td><td>${fmt(s.rate)}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
 
-        ${termsText ? `<div class="terms-box"><b>Terms &amp; Conditions:</b><br>${termsText}</div>` : ''}
+        <div class="tot-wrap">
+          <div class="tot-box">
+            <div class="tot-row"><span>Subtotal</span><span>${fmt(bill.subtotal)}</span></div>
+            ${bill.discount_amount > 0 ? `<div class="tot-row disc"><span>Discount${bill.discount_reason ? ' ('+bill.discount_reason+')' : ''}</span><span>− ${fmt(bill.discount_amount)}</span></div>` : ''}
+            ${bill.gst_amount > 0 ? `<div class="tot-row"><span>GST (18%)</span><span>${fmt(bill.gst_amount)}</span></div>` : ''}
+            <div class="tot-grand"><span>Total Amount</span><span>${fmt(bill.total_amount)}</span></div>
+          </div>
+        </div>
 
+        ${bill.notes ? `<div class="notes"><b>Notes:</b> ${bill.notes}</div>` : ''}
+
+        ${termsLines.length ? `<div class="terms"><div class="terms-hdr">Terms &amp; Conditions</div>${termsLines.map((l,i) => `<div class="t-line"><span class="t-num">${i+1}.</span><span>${l.trim()}</span></div>`).join('')}</div>` : ''}
+
+        <div class="sig-row">
+          <div class="sig-box"><div class="sig-line">Patient / Guardian Signature</div></div>
+          <div class="sig-box"><div class="sig-line">Authorised Signatory</div></div>
+        </div>
       </div>
 
-      <!-- Footer Band -->
-      <div class="ftr-band">
+      <div class="ftr">
         <span style="white-space:nowrap">${coName}</span>
-        <span class="ftr-text">${billFooter}</span>
+        <span class="ftr-mid">${billFooter}</span>
         <span style="white-space:nowrap">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
       </div>
-
     </div></body></html>`;
     w.document.documentElement.innerHTML = html;
     setTimeout(() => w.print(), 500);
