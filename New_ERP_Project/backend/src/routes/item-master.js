@@ -13,6 +13,7 @@ const UOM_OPTIONS = [
   'HRS','SESSION','VISIT','MONTH','YEAR',
   'CREDITS','STUDIES','SCANS',
   'PIECES','BOXES','BOTTLES','PACKETS','KGS','LITERS','SETS',
+  'COVER','KIT',
 ];
 
 const ITEM_TYPE_TO_CAT_TYPE = {
@@ -132,7 +133,7 @@ const itemValidators = [
   body('item_name').trim().isLength({ min: 2, max: 200 }).withMessage('Item name is required'),
   body('item_type').isIn(['STOCK','EXPENSE','FIXED_ASSET']).withMessage('Item type must be STOCK, EXPENSE or FIXED_ASSET'),
   body('category_id').isInt({ min: 1 }).withMessage('Category is required').toInt(),
-  body('uom').isIn(UOM_OPTIONS).withMessage('Valid unit of measure is required'),
+  body('uom').customSanitizer(v => (typeof v === 'string' ? v.trim().toUpperCase() : v)).isIn(UOM_OPTIONS).withMessage('Valid unit of measure is required'),
   body('gst_rate').custom(v => [0, 5, 12, 18, 28].includes(parseFloat(v))).withMessage('GST rate must be one of: 0, 5, 12, 18, 28').toFloat(),
   body('standard_rate').isFloat({ min: 0 }).withMessage('Standard rate must be ≥ 0').toFloat(),
   body('reorder_level').optional({ checkFalsy: true }).isFloat({ min: 0 }).toFloat(),

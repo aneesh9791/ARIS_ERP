@@ -8,7 +8,7 @@ const fmtINR = n => new Intl.NumberFormat('en-IN', { style: 'currency', currency
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GST_RATES = [0, 5, 12, 18, 28];
-const LEGACY_UOMS = ['PIECES','BOXES','BOTTLES','PACKETS','KGS','LITERS','SETS'];
+const LEGACY_UOMS = ['PIECES','BOXES','BOTTLES','PACKETS','KGS','LITERS','SETS','COVER','KIT'];
 
 const ITEM_TYPES = [
   { value: 'STOCK',       label: 'Stock Item',          desc: 'Inventory tracked',        catType: 'STOCK',       color: 'emerald', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
