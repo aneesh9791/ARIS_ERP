@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 const token = () => localStorage.getItem('token');
 const hdrs  = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
@@ -442,6 +444,30 @@ const ItemsTab = ({ categories }) => {
     return true;
   }), [items, filter, search]);
 
+  const isAdmin = (() => { try { const p = JSON.parse(localStorage.getItem('user'))?.permissions || []; return p.includes('ALL_ACCESS') || p.includes('MASTER_DATA_VIEW'); } catch { return false; } })();
+
+  const exportExcel = () => {
+    const rows = filtered.map(it => ({
+      'Item Code':     it.item_code,
+      'Item Name':     it.item_name,
+      'Type':          it.item_type,
+      'Category':      it.category_name || it.l1_category_name || '',
+      'UOM':           it.uom,
+      'Consumption UOM': it.consumption_uom || it.uom,
+      'UOM Conversion': parseFloat(it.uom_conversion || 1),
+      'Standard Rate': parseFloat(it.standard_rate || 0),
+      'GST %':         parseFloat(it.gst_rate || 0),
+      'Status':        it.active === false ? 'Inactive' : 'Active',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [12,30,14,20,10,14,14,14,8,10].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Item Master');
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }),
+      `item-master-${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
   const counts = useMemo(() => ({
     total:       items.filter(i => i.active !== false).length,
     STOCK:       items.filter(i => i.item_type === 'STOCK'       && i.active !== false).length,
@@ -478,6 +504,15 @@ const ItemsTab = ({ categories }) => {
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search code or name…"
             className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-52 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          {isAdmin && (
+            <button onClick={exportExcel} disabled={filtered.length === 0}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export Excel
+            </button>
+          )}
           <button onClick={() => setModal('add')}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
