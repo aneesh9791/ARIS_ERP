@@ -418,8 +418,8 @@ const Layout = () => {
               {getInitials(user)}
             </div>
             <div className="ml-3 flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.name || user.username || user.email || 'Admin'}</p>
-              <p className="text-xs text-teal-400 truncate capitalize">{user.role || 'Administrator'}</p>
+              <p className="text-sm font-semibold text-white leading-tight truncate">{user.name || user.username || user.email || 'Admin'}</p>
+              <p className="text-xs font-medium text-teal-300 uppercase tracking-wide truncate mt-0.5">{user.role || 'Administrator'}</p>
             </div>
             <button onClick={handleLogout} title="Log Out"
               className="ml-2 p-1.5 text-red-400 hover:text-white hover:bg-red-600 rounded-lg transition-colors flex-shrink-0">
