@@ -71,12 +71,12 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     const user = (() => { try { return JSON.parse(localStorage.getItem('user')); } catch { return null; } })();
-    // Require a plausible JWT (3 dot-separated parts) AND a valid user object with permissions
+    // Require a JWT-shaped token (3 dot-separated parts) and a valid user object with permissions array
     const valid = !!(
       token &&
       token.split('.').length === 3 &&
-      user?.id &&
-      Array.isArray(user?.permissions)
+      user &&
+      Array.isArray(user.permissions)
     );
     setIsAuthenticated(valid);
   }, []);
