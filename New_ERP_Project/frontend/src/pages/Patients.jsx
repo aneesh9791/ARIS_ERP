@@ -38,8 +38,8 @@ const PHYSICIAN_SPECIALTIES = [
 ];
 
 const QuickAddPhysicianModal = ({ onSave, onClose }) => {
-  const [form, setForm]   = useState({ first_name: '', last_name: '', specialty: '' });
-  const [err, setErr]     = useState('');
+  const [form, setForm]     = useState({ first_name: '', last_name: '', specialty: '', contact_phone: '', address: '', status: 'active' });
+  const [err, setErr]       = useState('');
   const [saving, setSaving] = useState(false);
   const set = f => e => setForm(p => ({ ...p, [f]: e.target.value }));
 
@@ -51,7 +51,7 @@ const QuickAddPhysicianModal = ({ onSave, onClose }) => {
     setSaving(true); setErr('');
     try {
       const r = await api('/api/referring-physicians', {
-        method: 'POST', body: JSON.stringify({ ...form, status: 'active' }),
+        method: 'POST', body: JSON.stringify(form),
       });
       const d = await r.json();
       if (!r.ok) { setErr(d.errors?.[0]?.msg || d.error || 'Failed to save'); setSaving(false); return; }
@@ -59,10 +59,10 @@ const QuickAddPhysicianModal = ({ onSave, onClose }) => {
     } catch { setErr('Network error'); setSaving(false); }
   };
 
-  const fi = `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 border-slate-300`;
+  const fi = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500';
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
         <div className="px-5 py-4 border-b border-slate-200 flex justify-between items-center">
           <h3 className="text-sm font-semibold text-slate-800">Add Referring Physician</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
@@ -84,6 +84,21 @@ const QuickAddPhysicianModal = ({ onSave, onClose }) => {
             <select value={form.specialty} onChange={set('specialty')} className={fi}>
               <option value="">Select specialty</option>
               {PHYSICIAN_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
+            <input type="tel" value={form.contact_phone} onChange={set('contact_phone')} className={fi} placeholder="e.g. +91 98765 43210" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
+            <textarea value={form.address} onChange={set('address')} rows={2} className={fi} placeholder="Clinic / hospital address" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+            <select value={form.status} onChange={set('status')} className={fi}>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
           </div>
           <div className="flex justify-end gap-2 pt-1">
