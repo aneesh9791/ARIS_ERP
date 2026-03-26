@@ -140,6 +140,69 @@ const PAGE_TITLES = {
   '/settings/mwl':     'DICOM MWL Gateway',
 };
 
+// ─── Change Password Modal ────────────────────────────────────────────────────
+const ChangePasswordModal = ({ onClose }) => {
+  const [form, setForm]     = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [err, setErr]       = useState('');
+  const [success, setSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
+  const set = f => e => setForm(p => ({ ...p, [f]: e.target.value }));
+
+  const submit = async ev => {
+    ev.preventDefault();
+    if (!form.currentPassword)                        { setErr('Current password is required'); return; }
+    if (form.newPassword.length < 8)                  { setErr('New password must be at least 8 characters'); return; }
+    if (form.newPassword !== form.confirmPassword)    { setErr('New passwords do not match'); return; }
+    setSaving(true); setErr('');
+    try {
+      const token = localStorage.getItem('token');
+      const r = await fetch('/api/auth/change-password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ currentPassword: form.currentPassword, newPassword: form.newPassword }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error || 'Failed to change password'); setSaving(false); return; }
+      setSuccess('Password changed successfully!');
+      setTimeout(onClose, 1500);
+    } catch { setErr('Network error'); setSaving(false); }
+  };
+
+  const fi = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500';
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-sm shadow-xl">
+        <div className="px-5 py-4 border-b border-slate-200 flex justify-between items-center">
+          <h3 className="text-sm font-semibold text-slate-800">Change Password</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
+        </div>
+        <form onSubmit={submit} className="p-5 space-y-3">
+          {err     && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{err}</p>}
+          {success && <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">{success}</p>}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Current Password</label>
+            <input type="password" value={form.currentPassword} onChange={set('currentPassword')} className={fi} autoFocus />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">New Password <span className="text-slate-400">(min 8 characters)</span></label>
+            <input type="password" value={form.newPassword} onChange={set('newPassword')} className={fi} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Confirm New Password</label>
+            <input type="password" value={form.confirmPassword} onChange={set('confirmPassword')} className={fi} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200">Cancel</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50">
+              {saving ? 'Saving…' : 'Change Password'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 // ─── Header logo (top-right corner) ──────────────────────────────────────────
 const HeaderLogo = () => {
   const [logoConfig, setLogoConfig] = React.useState(() => {
@@ -192,6 +255,10 @@ const Layout = () => {
 
   // Mobile sidebar open state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Profile popover & change password
+  const [showProfile, setShowProfile]             = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   // Nav group collapse states
   const [collapsedGroups, setCollapsedGroups] = useState(() => {
@@ -336,41 +403,64 @@ const Layout = () => {
       </nav>
 
       {/* User Profile */}
-      <div className={`flex-shrink-0 border-t border-teal-800 p-3 ${!isMobile && sidebarCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
-        {(!isMobile && sidebarCollapsed) ? (
-          // Mini mode: just avatar + logout stacked
-          <>
-            <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold">
-              {getInitials(user)}
+      <div className={`flex-shrink-0 border-t border-teal-800 p-3 relative ${!isMobile && sidebarCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
+
+        {/* Profile popover */}
+        {showProfile && (
+          <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
+            <div className="px-4 py-3 bg-gradient-to-r from-teal-600 to-teal-500">
+              <p className="text-sm font-semibold text-white truncate">{user.name || user.username || user.email || 'Admin'}</p>
+              <p className="text-xs text-teal-100 capitalize">{user.role || 'Administrator'}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              title="Sign out"
-              className="p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors"
-            >
+            <div className="p-1">
+              <button
+                onClick={() => { setShowProfile(false); setShowChangePassword(true); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+                Change Password
+              </button>
+              <button
+                onClick={() => { setShowProfile(false); handleLogout(); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <Icon d={icons.logout} className="w-4 h-4" />
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
+
+        {(!isMobile && sidebarCollapsed) ? (
+          // Mini mode
+          <>
+            <button onClick={() => setShowProfile(p => !p)}
+              className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold hover:bg-teal-500 transition-colors"
+              title="Profile">
+              {getInitials(user)}
+            </button>
+            <button onClick={handleLogout} title="Sign out"
+              className="p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors">
               <Icon d={icons.logout} className="w-4 h-4" />
             </button>
           </>
         ) : (
           // Full mode
-          <div className="flex items-center">
+          <button onClick={() => setShowProfile(p => !p)}
+            className="w-full flex items-center hover:bg-teal-800 rounded-lg px-1 py-1 transition-colors">
             <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
               {getInitials(user)}
             </div>
-            <div className="ml-3 flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">
-                {user.name || user.username || user.email || 'Admin'}
-              </p>
+            <div className="ml-3 flex-1 min-w-0 text-left">
+              <p className="text-sm font-medium text-white truncate">{user.name || user.username || user.email || 'Admin'}</p>
               <p className="text-xs text-teal-400 truncate capitalize">{user.role || 'Administrator'}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              title="Sign out"
-              className="ml-2 p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors flex-shrink-0"
-            >
-              <Icon d={icons.logout} className="w-4 h-4" />
-            </button>
-          </div>
+            <svg className="w-4 h-4 text-teal-400 ml-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={showProfile ? 'M19 9l-7 7-7-7' : 'M5 15l7-7 7 7'} />
+            </svg>
+          </button>
         )}
       </div>
     </div>
@@ -451,6 +541,16 @@ const Layout = () => {
           <Outlet />
         </main>
       </div>
+
+      {/* Close profile popover on outside click */}
+      {showProfile && (
+        <div className="fixed inset-0 z-40" onClick={() => setShowProfile(false)} />
+      )}
+
+      {/* Change Password Modal */}
+      {showChangePassword && (
+        <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
+      )}
     </div>
   );
 };
