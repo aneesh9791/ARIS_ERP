@@ -170,7 +170,7 @@ const ChangePasswordModal = ({ onClose }) => {
 
   const fi = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500';
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
       <div className="bg-white rounded-xl w-full max-w-sm shadow-xl">
         <div className="px-5 py-4 border-b border-slate-200 flex justify-between items-center">
           <h3 className="text-sm font-semibold text-slate-800">Change Password</h3>
@@ -300,9 +300,10 @@ const Layout = () => {
     try { localStorage.setItem('aris_nav_groups', JSON.stringify(collapsedGroups)); } catch {}
   }, [collapsedGroups]);
 
-  // Close mobile sidebar on route change
+  // Close mobile sidebar and profile popover on route change
   useEffect(() => {
     setMobileSidebarOpen(false);
+    setShowProfile(false);
   }, [location.pathname]);
 
   const handleLogout = useCallback(() => {
@@ -467,91 +468,94 @@ const Layout = () => {
   );
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <>
+      <div className="flex h-screen bg-slate-50 overflow-hidden">
 
-      {/* ── Desktop Sidebar ─────────────────────────────────────────────────── */}
-      <div
-        className={`hidden md:flex flex-shrink-0 flex-col transition-all duration-300 ease-in-out ${
-          sidebarCollapsed ? 'w-16' : 'w-60'
-        }`}
-      >
-        <SidebarContent />
-      </div>
-
-      {/* ── Mobile Sidebar Overlay ──────────────────────────────────────────── */}
-      {mobileSidebarOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black bg-opacity-60 transition-opacity"
-            onClick={() => setMobileSidebarOpen(false)}
-            aria-hidden="true"
-          />
-          {/* Drawer */}
-          <div className="relative flex flex-col w-64 h-full shadow-2xl transform transition-transform duration-300">
-            {/* Close button */}
-            <button
-              onClick={() => setMobileSidebarOpen(false)}
-              className="absolute top-3 right-3 z-10 p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors"
-            >
-              <Icon d={icons.close} className="w-5 h-5" />
-            </button>
-            <SidebarContent isMobile />
-          </div>
+        {/* ── Desktop Sidebar ─────────────────────────────────────────────────── */}
+        <div
+          className={`hidden md:flex flex-shrink-0 flex-col transition-all duration-300 ease-in-out ${
+            sidebarCollapsed ? 'w-16' : 'w-60'
+          }`}
+        >
+          <SidebarContent />
         </div>
-      )}
 
-      {/* ── Main content area ───────────────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-
-        {/* Top Header Bar */}
-        <header className="flex-shrink-0 flex items-center h-16 bg-white border-b border-slate-200 px-4 shadow-sm">
-          {/* Left: hamburger (mobile) + collapse toggle (desktop) + breadcrumb */}
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            {/* Mobile hamburger */}
-            <button
-              onClick={() => setMobileSidebarOpen(true)}
-              className="md:hidden p-1.5 text-slate-500 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors"
-              aria-label="Open sidebar"
-            >
-              <Icon d={icons.menu} className="w-5 h-5" />
-            </button>
-
-            {/* Desktop collapse toggle */}
-            <button
-              onClick={() => setSidebarCollapsed(c => !c)}
-              className="hidden md:flex p-1.5 text-slate-500 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors"
-              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              <Icon d={sidebarCollapsed ? icons.chevronRight : icons.chevronLeft} className="w-5 h-5" />
-            </button>
-
-            {/* Page title */}
-            <span className="text-sm font-semibold text-slate-800 truncate">{pageTitle}</span>
+        {/* ── Mobile Sidebar Overlay ──────────────────────────────────────────── */}
+        {mobileSidebarOpen && (
+          <div className="fixed inset-0 z-40 md:hidden">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-60 transition-opacity"
+              onClick={() => setMobileSidebarOpen(false)}
+              aria-hidden="true"
+            />
+            {/* Drawer */}
+            <div className="relative flex flex-col w-64 h-full shadow-2xl transform transition-transform duration-300">
+              {/* Close button */}
+              <button
+                onClick={() => setMobileSidebarOpen(false)}
+                className="absolute top-3 right-3 z-10 p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors"
+              >
+                <Icon d={icons.close} className="w-5 h-5" />
+              </button>
+              <SidebarContent isMobile />
+            </div>
           </div>
+        )}
 
-          {/* Right: logo */}
-          <div className="flex items-center flex-shrink-0">
-            <HeaderLogo />
-          </div>
-        </header>
+        {/* ── Main content area ───────────────────────────────────────────────── */}
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto bg-slate-50">
-          <Outlet />
-        </main>
+          {/* Top Header Bar */}
+          <header className="flex-shrink-0 flex items-center h-16 bg-white border-b border-slate-200 px-4 shadow-sm">
+            {/* Left: hamburger (mobile) + collapse toggle (desktop) + breadcrumb */}
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {/* Mobile hamburger */}
+              <button
+                onClick={() => setMobileSidebarOpen(true)}
+                className="md:hidden p-1.5 text-slate-500 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors"
+                aria-label="Open sidebar"
+              >
+                <Icon d={icons.menu} className="w-5 h-5" />
+              </button>
+
+              {/* Desktop collapse toggle */}
+              <button
+                onClick={() => setSidebarCollapsed(c => !c)}
+                className="hidden md:flex p-1.5 text-slate-500 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors"
+                aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                <Icon d={sidebarCollapsed ? icons.chevronRight : icons.chevronLeft} className="w-5 h-5" />
+              </button>
+
+              {/* Page title */}
+              <span className="text-sm font-semibold text-slate-800 truncate">{pageTitle}</span>
+            </div>
+
+            {/* Right: logo */}
+            <div className="flex items-center flex-shrink-0">
+              <HeaderLogo />
+            </div>
+          </header>
+
+          {/* Page content */}
+          <main className="flex-1 overflow-y-auto bg-slate-50">
+            <Outlet />
+          </main>
+        </div>
+
       </div>
 
-      {/* Close profile popover on outside click */}
+      {/* Close profile popover on outside click — rendered outside overflow-hidden container */}
       {showProfile && (
         <div className="fixed inset-0 z-40" onClick={() => setShowProfile(false)} />
       )}
 
-      {/* Change Password Modal */}
+      {/* Change Password Modal — rendered outside overflow-hidden container */}
       {showChangePassword && (
         <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
       )}
-    </div>
+    </>
   );
 };
 
