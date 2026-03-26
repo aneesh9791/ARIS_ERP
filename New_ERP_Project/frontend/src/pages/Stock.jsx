@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getPermissions } from '../utils/permissions';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 const token = () => localStorage.getItem('token');
 const hdrs = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
@@ -418,6 +420,28 @@ const Stock = () => {
     return true;
   });
 
+  const exportStockExcel = () => {
+    const rows = filteredStock.map(i => ({
+      'Item Code':       i.item_code,
+      'Item Name':       i.item_name,
+      'Category':        i.category_name || '',
+      'UOM':             i.consumption_uom || i.uom,
+      'Current Stock':   parseFloat(i.current_stock || 0),
+      'Reorder Level':   parseFloat(i.reorder_level || 0),
+      'Min Stock':       parseFloat(i.minimum_stock || 0),
+      'Standard Rate':   parseFloat(i.standard_rate || 0),
+      'Est. Value (₹)':  parseFloat((parseFloat(i.current_stock || 0) * parseFloat(i.standard_rate || 0)).toFixed(2)),
+      'Status':          i.stock_status?.replace('_', ' ') || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [10,30,20,8,14,14,12,14,16,14].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Stock List');
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }),
+      `stock-list-${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
   // Center stock config
   const [configCenter, setConfigCenter] = useState('');
   const [configs, setConfigs]           = useState([]);
@@ -578,6 +602,13 @@ const Stock = () => {
                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <span className="text-xs text-slate-400 ml-auto">{filteredStock.length} items</span>
+              <button onClick={exportStockExcel} disabled={filteredStock.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Export Excel
+              </button>
             </div>
             {stockLoading ? (
               <div className="flex items-center justify-center py-16 text-slate-400 text-sm">Loading…</div>
