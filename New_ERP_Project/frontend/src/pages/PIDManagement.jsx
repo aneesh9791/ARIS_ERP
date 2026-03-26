@@ -429,8 +429,7 @@ const PIDManagement = () => {
     setShowPIDSearch(false);
   };
 
-  const handleStudySelected = (study) => {
-    console.log('Selected study:', study);
+  const handleStudySelected = (_study) => {
     setShowAccessionSearch(false);
   };
 

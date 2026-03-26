@@ -139,6 +139,8 @@ const PrintBill = ({ bill, patient, onClose }) => {
     const termsText  = co.terms_and_conditions || '';
 
     const AC = '#0d9488';
+    // HTML-escape all user-supplied values before injecting into document.write
+    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const w = window.open('', '_blank');
     const html = `<!DOCTYPE html><html><head>
     <meta charset="utf-8">
@@ -212,28 +214,28 @@ const PrintBill = ({ bill, patient, onClose }) => {
     </head><body>
     <div class="page">
 
-      ${billHeader ? `<div class="hdr-band">${billHeader}</div>` : ''}
+      ${billHeader ? `<div class="hdr-band">${esc(billHeader)}</div>` : ''}
 
       <!-- Company Header -->
       <div class="hdr">
         <div class="hdr-left">
           <div class="co-info">
-            <div class="co-name">${coName}</div>
-            ${coAddr     ? `<div class="co-line">${coAddr}</div>` : ''}
-            ${coCityLine ? `<div class="co-line">${coCityLine}</div>` : ''}
-            ${coTaxLine  ? `<div class="co-tax">${coTaxLine}</div>` : ''}
-            ${coContact  ? `<div class="co-line">${coContact}</div>` : ''}
+            <div class="co-name">${esc(coName)}</div>
+            ${coAddr     ? `<div class="co-line">${esc(coAddr)}</div>` : ''}
+            ${coCityLine ? `<div class="co-line">${esc(coCityLine)}</div>` : ''}
+            ${coTaxLine  ? `<div class="co-tax">${esc(coTaxLine)}</div>` : ''}
+            ${coContact  ? `<div class="co-line">${esc(coContact)}</div>` : ''}
           </div>
         </div>
         <div class="hdr-center">
-          ${logoSrc ? `<img src="${logoSrc}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
+          ${logoSrc ? `<img src="${esc(logoSrc)}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
         </div>
         <div class="hdr-right">
           <div class="inv-title">INVOICE</div>
           <div class="inv-meta">
-            <b>Bill #:</b> ${bill.bill_number || '—'}<br>
+            <b>Bill #:</b> ${esc(bill.bill_number || '—')}<br>
             <b>Date:</b> ${new Date(bill.bill_date || Date.now()).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}<br>
-            <b>Status:</b>&nbsp;<span class="badge ${bill.payment_status === 'PAID' ? 'badge-paid' : 'badge-pending'}">${bill.payment_status}</span>
+            <b>Status:</b>&nbsp;<span class="badge ${bill.payment_status === 'PAID' ? 'badge-paid' : 'badge-pending'}">${esc(bill.payment_status)}</span>
           </div>
         </div>
       </div>
@@ -242,14 +244,14 @@ const PrintBill = ({ bill, patient, onClose }) => {
 
         <!-- Patient Details -->
         <div class="pt-box">
-          ${[['Patient', patient.name], ['PID', patient.pid || '—'], ['Phone', patient.phone || '—'], ['Gender', patient.gender || '—'], ['Age', calcAge(patient.date_of_birth)], ['Payment Mode', bill.payment_mode || '—']].map(([l, v]) => `<div><div class="pt-label">${l}</div><div class="pt-val">${v}</div></div>`).join('')}
+          ${[['Patient', patient.name], ['PID', patient.pid || '—'], ['Phone', patient.phone || '—'], ['Gender', patient.gender || '—'], ['Age', calcAge(patient.date_of_birth)], ['Payment Mode', bill.payment_mode || '—']].map(([l, v]) => `<div><div class="pt-label">${esc(l)}</div><div class="pt-val">${esc(v)}</div></div>`).join('')}
         </div>
 
         <!-- Services Table -->
         <table>
           <thead><tr><th style="width:28px">#</th><th>Study / Service</th><th>Code</th><th class="r">Amount</th></tr></thead>
           <tbody>
-            ${(bill.study_details || []).map((s, i) => `<tr><td>${i + 1}</td><td>${s.study_name}</td><td>${s.study_code || '—'}</td><td class="r">${fmt(s.rate)}</td></tr>`).join('')}
+            ${(bill.study_details || []).map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.study_name)}</td><td>${esc(s.study_code || '—')}</td><td class="r">${fmt(s.rate)}</td></tr>`).join('')}
           </tbody>
         </table>
 
@@ -263,9 +265,9 @@ const PrintBill = ({ bill, patient, onClose }) => {
           </div>
         </div>
 
-        ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${bill.notes}</div>` : ''}
+        ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${esc(bill.notes)}</div>` : ''}
 
-        ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${l.trim().replace(/^\d+[\.\)]\s*/,'')}</span></div>`).join('')}</div>` : ''}
+        ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${esc(l.trim().replace(/^\d+[\.\)]\s*/,''))}</span></div>`).join('')}</div>` : ''}
 
         <div class="sig-row">
           <div style="flex:1"></div>
@@ -276,8 +278,8 @@ const PrintBill = ({ bill, patient, onClose }) => {
 
       <!-- Footer Band -->
       <div class="ftr-band">
-        <span style="white-space:nowrap">${coName}</span>
-        <span class="ftr-text">${billFooter}</span>
+        <span style="white-space:nowrap">${esc(coName)}</span>
+        <span class="ftr-text">${esc(billFooter)}</span>
         <span style="white-space:nowrap">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
       </div>
 

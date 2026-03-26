@@ -107,6 +107,9 @@ const printPO = async (po, items) => {
   const isDraft = po.status === 'DRAFT';
   const AC = '#1e40af';
 
+  // HTML-escape all user-supplied values before injecting into innerHTML
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   const w = window.open('', '_blank');
   const html = `<!DOCTYPE html><html><head>
   <meta charset="utf-8">
@@ -197,27 +200,27 @@ const printPO = async (po, items) => {
   <div class="page">
 
     <!-- Bill Header Band (from Settings → Bill & Invoice Appearance) -->
-    ${billHeader ? `<div class="bill-hdr-band">${billHeader}</div>` : ''}
+    ${billHeader ? `<div class="bill-hdr-band">${esc(billHeader)}</div>` : ''}
 
     <!-- Company Header -->
     <div class="hdr">
       <div class="hdr-left">
-        ${logoSrc ? `<img src="${logoSrc}" style="max-height:56px;max-width:140px;object-fit:contain;flex-shrink:0;" />` : ''}
+        ${logoSrc ? `<img src="${esc(logoSrc)}" style="max-height:56px;max-width:140px;object-fit:contain;flex-shrink:0;" />` : ''}
         <div class="co-info">
-          <div class="co-name">${coName}</div>
-          ${coAddr    ? `<div class="co-line">${coAddr}</div>` : ''}
-          ${coCityLine? `<div class="co-line">${coCityLine}</div>` : ''}
-          ${coTaxLine ? `<div class="co-tax">${coTaxLine}</div>` : ''}
-          ${coContact ? `<div class="co-line">${coContact}</div>` : ''}
+          <div class="co-name">${esc(coName)}</div>
+          ${coAddr    ? `<div class="co-line">${esc(coAddr)}</div>` : ''}
+          ${coCityLine? `<div class="co-line">${esc(coCityLine)}</div>` : ''}
+          ${coTaxLine ? `<div class="co-tax">${esc(coTaxLine)}</div>` : ''}
+          ${coContact ? `<div class="co-line">${esc(coContact)}</div>` : ''}
         </div>
       </div>
       <div class="hdr-right">
         <div class="po-label">PURCHASE ORDER</div>
         <div class="po-meta">
-          <b>PO No:</b> ${po.po_number}<br>
+          <b>PO No:</b> ${esc(po.po_number)}<br>
           <b>Date:</b> ${fmtD(po.created_at)}<br>
-          ${po.pr_number ? `<b>PR Ref:</b> ${po.pr_number}<br>` : ''}
-          <b>Status:</b>&nbsp;<span class="badge ${po.status === 'DRAFT' ? 'badge-draft' : po.status === 'ISSUED' ? 'badge-issued' : po.status === 'COMPLETED' ? 'badge-approved' : 'badge-other'}">${po.status}</span>
+          ${po.pr_number ? `<b>PR Ref:</b> ${esc(po.pr_number)}<br>` : ''}
+          <b>Status:</b>&nbsp;<span class="badge ${po.status === 'DRAFT' ? 'badge-draft' : po.status === 'ISSUED' ? 'badge-issued' : po.status === 'COMPLETED' ? 'badge-approved' : 'badge-other'}">${esc(po.status)}</span>
         </div>
       </div>
     </div>
@@ -226,31 +229,31 @@ const printPO = async (po, items) => {
 
       <!-- PO Info bar -->
       <div class="info-bar">
-        <div class="info-cell"><div class="info-label">Payment Terms</div><div class="info-val">${po.payment_terms || 'Net 30'}</div></div>
+        <div class="info-cell"><div class="info-label">Payment Terms</div><div class="info-val">${esc(po.payment_terms || 'Net 30')}</div></div>
         <div class="info-cell"><div class="info-label">Delivery Date</div><div class="info-val">${po.delivery_date ? fmtD(po.delivery_date) : '—'}</div></div>
-        <div class="info-cell"><div class="info-label">Prepared By</div><div class="info-val">${po.creator_name || '—'}</div></div>
-        <div class="info-cell"><div class="info-label">Center</div><div class="info-val">${po.center_name || '—'}</div></div>
+        <div class="info-cell"><div class="info-label">Prepared By</div><div class="info-val">${esc(po.creator_name || '—')}</div></div>
+        <div class="info-cell"><div class="info-label">Center</div><div class="info-val">${esc(po.center_name || '—')}</div></div>
       </div>
       <!-- Vendor + Ship To -->
       <div class="addr-grid">
         <div class="addr-box">
           <div class="addr-box-hdr">Vendor / Supplier</div>
           <div class="addr-box-body">
-            <b>${po.vendor_name}</b>
-            ${po.vendor_address ? `<span class="muted">${po.vendor_address}</span>` : ''}
-            ${po.vendor_gstin    ? `<span class="muted">GSTIN: ${po.vendor_gstin}</span>` : ''}
-            ${po.vendor_phone    ? `<span class="muted">Ph: ${po.vendor_phone}</span>` : ''}
-            ${po.vendor_email    ? `<span class="muted">${po.vendor_email}</span>` : ''}
+            <b>${esc(po.vendor_name)}</b>
+            ${po.vendor_address ? `<span class="muted">${esc(po.vendor_address)}</span>` : ''}
+            ${po.vendor_gstin    ? `<span class="muted">GSTIN: ${esc(po.vendor_gstin)}</span>` : ''}
+            ${po.vendor_phone    ? `<span class="muted">Ph: ${esc(po.vendor_phone)}</span>` : ''}
+            ${po.vendor_email    ? `<span class="muted">${esc(po.vendor_email)}</span>` : ''}
           </div>
         </div>
         <div class="addr-box">
           <div class="addr-box-hdr">Ship To / Delivery Address</div>
           <div class="addr-box-body">
-            <b>${po.center_name}</b>
-            ${delAddr           ? `<span class="muted">${delAddr}</span>` : ''}
-            ${po.center_gstin   ? `<span class="muted">GSTIN: ${po.center_gstin}</span>` : ''}
-            ${po.center_phone   ? `<span class="muted">Ph: ${po.center_phone}</span>` : ''}
-            ${po.delivery_address ? `<span class="muted" style="font-style:italic">Note: ${po.delivery_address}</span>` : ''}
+            <b>${esc(po.center_name)}</b>
+            ${delAddr           ? `<span class="muted">${esc(delAddr)}</span>` : ''}
+            ${po.center_gstin   ? `<span class="muted">GSTIN: ${esc(po.center_gstin)}</span>` : ''}
+            ${po.center_phone   ? `<span class="muted">Ph: ${esc(po.center_phone)}</span>` : ''}
+            ${po.delivery_address ? `<span class="muted" style="font-style:italic">Note: ${esc(po.delivery_address)}</span>` : ''}
           </div>
         </div>
       </div>
@@ -279,8 +282,8 @@ const printPO = async (po, items) => {
             const half    = parseFloat((gstAmt / 2).toFixed(2));
             return `<tr>
               <td class="c" style="color:#94a3b8">${i + 1}</td>
-              <td><span class="iname">${it.item_name}</span>${it.description ? `<div class="idesc">${it.description}</div>` : ''}${it.item_code ? `<div class="idesc">Code: ${it.item_code}</div>` : ''}</td>
-              <td class="c">${it.uom || '—'}</td>
+              <td><span class="iname">${esc(it.item_name)}</span>${it.description ? `<div class="idesc">${esc(it.description)}</div>` : ''}${it.item_code ? `<div class="idesc">Code: ${esc(it.item_code)}</div>` : ''}</td>
+              <td class="c">${esc(it.uom || '—')}</td>
               <td class="r">${it.quantity}</td>
               <td class="r">${fmt(it.unit_rate)}</td>
               <td class="r">${isIntra ? `${(it.gst_rate||0)/2}%+${(it.gst_rate||0)/2}%` : `${it.gst_rate||0}%`}</td>
@@ -309,7 +312,7 @@ const printPO = async (po, items) => {
         </div>
       </div>
 
-      ${po.notes ? `<div class="notes-box"><b>Notes / Special Instructions:</b> ${po.notes}</div>` : ''}
+      ${po.notes ? `<div class="notes-box"><b>Notes / Special Instructions:</b> ${esc(po.notes)}</div>` : ''}
 
       ${po.advance_required ? `
       <div style="margin:12px 0 10px;padding:8px 14px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:7px;font-size:12px;color:#92400e;">
@@ -321,12 +324,12 @@ const printPO = async (po, items) => {
 
       <!-- Terms & Conditions (from Settings → Bill & Invoice Appearance) -->
       <div class="terms-box">
-        <b>Terms &amp; Conditions:</b><br>${termsText}
+        <b>Terms &amp; Conditions:</b><br>${esc(termsText)}
       </div>
 
       <!-- Signatures -->
       <div class="sig">
-        <div class="sig-box"><b>Prepared By</b>${po.creator_name || ''}</div>
+        <div class="sig-box"><b>Prepared By</b>${esc(po.creator_name || '')}</div>
         <div class="sig-box"><b>Authorised Signatory</b></div>
         <div class="sig-box"><b>Vendor Acknowledgement</b></div>
       </div>
@@ -335,8 +338,8 @@ const printPO = async (po, items) => {
 
     <!-- Bill Footer Band (from Settings → Bill & Invoice Appearance) -->
     <div class="bill-ftr-band">
-      <span style="white-space:nowrap">${coName} — ${po.po_number}</span>
-      <span class="bill-ftr-text">${billFooter}</span>
+      <span style="white-space:nowrap">${esc(coName)} — ${esc(po.po_number)}</span>
+      <span class="bill-ftr-text">${esc(billFooter)}</span>
       <span class="bill-ftr-pg">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
     </div>
 

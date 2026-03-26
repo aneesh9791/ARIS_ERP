@@ -55,6 +55,9 @@ const printInvoice = async (bill, items) => {
   const billFooter = co.bill_footer_text || 'Thank you for choosing our services. Wishing you good health!';
   const termsText  = co.terms_and_conditions || '';
 
+  // HTML-escape all user-supplied values before injecting into innerHTML
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   const w = window.open('', '_blank');
   const html = `<!DOCTYPE html><html><head>
   <meta charset="utf-8">
@@ -106,27 +109,27 @@ const printInvoice = async (bill, items) => {
     .ftr-text{font-style:italic;color:rgba(255,255,255,0.75);flex:1;text-align:center;padding:0 12px}
   </style></head><body>
   <div class="page">
-    ${billHeader ? `<div class="hdr-band">${billHeader}</div>` : ''}
+    ${billHeader ? `<div class="hdr-band">${esc(billHeader)}</div>` : ''}
     <div class="hdr">
       <div class="hdr-left">
         <div class="co-info">
-          <div class="co-name">${coName}</div>
-          ${coAddr     ? `<div class="co-line">${coAddr}</div>` : ''}
-          ${coCityLine ? `<div class="co-line">${coCityLine}</div>` : ''}
-          ${coTaxLine  ? `<div class="co-tax">${coTaxLine}</div>` : ''}
-          ${coContact  ? `<div class="co-line">${coContact}</div>` : ''}
+          <div class="co-name">${esc(coName)}</div>
+          ${coAddr     ? `<div class="co-line">${esc(coAddr)}</div>` : ''}
+          ${coCityLine ? `<div class="co-line">${esc(coCityLine)}</div>` : ''}
+          ${coTaxLine  ? `<div class="co-tax">${esc(coTaxLine)}</div>` : ''}
+          ${coContact  ? `<div class="co-line">${esc(coContact)}</div>` : ''}
         </div>
       </div>
       <div class="hdr-center">
-        ${logoSrc ? `<img src="${logoSrc}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
+        ${logoSrc ? `<img src="${esc(logoSrc)}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
       </div>
       <div class="hdr-right">
         <div class="inv-title">INVOICE</div>
         <div class="inv-meta">
-          <b>Bill #:</b> ${bill.invoice_number || '—'}<br>
+          <b>Bill #:</b> ${esc(bill.invoice_number || '—')}<br>
           <b>Date:</b> ${fmtDate(bill.bill_date)}<br>
-          ${bill.accession_number ? `<b>Accession:</b> ${bill.accession_number}<br>` : ''}
-          <b>Status:</b>&nbsp;<span class="badge ${bill.payment_status === 'PAID' ? 'badge-paid' : 'badge-pending'}">${bill.payment_status}</span>
+          ${bill.accession_number ? `<b>Accession:</b> ${esc(bill.accession_number)}<br>` : ''}
+          <b>Status:</b>&nbsp;<span class="badge ${bill.payment_status === 'PAID' ? 'badge-paid' : 'badge-pending'}">${esc(bill.payment_status)}</span>
         </div>
       </div>
     </div>
@@ -139,12 +142,12 @@ const printInvoice = async (bill, items) => {
           ['Gender', bill.gender || '—'],
           ['Age', calcAge(bill.date_of_birth)],
           ['Payment Mode', bill.payment_mode || '—'],
-        ].map(([l, v]) => `<div><div class="pt-label">${l}</div><div class="pt-val">${v || '—'}</div></div>`).join('')}
+        ].map(([l, v]) => `<div><div class="pt-label">${esc(l)}</div><div class="pt-val">${esc(v || '—')}</div></div>`).join('')}
       </div>
       <table>
         <thead><tr><th style="width:28px">#</th><th>Study / Service</th><th>Modality</th><th class="r">Amount</th></tr></thead>
         <tbody>
-          ${items.map((s, i) => `<tr><td>${i + 1}</td><td>${s.study_name}</td><td>${s.modality || '—'}</td><td class="r">${fmt(s.amount)}</td></tr>`).join('')}
+          ${items.map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.study_name)}</td><td>${esc(s.modality || '—')}</td><td class="r">${fmt(s.amount)}</td></tr>`).join('')}
         </tbody>
       </table>
       <div class="totals-wrap">
@@ -155,16 +158,16 @@ const printInvoice = async (bill, items) => {
           <div class="grand"><span>Total</span><span>${fmt(bill.total_amount)}</span></div>
         </div>
       </div>
-      ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${bill.notes}</div>` : ''}
-      ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${l.trim().replace(/^\d+[\.\)]\s*/,'')}</span></div>`).join('')}</div>` : ''}
+      ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${esc(bill.notes)}</div>` : ''}
+      ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${esc(l.trim().replace(/^\d+[\.\)]\s*/,''))}</span></div>`).join('')}</div>` : ''}
       <div class="sig-row">
         <div style="flex:1"></div>
         <div class="sig-box"><div class="sig-line">Authorised Signatory</div></div>
       </div>
     </div>
     <div class="ftr-band">
-      <span style="white-space:nowrap">${coName}</span>
-      <span class="ftr-text">${billFooter}</span>
+      <span style="white-space:nowrap">${esc(coName)}</span>
+      <span class="ftr-text">${esc(billFooter)}</span>
       <span style="white-space:nowrap">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
     </div>
   </div></body></html>`;
