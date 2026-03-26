@@ -404,64 +404,28 @@ const Layout = () => {
       </nav>
 
       {/* User Profile */}
-      <div className={`flex-shrink-0 border-t border-teal-800 p-3 relative ${!isMobile && sidebarCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
-
-        {/* Profile popover */}
-        {showProfile && (
-          <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
-            <div className="px-4 py-3 bg-gradient-to-r from-teal-600 to-teal-500">
-              <p className="text-sm font-semibold text-white truncate">{user.name || user.username || user.email || 'Admin'}</p>
-              <p className="text-xs text-teal-100 capitalize">{user.role || 'Administrator'}</p>
-            </div>
-            <div className="p-1">
-              <button
-                onClick={() => { setShowProfile(false); setShowChangePassword(true); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-              >
-                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
-                Change Password
-              </button>
-              <button
-                onClick={() => { setShowProfile(false); handleLogout(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              >
-                <Icon d={icons.logout} className="w-4 h-4" />
-                Sign Out
-              </button>
-            </div>
-          </div>
-        )}
-
+      <div className={`flex-shrink-0 border-t border-teal-800 p-3 ${!isMobile && sidebarCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
         {(!isMobile && sidebarCollapsed) ? (
-          // Mini mode
-          <>
-            <button onClick={() => setShowProfile(p => !p)}
-              className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold hover:bg-teal-500 transition-colors"
-              title="Profile">
-              {getInitials(user)}
-            </button>
-            <button onClick={handleLogout} title="Sign out"
-              className="p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors">
-              <Icon d={icons.logout} className="w-4 h-4" />
-            </button>
-          </>
+          // Mini mode — just logout button
+          <button onClick={handleLogout} title="Sign out"
+            className="p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors">
+            <Icon d={icons.logout} className="w-4 h-4" />
+          </button>
         ) : (
-          // Full mode
-          <button onClick={() => setShowProfile(p => !p)}
-            className="w-full flex items-center hover:bg-teal-800 rounded-lg px-1 py-1 transition-colors">
+          // Full mode — name, role, logout
+          <div className="flex items-center">
             <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
               {getInitials(user)}
             </div>
-            <div className="ml-3 flex-1 min-w-0 text-left">
+            <div className="ml-3 flex-1 min-w-0">
               <p className="text-sm font-medium text-white truncate">{user.name || user.username || user.email || 'Admin'}</p>
               <p className="text-xs text-teal-400 truncate capitalize">{user.role || 'Administrator'}</p>
             </div>
-            <svg className="w-4 h-4 text-teal-400 ml-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={showProfile ? 'M19 9l-7 7-7-7' : 'M5 15l7-7 7 7'} />
-            </svg>
-          </button>
+            <button onClick={handleLogout} title="Sign out"
+              className="ml-2 p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors flex-shrink-0">
+              <Icon d={icons.logout} className="w-4 h-4" />
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -532,8 +496,36 @@ const Layout = () => {
               <span className="text-sm font-semibold text-slate-800 truncate">{pageTitle}</span>
             </div>
 
-            {/* Right: logo */}
-            <div className="flex items-center flex-shrink-0">
+            {/* Right: gear/profile dropdown + logo */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfile(p => !p)}
+                  title="Profile & Settings"
+                  className={`p-2 rounded-lg transition-colors ${showProfile ? 'bg-teal-50 text-teal-700' : 'text-slate-500 hover:text-teal-700 hover:bg-teal-50'}`}
+                >
+                  <Icon d={icons.settings} d2={icons.settings2} className="w-5 h-5" />
+                </button>
+                {showProfile && (
+                  <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
+                    <div className="px-4 py-3 bg-gradient-to-r from-teal-600 to-teal-500">
+                      <p className="text-sm font-semibold text-white truncate">{user.name || user.username || user.email || 'Admin'}</p>
+                      <p className="text-xs text-teal-100 capitalize">{user.role || 'Administrator'}</p>
+                    </div>
+                    <div className="p-1">
+                      <button
+                        onClick={() => { setShowProfile(false); setShowChangePassword(true); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                      >
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        </svg>
+                        Change Password
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <HeaderLogo />
             </div>
           </header>
