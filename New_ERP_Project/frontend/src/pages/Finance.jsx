@@ -3774,7 +3774,7 @@ function BankAccountsTab() {
                 </div>
                 <div>
                   <label className={labelCls}>Account Number {reqStar}</label>
-                  <input className={inCls} value={form.account_number} onChange={setF('account_number')} placeholder="e.g. 50100012345678" />
+                  <input className={inCls} value={form.account_number} onChange={setF('account_number')} placeholder="e.g. 50100012345678" disabled={modal === 'bank-edit'} />
                 </div>
                 <div>
                   <label className={labelCls}>Account Type {reqStar}</label>
