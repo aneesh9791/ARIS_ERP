@@ -70,7 +70,15 @@ function App() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    setIsAuthenticated(!!token);
+    const user = (() => { try { return JSON.parse(localStorage.getItem('user')); } catch { return null; } })();
+    // Require a plausible JWT (3 dot-separated parts) AND a valid user object with permissions
+    const valid = !!(
+      token &&
+      token.split('.').length === 3 &&
+      user?.id &&
+      Array.isArray(user?.permissions)
+    );
+    setIsAuthenticated(valid);
   }, []);
 
   return (
@@ -92,7 +100,7 @@ function App() {
                 path="/"
                 element={isAuthenticated ? <Layout /> : <Login />}
               >
-                <Route index element={<Dashboard />} />
+                <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard"        element={<ProtectedRoute permission="DASHBOARD_VIEW"        element={<Dashboard />} />} />
                 <Route path="patients"         element={<ProtectedRoute permission="PATIENT_VIEW"          element={<Patients />} />} />
                 <Route path="patient-history"  element={<ProtectedRoute permission="PATIENT_VIEW"          element={<PatientHistory />} />} />
