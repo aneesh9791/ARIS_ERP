@@ -6890,7 +6890,7 @@ export default function Finance() {
   const [centers, setCenters]   = useState([]);
 
   useEffect(() => {
-    api('/api/centers').then(r => r.json()).then(d => {
+    api('/api/centers?operational_only=true').then(r => r.json()).then(d => {
       setCenters(Array.isArray(d) ? d : (d.centers || []));
     }).catch(() => {});
   }, []);
