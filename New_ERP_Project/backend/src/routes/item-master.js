@@ -8,7 +8,12 @@ const { authorizePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
-const UOM_OPTIONS = ['PCS','BOX','BOTTLE','VIAL','ML','MG','GM','KG','LTR','ROLL','SHEET','PAIR','SET','PACKET','REAM','UNIT','HRS','SESSION','VISIT','MONTH','YEAR','CREDITS','STUDIES','SCANS'];
+const UOM_OPTIONS = [
+  'PCS','BOX','BOTTLE','VIAL','ML','MG','GM','KG','LTR','ROLL','SHEET','PAIR','SET','PACKET','REAM','UNIT',
+  'HRS','SESSION','VISIT','MONTH','YEAR',
+  'CREDITS','STUDIES','SCANS',
+  'PIECES','BOXES','BOTTLES','PACKETS','KGS','LITERS','SETS',
+];
 
 const ITEM_TYPE_TO_CAT_TYPE = {
   STOCK:       'STOCK',
