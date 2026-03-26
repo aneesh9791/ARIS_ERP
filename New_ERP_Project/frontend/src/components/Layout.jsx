@@ -404,28 +404,32 @@ const Layout = () => {
       </nav>
 
       {/* User Profile */}
-      <div className={`flex-shrink-0 border-t border-teal-800 p-3 ${!isMobile && sidebarCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
+      <div className={`flex-shrink-0 border-t border-teal-800 p-3 ${!isMobile && sidebarCollapsed ? 'flex flex-col items-center gap-2' : 'space-y-2'}`}>
         {(!isMobile && sidebarCollapsed) ? (
-          // Mini mode — just logout button
-          <button onClick={handleLogout} title="Sign out"
-            className="p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors">
+          // Mini mode — red logout button
+          <button onClick={handleLogout} title="Log Out"
+            className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors">
             <Icon d={icons.logout} className="w-4 h-4" />
           </button>
         ) : (
-          // Full mode — name, role, logout
-          <div className="flex items-center">
-            <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-              {getInitials(user)}
+          <>
+            {/* User info row */}
+            <div className="flex items-center">
+              <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                {getInitials(user)}
+              </div>
+              <div className="ml-3 flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">{user.name || user.username || user.email || 'Admin'}</p>
+                <p className="text-xs text-teal-400 truncate capitalize">{user.role || 'Administrator'}</p>
+              </div>
             </div>
-            <div className="ml-3 flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.name || user.username || user.email || 'Admin'}</p>
-              <p className="text-xs text-teal-400 truncate capitalize">{user.role || 'Administrator'}</p>
-            </div>
-            <button onClick={handleLogout} title="Sign out"
-              className="ml-2 p-1.5 text-teal-400 hover:text-white hover:bg-teal-700 rounded-lg transition-colors flex-shrink-0">
+            {/* Logout button — full width, prominent */}
+            <button onClick={handleLogout}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors">
               <Icon d={icons.logout} className="w-4 h-4" />
+              Log Out
             </button>
-          </div>
+          </>
         )}
       </div>
     </div>
