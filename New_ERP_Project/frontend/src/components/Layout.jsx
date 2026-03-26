@@ -96,7 +96,7 @@ const NAV_GROUPS = [
     key: 'system',
     section: 'System',
     items: [
-      { to: '/master-data',    label: 'Master Data',         iconKey: 'settings',                          permission: ['MASTER_DATA_VIEW','STUDY_CATALOG_VIEW','STUDY_PRICING_VIEW','RAD_REPORTING_MASTER_VIEW'] },
+      { to: '/master-data',    label: 'Master Data',         iconKey: 'settings',                          permission: ['MASTER_DATA_VIEW','RAD_REPORTING_MASTER_VIEW'] },
       { to: '/settings/users', label: 'User Management',     iconKey: 'users',                             permission: ['USER_VIEW','USER_WRITE'] },
       { to: '/settings/roles', label: 'Roles & Permissions', iconKey: 'settings', iconKey2: 'settings2',  permission: ['USER_VIEW','USER_WRITE'] },
       { to: '/settings/mwl',   label: 'MWL Gateway',         iconKey: 'mwl',                               permission: 'MWL_VIEW' },
