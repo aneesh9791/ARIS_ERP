@@ -40,6 +40,20 @@ const VoucherModal = ({ user, centers, expenseAccounts, cashAccounts, onClose, o
   const [saving, setSaving] = useState(false);
   const [err, setErr]       = useState('');
 
+  // Backfill dropdowns if data wasn't ready when modal mounted
+  useEffect(() => {
+    if (!form.credit_account_id && cashAccounts.length) {
+      const def = cashAccounts.find(a => a.account_code === '1114') || cashAccounts[0];
+      setForm(f => ({ ...f, credit_account_id: def.id }));
+    }
+  }, [cashAccounts, form.credit_account_id]);
+
+  useEffect(() => {
+    if (!form.center_id && isCorporate && centers.length) {
+      setForm(f => ({ ...f, center_id: centers[0].id }));
+    }
+  }, [centers, form.center_id, isCorporate]);
+
   const set = (k, v) => setForm(f => {
     const next = { ...f, [k]: v };
     // Recalculate GST whenever amount or rate changes
@@ -424,7 +438,9 @@ const PettyCash = () => {
       setExpenseAccts(glRes.expense_accounts || []);
       setCashAccts(glRes.cash_accounts || []);
       setPendingCount(pcRes.count || 0);
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('Petty cash fetch failed:', e);
+    }
     setLoading(false);
   }, [filterStatus, filterCenter, filterFrom, filterTo]);
 
@@ -489,7 +505,7 @@ const PettyCash = () => {
           </div>
         </td>
       )}
-      {!showActions && v.status === 'SUBMITTED' && has('PETTY_CASH_WRITE') && (
+      {!showActions && v.status === 'SUBMITTED' && has('PETTY_CASH_CREATE') && (
         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
           <button onClick={() => deleteVoucher(v)}
             className="text-slate-400 hover:text-red-500 transition-colors">
@@ -511,9 +527,9 @@ const PettyCash = () => {
           <h1 className="text-lg font-bold text-slate-800">Petty Cash Vouchers</h1>
           <p className="text-xs text-slate-500 mt-0.5">Submit daily cash expenses for Finance approval</p>
         </div>
-        {has('PETTY_CASH_WRITE') && (
-          <button onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors">
+        {has('PETTY_CASH_CREATE') && (
+          <button onClick={() => setShowForm(true)} disabled={loading}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>

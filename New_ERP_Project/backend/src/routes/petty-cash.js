@@ -27,10 +27,10 @@ async function glId(client, code) {
 // ── Helper: next JE number ───────────────────────────────────
 async function nextJENumber(client) {
   const { rows } = await client.query(
-    `SELECT COALESCE(MAX(CAST(REGEXP_REPLACE(entry_number,'[^0-9]','','g') AS INTEGER)),0)+1
+    `SELECT COALESCE(MAX(CAST(REGEXP_REPLACE(entry_number,'[^0-9]','','g') AS INTEGER)),0)+1 AS next_num
        FROM journal_entries WHERE entry_number LIKE 'JE-%'`
   );
-  return 'JE-' + String(rows[0].coalesce).padStart(6, '0');
+  return 'JE-' + String(rows[0].next_num).padStart(6, '0');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -93,10 +93,16 @@ router.get('/', async (req, res) => {
 // GET /api/petty-cash/pending-count
 // Returns count of SUBMITTED vouchers (for badge)
 // ═══════════════════════════════════════════════════════════════
-router.get('/pending-count', async (_req, res) => {
+router.get('/pending-count', async (req, res) => {
   try {
+    const params = [];
+    let where = `status = 'SUBMITTED'`;
+    if (!req.user?.is_corporate_role && req.user?.center_id) {
+      params.push(req.user.center_id);
+      where += ` AND center_id = $1`;
+    }
     const { rows } = await pool.query(
-      `SELECT COUNT(*) FROM expense_records WHERE status = 'SUBMITTED'`
+      `SELECT COUNT(*) FROM expense_records WHERE ${where}`, params
     );
     res.json({ success: true, count: parseInt(rows[0].count) });
   } catch (e) {
@@ -117,6 +123,11 @@ router.get('/summary', async (req, res) => {
     if (center_id) { conds.push(`er.center_id = $${params.length+1}`);    params.push(center_id); }
     if (from)      { conds.push(`er.expense_date >= $${params.length+1}`); params.push(from); }
     if (to)        { conds.push(`er.expense_date <= $${params.length+1}`); params.push(to); }
+    // Non-corporate users can only see their own center's summary
+    if (!req.user?.is_corporate_role && req.user?.center_id) {
+      conds.push(`er.center_id = $${params.length+1}`);
+      params.push(req.user.center_id);
+    }
 
     const { rows } = await pool.query(`
       SELECT er.category,
@@ -184,7 +195,7 @@ const voucherValidators = [
   body('description').trim().isLength({ min: 3 }).withMessage('Description required'),
 ];
 
-router.post('/', authorizePermission('PETTY_CASH_WRITE'), voucherValidators, async (req, res) => {
+router.post('/', authorizePermission('PETTY_CASH_CREATE'), voucherValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
 
@@ -257,6 +268,11 @@ router.put('/:id/approve', authorizePermission('PETTY_CASH_APPROVE'), async (req
       await client.query('ROLLBACK');
       return res.status(400).json({ error: `Cannot approve voucher with status: ${v.status}` });
     }
+    // Non-corporate users can only approve vouchers from their own center
+    if (!req.user?.is_corporate_role && req.user?.center_id && parseInt(v.center_id) !== parseInt(req.user.center_id)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'You can only approve vouchers for your assigned center' });
+    }
 
     // Build journal entry lines
     //   DR expense GL  (net amount)
@@ -320,12 +336,13 @@ router.put('/:id/approve', authorizePermission('PETTY_CASH_APPROVE'), async (req
     ]);
     const je = jeRows[0];
 
-    for (const l of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
       await client.query(`
         INSERT INTO journal_entry_lines
-          (journal_entry_id, account_id, debit_amount, credit_amount, description, center_id)
-        VALUES ($1,$2,$3,$4,$5,$6)
-      `, [je.id, l.account_id, l.debit_amount, l.credit_amount, l.description, v.center_id]);
+          (journal_entry_id, line_number, account_id, debit_amount, credit_amount, description, center_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `, [je.id, i + 1, l.account_id, l.debit_amount, l.credit_amount, l.description, v.center_id]);
     }
 
     // Update voucher
@@ -342,7 +359,7 @@ router.put('/:id/approve', authorizePermission('PETTY_CASH_APPROVE'), async (req
   } catch (e) {
     await client.query('ROLLBACK');
     logger.error('Petty cash approve:', e);
-    res.status(500).json({ error: e.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   } finally { client.release(); }
 });
 
@@ -351,36 +368,49 @@ router.put('/:id/approve', authorizePermission('PETTY_CASH_APPROVE'), async (req
 // Finance role rejects with reason
 // ═══════════════════════════════════════════════════════════════
 router.put('/:id/reject', authorizePermission('PETTY_CASH_APPROVE'), async (req, res) => {
+  const client = await pool.connect();
   try {
     const { reason } = req.body;
     if (!reason?.trim()) return res.status(400).json({ error: 'Rejection reason required' });
 
-    const { rows } = await pool.query(
-      `SELECT status FROM expense_records WHERE id = $1`, [req.params.id]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'Voucher not found' });
-    if (rows[0].status !== 'SUBMITTED') return res.status(400).json({ error: `Cannot reject voucher with status: ${rows[0].status}` });
+    await client.query('BEGIN');
 
-    await pool.query(`
+    const { rows } = await client.query(
+      `SELECT status, center_id FROM expense_records WHERE id = $1 FOR UPDATE`, [req.params.id]
+    );
+    if (!rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Voucher not found' }); }
+    if (rows[0].status !== 'SUBMITTED') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Cannot reject voucher with status: ${rows[0].status}` });
+    }
+    // Non-corporate users can only reject vouchers from their own center
+    if (!req.user?.is_corporate_role && req.user?.center_id && parseInt(rows[0].center_id) !== parseInt(req.user.center_id)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'You can only reject vouchers for your assigned center' });
+    }
+
+    await client.query(`
       UPDATE expense_records
          SET status='REJECTED', rejection_reason=$1,
              rejected_by=$2, rejected_at=NOW(), updated_at=NOW()
        WHERE id=$3
     `, [reason.trim(), req.user?.id || null, req.params.id]);
 
+    await client.query('COMMIT');
     logger.info('Petty cash rejected', { id: req.params.id, reason });
     res.json({ success: true });
   } catch (e) {
+    await client.query('ROLLBACK');
     logger.error('Petty cash reject:', e);
     res.status(500).json({ error: 'Server error' });
-  }
+  } finally { client.release(); }
 });
 
 // ═══════════════════════════════════════════════════════════════
 // DELETE /api/petty-cash/:id
 // Creator can delete their own SUBMITTED voucher
 // ═══════════════════════════════════════════════════════════════
-router.delete('/:id', authorizePermission('PETTY_CASH_WRITE'), async (req, res) => {
+router.delete('/:id', authorizePermission('PETTY_CASH_CREATE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `DELETE FROM expense_records WHERE id=$1 AND status='SUBMITTED' AND created_by=$2 RETURNING id`,

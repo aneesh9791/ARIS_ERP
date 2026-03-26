@@ -37,6 +37,7 @@ const authenticateToken = async (req, res, next) => {
     const userResult = await pool.query(
       `SELECT u.id, u.username, u.email, u.role, u.center_id, u.department_id,
               u.active AS is_active,
+              COALESCE(ur.is_corporate_role, false) AS is_corporate_role,
               COALESCE(ur.permissions, '[]'::jsonb) AS permissions
        FROM users u
        LEFT JOIN user_roles ur ON ur.role = u.role AND ur.active = true
