@@ -846,7 +846,7 @@ export default function Patients() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 pt-6 pb-0 overflow-hidden">
+      <div className="max-w-7xl mx-auto px-3 md:px-6 pt-4 md:pt-6 pb-0 overflow-hidden">
 
         {/* ── Idle ── */}
         {mode === 'idle' && (
@@ -929,11 +929,11 @@ export default function Patients() {
               )}
             </div>
 
-            {/* ── Main billing area — both panels same fixed height, scroll internally ── */}
-            <div className="grid grid-cols-2 gap-4" style={{ height: 'calc(100vh - 210px)' }}>
+            {/* ── Main billing area — stacked on mobile, side-by-side on desktop ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 md:h-[calc(100vh-210px)]">
 
               {/* LEFT — Study catalog */}
-              <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[58vh] md:h-auto">
 
                 {/* Header — matches right panel */}
                 <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -1017,7 +1017,7 @@ export default function Patients() {
               </div>
 
               {/* RIGHT — Bill panel */}
-              <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[72vh] md:h-auto">
 
                 {/* Header — matches left panel */}
                 <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
