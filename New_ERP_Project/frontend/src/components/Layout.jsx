@@ -412,15 +412,12 @@ const Layout = () => {
             <Icon d={icons.logout} className="w-5 h-5" />
           </button>
         ) : (
-          // Full mode — name, role, logout
+          // Full mode — name + logout
           <div className="flex items-center">
             <div className="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               {getInitials(user)}
             </div>
-            <div className="ml-2 flex-1 min-w-0">
-              <p className="text-xs font-semibold text-white leading-tight truncate">{user.name || user.username || user.email || 'Admin'}</p>
-              <p className="text-xs font-medium text-teal-300 uppercase tracking-wide truncate" style={{fontSize:'10px'}}>{user.role || 'Administrator'}</p>
-            </div>
+            <p className="ml-2 flex-1 min-w-0 text-xs font-semibold text-white text-center truncate">{user.name || user.username || user.email || 'Admin'}</p>
             <button onClick={handleLogout} title="Log Out"
               className="ml-1 p-1 text-red-400 hover:text-white hover:bg-red-600 rounded-lg transition-colors flex-shrink-0">
               <Icon d={icons.logout} className="w-5 h-5" />
