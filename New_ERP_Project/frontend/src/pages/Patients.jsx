@@ -27,6 +27,76 @@ const Field = ({ label, required, hint, children }) => (
   </div>
 );
 const inp = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500';
+
+const PHYSICIAN_SPECIALTIES = [
+  'Cardiology','Dermatology','Endocrinology','ENT (Ear, Nose & Throat)',
+  'Gastroenterology','General Medicine','General Surgery',
+  'Gynecology & Obstetrics','Hematology','Nephrology','Neurology',
+  'Neurosurgery','Oncology','Ophthalmology','Orthopedics',
+  'Pediatrics','Psychiatry','Pulmonology','Radiology',
+  'Rheumatology','Urology','Dentistry','Physiotherapy','Other',
+];
+
+const QuickAddPhysicianModal = ({ onSave, onClose }) => {
+  const [form, setForm]   = useState({ first_name: '', last_name: '', specialty: '' });
+  const [err, setErr]     = useState('');
+  const [saving, setSaving] = useState(false);
+  const set = f => e => setForm(p => ({ ...p, [f]: e.target.value }));
+
+  const submit = async ev => {
+    ev.preventDefault();
+    if (!form.first_name.trim()) { setErr('First name is required'); return; }
+    if (!form.last_name.trim())  { setErr('Last name is required'); return; }
+    if (!form.specialty)         { setErr('Specialty is required'); return; }
+    setSaving(true); setErr('');
+    try {
+      const r = await api('/api/referring-physicians', {
+        method: 'POST', body: JSON.stringify({ ...form, status: 'active' }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.errors?.[0]?.msg || d.error || 'Failed to save'); setSaving(false); return; }
+      onSave(d.physician);
+    } catch { setErr('Network error'); setSaving(false); }
+  };
+
+  const fi = `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 border-slate-300`;
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+        <div className="px-5 py-4 border-b border-slate-200 flex justify-between items-center">
+          <h3 className="text-sm font-semibold text-slate-800">Add Referring Physician</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
+        </div>
+        <form onSubmit={submit} className="p-5 space-y-3">
+          {err && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{err}</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">First Name <span className="text-red-500">*</span></label>
+              <input type="text" value={form.first_name} onChange={set('first_name')} className={fi} placeholder="First name" autoFocus />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Last Name <span className="text-red-500">*</span></label>
+              <input type="text" value={form.last_name} onChange={set('last_name')} className={fi} placeholder="Last name" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Specialty <span className="text-red-500">*</span></label>
+            <select value={form.specialty} onChange={set('specialty')} className={fi}>
+              <option value="">Select specialty</option>
+              {PHYSICIAN_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200">Cancel</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 const ModalityBadge = ({ m }) => (
   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold text-white"
     style={{ background: MODALITY_BG[m] || '#475569' }}>{m}</span>
@@ -332,9 +402,10 @@ const PatientForm = ({ onSave, onCancel }) => {
     blood_group: '', allergies: '', referring_physician_code: '',
     id_proof_type: '', id_proof_number: '',
   });
-  const [physicians, setPhysicians] = useState([]);
-  const [errors, setErrors]         = useState({});
-  const [saving, setSaving]         = useState(false);
+  const [physicians, setPhysicians]           = useState([]);
+  const [showAddPhysician, setShowAddPhysician] = useState(false);
+  const [errors, setErrors]                   = useState({});
+  const [saving, setSaving]                   = useState(false);
   const set = f => e => setForm(p => ({ ...p, [f]: e.target.value }));
 
   useEffect(() => {
@@ -435,15 +506,37 @@ const PatientForm = ({ onSave, onCancel }) => {
           <input type="email" value={form.email} onChange={set('email')} className={inp} placeholder="optional" />
         </Field>
         <Field label="Referring Physician">
-          <select value={form.referring_physician_code} onChange={set('referring_physician_code')} className={inp}>
-            <option value="">— None —</option>
-            {physicians.map(p => (
-              <option key={p.physician_code} value={p.physician_code}>
-                {p.physician_name}{p.specialty ? ` (${p.specialty})` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select value={form.referring_physician_code} onChange={set('referring_physician_code')} className={inp}>
+              <option value="">— None —</option>
+              {physicians.map(p => (
+                <option key={p.physician_code} value={p.physician_code}>
+                  {p.physician_name}{p.specialty ? ` (${p.specialty})` : ''}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={() => setShowAddPhysician(true)}
+              title="Add new referring physician"
+              className="flex-shrink-0 px-3 py-2 text-sm font-semibold text-teal-700 border border-teal-300 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors whitespace-nowrap">
+              + New
+            </button>
+          </div>
         </Field>
+        {showAddPhysician && (
+          <QuickAddPhysicianModal
+            onClose={() => setShowAddPhysician(false)}
+            onSave={physician => {
+              const entry = {
+                physician_code: physician.physician_code,
+                physician_name: `${physician.first_name} ${physician.last_name}`.trim(),
+                specialty: physician.specialty,
+              };
+              setPhysicians(prev => [...prev, entry]);
+              setForm(f => ({ ...f, referring_physician_code: physician.physician_code }));
+              setShowAddPhysician(false);
+            }}
+          />
+        )}
         <Field label="ID Type">
           <select value={form.id_proof_type} onChange={set('id_proof_type')} className={inp}>
             <option value="">— None —</option>
