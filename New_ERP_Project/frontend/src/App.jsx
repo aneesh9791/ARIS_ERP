@@ -37,6 +37,7 @@ import RoleManagement from './pages/Settings/RoleManagement';
 import MWLGatewaySettings from './pages/Settings/MWLGatewaySettings';
 import AuditLog from './pages/Settings/AuditLog';
 import PatientHistory from './pages/PatientHistory';
+import ReferringPhysicians from './pages/ReferringPhysicians';
 import Layout from './components/Layout';
 
 // Permission-gated route — redirects to /dashboard if user lacks the required permission
@@ -89,7 +90,8 @@ function App() {
               <Route path="patient-history"  element={<ProtectedRoute permission="PATIENT_VIEW"          element={<PatientHistory />} />} />
               <Route path="pid-management"   element={<ProtectedRoute permission="PATIENT_VIEW"          element={<PIDManagement />} />} />
               <Route path="study-management" element={<ProtectedRoute permission="STUDY_VIEW"            element={<StudyManagement />} />} />
-              <Route path="study-reporting"  element={<ProtectedRoute permission="STUDY_VIEW"            element={<StudyReporting />} />} />
+              <Route path="study-reporting"       element={<ProtectedRoute permission="STUDY_VIEW"       element={<StudyReporting />} />} />
+              <Route path="referring-physicians" element={<ProtectedRoute permission="PHYSICIAN_VIEW"    element={<ReferringPhysicians />} />} />
               <Route path="finance"          element={<ProtectedRoute permission="JE_VIEW"               element={<Finance />} />} />
               <Route path="equity"           element={<ProtectedRoute permission="EQUITY_VIEW"           element={<Equity />} />} />
               <Route path="petty-cash"       element={<ProtectedRoute permission="PETTY_CASH_VIEW"       element={<PettyCash />} />} />

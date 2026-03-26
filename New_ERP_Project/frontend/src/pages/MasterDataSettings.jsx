@@ -2470,213 +2470,6 @@ const CenterMaster = ({ centers, onCenterCreate, onCenterUpdate, onCenterDelete 
   );
 };
 
-// ─── Referring Physician Master ───────────────────────────────────────────────
-
-const SPECIALTIES = [
-  'Cardiology', 'Dermatology', 'Endocrinology', 'ENT (Ear, Nose & Throat)',
-  'Gastroenterology', 'General Medicine', 'General Surgery',
-  'Gynecology & Obstetrics', 'Hematology', 'Nephrology', 'Neurology',
-  'Neurosurgery', 'Oncology', 'Ophthalmology', 'Orthopedics',
-  'Pediatrics', 'Psychiatry', 'Pulmonology', 'Radiology',
-  'Rheumatology', 'Urology', 'Dentistry', 'Physiotherapy', 'Other',
-];
-
-const EMPTY_PHYSICIAN_FORM = {
-  first_name: '', last_name: '', specialty: '',
-  contact_phone: '', address: '', status: 'active',
-};
-
-const PhysicianMaster = ({ physicians, onPhysicianCreate, onPhysicianUpdate, onPhysicianDelete }) => {
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(EMPTY_PHYSICIAN_FORM);
-  const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-
-  const set = (f) => (e) => setForm(prev => ({ ...prev, [f]: e.target.value }));
-
-  const openAdd = () => {
-    setForm(EMPTY_PHYSICIAN_FORM); setErrors({}); setEditing(null);
-    setSubmitError(''); setShowModal(true);
-  };
-  const openEdit = (p) => {
-    setForm({
-      first_name: p.first_name || '', last_name: p.last_name || '',
-      specialty: p.specialty || '', contact_phone: p.contact_phone || '',
-      address: p.address || '', status: p.active ? 'active' : 'inactive',
-    });
-    setErrors({}); setEditing(p); setSubmitError(''); setShowModal(true);
-  };
-  const closeModal = () => { setShowModal(false); setEditing(null); setErrors({}); setSubmitError(''); };
-
-  const inputCls = (f) =>
-    `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 ${errors[f] ? 'border-red-400 bg-red-50' : 'border-slate-300'}`;
-
-  const validate = () => {
-    const e = {};
-    if (!form.first_name.trim()) e.first_name = 'First name is required';
-    if (!form.last_name.trim())  e.last_name  = 'Last name is required';
-    if (!form.specialty)         e.specialty  = 'Specialty is required';
-    return e;
-  };
-
-  const handleSubmit = async (ev) => {
-    ev.preventDefault();
-    const errs = validate();
-    if (Object.keys(errs).length) { setErrors(errs); return; }
-    setSaving(true); setSubmitError('');
-    try {
-      editing
-        ? await onPhysicianUpdate(editing.id, form)
-        : await onPhysicianCreate(form);
-      closeModal();
-    } catch (err) {
-      setSubmitError(err.message || 'Failed to save physician');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this physician?')) return;
-    try { await onPhysicianDelete(id); } catch (err) { alert(err.message); }
-  };
-
-  return (
-    <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-teal-600 to-teal-500">
-        <div>
-          <h3 className="text-sm font-bold text-white">Referring Physician Master</h3>
-          <p className="text-xs text-teal-100 mt-0.5">Doctors &amp; specialists who refer patients — code, specialty &amp; contact</p>
-        </div>
-        <button onClick={openAdd} className="inline-flex items-center gap-1.5 bg-white text-teal-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-colors">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-          Add Physician
-        </button>
-      </div>
-
-      <div className="overflow-x-auto">
-        {physicians.length === 0 ? (
-          <p className="text-center py-12 text-slate-400 text-sm">No referring physicians found.</p>
-        ) : (
-          <table className="min-w-full text-sm" style={{ borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'linear-gradient(to right, #f1f5f9, #e2e8f0)' }}>
-                {['Code', 'Name', 'Specialty', 'Phone', 'Address', 'Status', 'Actions'].map(h => (
-                  <th key={h} style={{ border: '1px solid #cbd5e1', padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {physicians.map((p, i) => (
-                <tr key={p.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }} className="hover:bg-teal-50/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <span className="inline-block bg-indigo-50 text-indigo-700 text-xs font-bold tracking-widest px-2 py-1 rounded uppercase">
-                      {p.physician_code}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-medium text-slate-800">
-                    {p.first_name} {p.last_name}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{p.specialty}</td>
-                  <td className="px-4 py-3 text-slate-600">{p.contact_phone || '—'}</td>
-                  <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{p.address || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {p.active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => openEdit(p)} className="text-teal-600 hover:text-teal-800 font-semibold text-xs">Edit</button>
-                      <button onClick={() => handleDelete(p.id)} className="text-red-500 hover:text-red-700 font-semibold text-xs">Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-base font-semibold text-gray-800">
-                {editing ? 'Edit Physician' : 'Add Physician'}
-              </h3>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {submitError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{submitError}</p>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name <span className="text-red-500">*</span></label>
-                  <input type="text" value={form.first_name} onChange={set('first_name')}
-                    className={inputCls('first_name')} placeholder="First name" autoFocus />
-                  {errors.first_name && <p className="mt-1 text-xs text-red-500">{errors.first_name}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name <span className="text-red-500">*</span></label>
-                  <input type="text" value={form.last_name} onChange={set('last_name')}
-                    className={inputCls('last_name')} placeholder="Last name" />
-                  {errors.last_name && <p className="mt-1 text-xs text-red-500">{errors.last_name}</p>}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Specialty <span className="text-red-500">*</span></label>
-                <select value={form.specialty} onChange={set('specialty')} className={inputCls('specialty')}>
-                  <option value="">Select specialty</option>
-                  {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                {errors.specialty && <p className="mt-1 text-xs text-red-500">{errors.specialty}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                <input type="tel" value={form.contact_phone} onChange={set('contact_phone')}
-                  className={inputCls('contact_phone')} placeholder="e.g. +91 98765 43210" />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                <textarea value={form.address} onChange={set('address')} rows={2}
-                  className={inputCls('address')} placeholder="Clinic / hospital address" />
-              </div>
-
-              <div>
-                <label htmlFor="physician-status" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select id="physician-status" value={form.status} onChange={set('status')} className={inputCls('status')}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={closeModal}
-                  className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">
-                  Cancel
-                </button>
-                <button type="submit" disabled={saving}
-                  className="px-4 py-2 text-sm text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50">
-                  {saving ? 'Saving…' : editing ? 'Update' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 // ─── Item Master ──────────────────────────────────────────────────────────────
 
 const GST_RATES = [0, 5, 12, 18, 28];
@@ -3987,7 +3780,6 @@ const MasterDataSettings = () => {
       { id: 'study-pricing',   permission: 'STUDY_PRICING_VIEW' },
       { id: 'service-master',  permission: 'MASTER_DATA_VIEW' },
       { id: 'radiologist',     permission: 'RAD_REPORTING_MASTER_VIEW' },
-      { id: 'physician',       permission: 'MASTER_DATA_VIEW' },
       { id: 'center',          permission: 'MASTER_DATA_VIEW' },
       { id: 'modality-master', permission: 'MASTER_DATA_VIEW' },
       { id: 'center-modality', permission: 'MASTER_DATA_VIEW' },
@@ -4008,7 +3800,6 @@ const MasterDataSettings = () => {
   const [centerModMap, setCenterModMap] = useState({}); // pre-loaded: centerId → Set of modality codes
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
-  const [physicians, setPhysicians] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -4104,20 +3895,6 @@ const MasterDataSettings = () => {
     }
   }, []);
 
-  const fetchPhysicians = useCallback(async () => {
-    try {
-      const res = await fetch('/api/referring-physicians?active_only=false', { headers: AUTH_HEADER() });
-      if (res.ok) {
-        const data = await res.json();
-        setPhysicians(data.physicians || []);
-      } else {
-        setError('Failed to fetch referring physicians');
-      }
-    } catch (err) {
-      setError('Network error');
-    }
-  }, []);
-
   // Track which tabs have already been loaded so we don't re-fetch on every visit
   const loadedTabs = useRef(new Set());
 
@@ -4146,8 +3923,6 @@ const MasterDataSettings = () => {
         }
       } else if (activeTab === 'radiologist') {
         await Promise.all([fetchReporters(), fetchStudyList()]);
-      } else if (activeTab === 'physician') {
-        await fetchPhysicians();
       } else if (activeTab === 'center') {
         await fetchCenters();
       } else if (activeTab === 'modality-master') {
@@ -4158,7 +3933,7 @@ const MasterDataSettings = () => {
       setLoading(false);
     };
     load();
-  }, [activeTab, fetchStudyDefs, fetchReporters, fetchStudyList, fetchCenters, fetchModalities, fetchPhysicians]);
+  }, [activeTab, fetchStudyDefs, fetchReporters, fetchStudyList, fetchCenters, fetchModalities]);
 
   const handleCenterCreate = async (centerData) => {
     const res = await fetch('/api/center-master', {
@@ -4327,30 +4102,6 @@ const MasterDataSettings = () => {
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to reset password'); }
   };
 
-  const handlePhysicianCreate = async (data) => {
-    const res = await fetch('/api/referring-physicians', {
-      method: 'POST', headers: AUTH_HEADER(), body: JSON.stringify(data),
-    });
-    if (!res.ok) { const d = await res.json(); throw new Error(d.errors?.[0]?.msg || d.error || 'Failed to create physician'); }
-    const body = await res.json();
-    setPhysicians(prev => [...prev, body.physician]);
-  };
-
-  const handlePhysicianUpdate = async (id, data) => {
-    const res = await fetch(`/api/referring-physicians/${id}`, {
-      method: 'PUT', headers: AUTH_HEADER(), body: JSON.stringify(data),
-    });
-    if (!res.ok) { const d = await res.json(); throw new Error(d.errors?.[0]?.msg || d.error || 'Failed to update physician'); }
-    const body = await res.json();
-    setPhysicians(prev => prev.map(p => p.id === id ? body.physician : p));
-  };
-
-  const handlePhysicianDelete = async (id) => {
-    const res = await fetch(`/api/referring-physicians/${id}`, { method: 'DELETE', headers: AUTH_HEADER() });
-    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed to delete physician'); }
-    setPhysicians(prev => prev.filter(p => p.id !== id));
-  };
-
   // ── NAV_GROUPS — defined outside JSX for reuse ──────────────────────────────
   const NAV_GROUPS = [
     {
@@ -4362,7 +4113,6 @@ const MasterDataSettings = () => {
         { id: 'study-pricing',   label: 'Study Pricing',   permission: 'STUDY_PRICING_VIEW',        icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
         { id: 'service-master',  label: 'Service Master',  permission: 'MASTER_DATA_VIEW',          icon: 'M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z' },
         { id: 'radiologist',     label: 'RAD Reporting',   permission: 'RAD_REPORTING_MASTER_VIEW', icon: 'M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
-        { id: 'physician',       label: 'Ref. Physician',  permission: 'MASTER_DATA_VIEW',          icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
       ],
     },
     {
@@ -4470,7 +4220,6 @@ const MasterDataSettings = () => {
                 {activeTab === 'study-catalog' && <StudyCatalogFull studyDefs={studyDefs} onDefCreate={handleDefCreate} onDefUpdate={handleDefUpdate} onDefDelete={handleDefDelete} onRegisterAdd={fn => setCatalogAddHandler(() => fn)} onSelectionChange={setCatalogHasSelection} />}
                 {activeTab === 'study-pricing' && <StudyPricing studyDefs={studyDefs} studyPricing={studyPricing} centers={centers} centerModMap={centerModMap} onPricingBatch={handlePricingBatch} onPricingCreate={handlePricingCreate} onPricingUpdate={handlePricingUpdate} onPricingDelete={handlePricingDelete} />}
                 {activeTab === 'radiologist' && <RadReportingMaster reporters={reporters} studies={studyList} onReporterCreate={handleReporterCreate} onReporterUpdate={handleReporterUpdate} onReporterDelete={handleReporterDelete} />}
-                {activeTab === 'physician' && <PhysicianMaster physicians={physicians} onPhysicianCreate={handlePhysicianCreate} onPhysicianUpdate={handlePhysicianUpdate} onPhysicianDelete={handlePhysicianDelete} />}
                 {activeTab === 'center' && <CenterMaster centers={centers} onCenterCreate={handleCenterCreate} onCenterUpdate={handleCenterUpdate} onCenterDelete={handleCenterDelete} />}
                 {activeTab === 'modality-master' && <ModalityMaster modalities={modalities} onRefresh={fetchModalities} />}
                 {activeTab === 'center-modality' && <CenterModalityMap centers={centers} modalities={modalities} />}

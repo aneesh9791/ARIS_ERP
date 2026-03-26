@@ -41,6 +41,7 @@ const icons = {
   expenses: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z',
   itemMaster: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
   studyReporting: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+  physician: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
   hr: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z',
 };
 
@@ -58,9 +59,10 @@ const NAV_GROUPS = [
     key: 'clinical',
     section: 'Clinical',
     items: [
-      { to: '/patients',       label: 'Patient Reg & Billing', iconKey: 'users',         permission: 'PATIENT_VIEW' },
-      { to: '/patient-history',label: 'Patient History',       iconKey: 'history',       permission: 'PATIENT_VIEW' },
-      { to: '/study-reporting',label: 'Worklist',              iconKey: 'studyReporting',permission: 'STUDY_VIEW' },
+      { to: '/patients',              label: 'Patient Reg & Billing', iconKey: 'users',         permission: 'PATIENT_VIEW' },
+      { to: '/patient-history',       label: 'Patient History',       iconKey: 'history',       permission: 'PATIENT_VIEW' },
+      { to: '/study-reporting',       label: 'Worklist',              iconKey: 'studyReporting',permission: 'STUDY_VIEW' },
+      { to: '/referring-physicians',  label: 'Ref. Physicians',       iconKey: 'physician',     permission: 'PHYSICIAN_VIEW' },
     ],
   },
   {

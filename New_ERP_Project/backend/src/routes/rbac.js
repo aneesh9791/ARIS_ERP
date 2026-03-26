@@ -787,9 +787,8 @@ const KNOWN_PERMISSIONS = [
   'VENDOR_VIEW', 'VENDOR_WRITE',
   'CENTER_VIEW', 'CENTER_WRITE',
 
-  // ── Services, Physicians & Scanners ───────────────────────────────────────
+  // ── Services & Scanners ───────────────────────────────────────────────────
   'SERVICE_VIEW', 'SERVICE_WRITE',
-  'PHYSICIAN_VIEW',
 
   // ── Billing sub-modules ────────────────────────────────────────────────────
   'BILL_CONSUMABLE_VIEW', 'BILL_PRINT_VIEW',
@@ -798,6 +797,7 @@ const KNOWN_PERMISSIONS = [
   'STUDY_CONSUMABLE_VIEW',
   'CENTER_CONTRACT_VIEW',
   'EXPENSE_VIEW',
+  'PHYSICIAN_VIEW',
 
   // ── Master Data (sub-views for selective access) ───────────────────────────
   'MASTER_DATA_VIEW',  'MASTER_DATA_WRITE',
