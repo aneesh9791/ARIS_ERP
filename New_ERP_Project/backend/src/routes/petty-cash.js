@@ -48,6 +48,11 @@ router.get('/', async (req, res) => {
     if (from)       { conds.push(`er.expense_date >= $${params.length+1}`);            params.push(from); }
     if (to)         { conds.push(`er.expense_date <= $${params.length+1}`);            params.push(to); }
     if (created_by) { conds.push(`er.created_by = $${params.length+1}`);              params.push(created_by); }
+    // Non-corporate users can only see their own center's vouchers
+    if (!req.user?.is_corporate_role && req.user?.center_id) {
+      conds.push(`er.center_id = $${params.length+1}`);
+      params.push(req.user.center_id);
+    }
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -190,6 +195,13 @@ router.post('/', authorizePermission('PETTY_CASH_WRITE'), voucherValidators, asy
       itc_claimable = true,
       description, paid_to, receipt_number, notes,
     } = req.body;
+
+    // Non-corporate users can only submit for their own assigned center
+    if (!req.user?.is_corporate_role && req.user?.center_id) {
+      if (parseInt(center_id) !== parseInt(req.user.center_id)) {
+        return res.status(403).json({ error: 'You can only submit petty cash for your assigned center' });
+      }
+    }
 
     const gst_amount = parseFloat(cgst_amount) + parseFloat(sgst_amount);
     const total_amount = parseFloat(amount) + gst_amount;

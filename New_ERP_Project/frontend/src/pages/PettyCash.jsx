@@ -27,10 +27,12 @@ const sel = inp;
 // ═══════════════════════════════════════════════════════════════
 // VOUCHER FORM MODAL
 // ═══════════════════════════════════════════════════════════════
-const VoucherModal = ({ centers, expenseAccounts, cashAccounts, onClose, onSaved }) => {
+const VoucherModal = ({ user, centers, expenseAccounts, cashAccounts, onClose, onSaved }) => {
   const today = serverToday();
+  const isCorporate = !!user?.is_corporate_role;
   const [form, setForm] = useState({
-    expense_date: today, center_id: centers[0]?.id || '',
+    expense_date: today,
+    center_id: isCorporate ? (centers[0]?.id || '') : (user?.center_id || ''),
     debit_account_id: '', credit_account_id: cashAccounts.find(a => a.account_code === '1114')?.id || cashAccounts[0]?.id || '',
     amount: '', gst_rate: 0, cgst_amount: 0, sgst_amount: 0, gst_amount: 0, total_amount: '',
     itc_claimable: true, paid_to: '', receipt_number: '', description: '', notes: '',
@@ -102,10 +104,18 @@ const VoucherModal = ({ centers, expenseAccounts, cashAccounts, onClose, onSaved
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">Center <span className="text-red-500">*</span></label>
-              <select value={form.center_id} onChange={e => set('center_id', e.target.value)} className={sel}>
-                <option value="">— Select —</option>
-                {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              {isCorporate ? (
+                <select value={form.center_id} onChange={e => set('center_id', e.target.value)} className={sel}>
+                  <option value="">— Select —</option>
+                  {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              ) : (
+                <input
+                  value={centers.find(c => String(c.id) === String(user?.center_id))?.name || '—'}
+                  disabled
+                  className={inp + ' bg-slate-100 cursor-not-allowed text-slate-500'}
+                />
+              )}
             </div>
           </div>
 
@@ -373,6 +383,7 @@ const VoucherDetail = ({ v, onClose }) => (
 // ═══════════════════════════════════════════════════════════════
 const PettyCash = () => {
   const { has } = getPermissions();
+  const user = (() => { try { return JSON.parse(localStorage.getItem('user')); } catch { return {}; } })();
   const [tab,            setTab]            = useState('vouchers');   // 'vouchers' | 'pending'
   const [vouchers,       setVouchers]       = useState([]);
   const [pending,        setPending]        = useState([]);
@@ -548,14 +559,16 @@ const PettyCash = () => {
               ))}
             </div>
           </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Center</p>
-            <select value={filterCenter} onChange={e => setFilterCenter(e.target.value)}
-              className="px-2 py-1 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-teal-400">
-              <option value="ALL">All Centers</option>
-              {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
+          {user?.is_corporate_role && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Center</p>
+              <select value={filterCenter} onChange={e => setFilterCenter(e.target.value)}
+                className="px-2 py-1 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-teal-400">
+                <option value="ALL">All Centers</option>
+                {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">From</p>
             <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
@@ -609,6 +622,7 @@ const PettyCash = () => {
       {/* Modals */}
       {showForm && (
         <VoucherModal
+          user={user}
           centers={centers} expenseAccounts={expenseAccts} cashAccounts={cashAccts}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); fetchAll(); }}
