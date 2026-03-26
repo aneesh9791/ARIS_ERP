@@ -94,13 +94,6 @@ const QuickAddPhysicianModal = ({ onSave, onClose }) => {
             <label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
             <textarea value={form.address} onChange={set('address')} rows={2} className={fi} placeholder="Clinic / hospital address" />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
-            <select value={form.status} onChange={set('status')} className={fi}>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200">Cancel</button>
             <button type="submit" disabled={saving} className="px-4 py-2 text-sm text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50">
