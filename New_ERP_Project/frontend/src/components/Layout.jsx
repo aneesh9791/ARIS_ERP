@@ -417,7 +417,7 @@ const Layout = () => {
             <div className="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               {getInitials(user)}
             </div>
-            <p className="ml-2 flex-1 min-w-0 text-xs font-semibold text-white text-center truncate">{user.name || user.username || user.email || 'Admin'}</p>
+            <p className="ml-2 flex-1 min-w-0 text-sm font-semibold text-white text-center truncate">{user.name || user.username || user.email || 'Admin'}</p>
             <button onClick={handleLogout} title="Log Out"
               className="ml-1 p-1 text-red-400 hover:text-white hover:bg-red-600 rounded-lg transition-colors flex-shrink-0">
               <Icon d={icons.logout} className="w-5 h-5" />
