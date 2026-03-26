@@ -282,8 +282,9 @@ const PrintBill = ({ bill, patient, onClose }) => {
       </div>
 
     </div></body></html>`;
-    w.document.documentElement.innerHTML = html;
-    setTimeout(() => w.print(), 500);
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => w.print();
   };
 
   const isPaid = bill.payment_status === 'PAID';
