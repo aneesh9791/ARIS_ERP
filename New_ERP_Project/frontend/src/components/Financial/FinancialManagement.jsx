@@ -76,7 +76,7 @@ const FinancialManagement = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch('/api/chart-of-accounts?include_balances=true&limit=500');
+      const res = await authFetch('/api/chart-of-accounts/accounts?include_balances=true');
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to fetch');
       const accounts = (data.data || data.accounts || data || []).map(a => ({
