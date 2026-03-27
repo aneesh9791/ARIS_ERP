@@ -148,6 +148,20 @@ const { authenticateToken } = require('./middleware/auth');
 // Static uploads (logos, etc.)
 app.use('/uploads', require('express').static(require('path').join(__dirname, '../uploads')));
 
+// Public branding endpoint (no auth — used by login page on any device)
+app.get('/api/public/branding', async (req, res) => {
+  try {
+    const pool = require('./config/db');
+    const { rows } = await pool.query(
+      'SELECT company_name, logo_path FROM company_info ORDER BY id LIMIT 1'
+    );
+    const row = rows[0] || {};
+    res.json({ company_name: row.company_name || 'ARIS', logo_path: row.logo_path || null });
+  } catch {
+    res.json({ company_name: 'ARIS', logo_path: null });
+  }
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/masters', authenticateToken, require('./routes/masters'));

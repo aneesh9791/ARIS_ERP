@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const ANIM = `
   @keyframes fadeUp  { from{opacity:0;transform:translateY(22px)} to{opacity:1;transform:translateY(0)} }
@@ -27,9 +27,22 @@ export default function Login() {
   const [error, setError]       = useState('');
   const [showPass, setShowPass] = useState(false);
 
-  const logoConfig = (() => {
+  const [logoConfig, setLogoConfig] = useState(() => {
     try { return JSON.parse(localStorage.getItem('logoConfig')) || {}; } catch { return {}; }
-  })();
+  });
+
+  useEffect(() => {
+    fetch('/api/public/branding')
+      .then(r => r.json())
+      .then(d => {
+        if (d.logo_path) {
+          const updated = { ...logoConfig, customLogo: d.logo_path };
+          try { localStorage.setItem('logoConfig', JSON.stringify(updated)); } catch { /* ignore */ }
+          setLogoConfig(updated);
+        }
+      })
+      .catch(() => { /* no branding available — use defaults */ });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onChange = e => { setForm({ ...form, [e.target.name]: e.target.value }); if (error) setError(''); };
 
@@ -227,10 +240,14 @@ export default function Login() {
           <div className="fadeUp" style={{ width:'100%', maxWidth:'420px' }}>
 
             {/* Mobile wordmark */}
-            <div style={{ textAlign:'center', marginBottom:'2rem' }} className="flex lg:hidden">
-              <div style={{ fontSize:'1.15rem', fontWeight:900, letterSpacing:'0.22em', color:'#134e4a' }}>ARIS</div>
-              <div style={{ fontSize:'0.58rem', color:'#0d9488', letterSpacing:'0.18em',
-                textTransform:'uppercase', marginTop:2 }}>Diagnostic Centre</div>
+            <div style={{ textAlign:'center', marginBottom:'2rem' }} className="flex flex-col items-center lg:hidden">
+              {logoConfig.customLogo
+                ? <img src={logoConfig.customLogo} alt="Logo" style={{ height:52, maxWidth:180, objectFit:'contain' }} />
+                : <>
+                    <div style={{ fontSize:'1.15rem', fontWeight:900, letterSpacing:'0.22em', color:'#134e4a' }}>ARIS</div>
+                    <div style={{ fontSize:'0.58rem', color:'#0d9488', letterSpacing:'0.18em', textTransform:'uppercase', marginTop:2 }}>Diagnostic Centre</div>
+                  </>
+              }
             </div>
 
             {/* Card */}

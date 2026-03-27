@@ -26,10 +26,29 @@ const Logo = ({ size = 'medium', variant = 'sidebar', className = '' }) => {
 
   useEffect(() => {
     loadConfig();
-    // Re-read whenever another tab or the settings page updates localStorage
+    // If localStorage has no customLogo, fetch from server (handles fresh devices/browsers)
+    try {
+      const saved = JSON.parse(localStorage.getItem('logoConfig') || '{}');
+      if (!saved.customLogo) {
+        const token = localStorage.getItem('token');
+        const url   = token ? '/api/settings/company' : '/api/public/branding';
+        const opts  = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+        fetch(url, opts)
+          .then(r => r.json())
+          .then(d => {
+            const logoPath = d.logo_path || d.company?.logo_path;
+            if (logoPath) {
+              const updated = { ...saved, customLogo: logoPath };
+              try { localStorage.setItem('logoConfig', JSON.stringify(updated)); } catch { /* ignore */ }
+              setLogoConfig(prev => ({ ...prev, customLogo: logoPath }));
+            }
+          })
+          .catch(() => {});
+      }
+    } catch { /* ignore */ }
+
     const onStorage = e => { if (e.key === 'logoConfig') loadConfig(); };
     window.addEventListener('storage', onStorage);
-    // Also listen for same-tab updates via custom event
     window.addEventListener('logoConfigUpdated', loadConfig);
     return () => {
       window.removeEventListener('storage', onStorage);
