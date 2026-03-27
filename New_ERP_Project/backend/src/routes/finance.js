@@ -557,7 +557,7 @@ router.get('/reports/balance-sheet', async (req, res) => {
           END AS balance
        FROM chart_of_accounts a
        LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
-         AND ($2::int IS NULL OR jel.center_id = $2::int)
+         AND ($2::int IS NULL OR jel.center_id = $2::int OR a.account_category IN ('EQUITY','LIABILITY'))
        LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
          AND je.status = 'POSTED' AND je.entry_date <= $1
        WHERE a.is_active = true AND a.account_type = 'BALANCE_SHEET'
