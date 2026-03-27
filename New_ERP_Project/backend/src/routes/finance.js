@@ -940,9 +940,28 @@ router.get('/bank-accounts', async (req, res) => {
   try {
     const all = req.query.all === 'true';
     const { rows } = await pool.query(
-      `SELECT ba.*, c.name AS center_name
+      `SELECT ba.*, c.name AS center_name,
+              -- Live GL balance: opening_balance + debits - credits for posted JEs
+              CASE WHEN ba.gl_account_id IS NOT NULL THEN
+                coa.opening_balance
+                + COALESCE((
+                    SELECT SUM(jel.debit_amount)
+                      FROM journal_entry_lines jel
+                      JOIN journal_entries je ON je.id = jel.journal_entry_id
+                        AND je.status = 'POSTED'
+                     WHERE jel.account_id = ba.gl_account_id
+                  ), 0)
+                - COALESCE((
+                    SELECT SUM(jel.credit_amount)
+                      FROM journal_entry_lines jel
+                      JOIN journal_entries je ON je.id = jel.journal_entry_id
+                        AND je.status = 'POSTED'
+                     WHERE jel.account_id = ba.gl_account_id
+                  ), 0)
+              ELSE ba.current_balance END AS current_balance
          FROM bank_accounts ba
          LEFT JOIN centers c ON c.id = ba.center_id
+         LEFT JOIN chart_of_accounts coa ON coa.id = ba.gl_account_id
         WHERE ${all ? '1=1' : 'ba.active = true'}
         ORDER BY ba.account_name`
     );
