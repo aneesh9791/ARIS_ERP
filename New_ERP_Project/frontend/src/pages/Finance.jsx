@@ -345,8 +345,9 @@ function AccountsTab() {
   // Recursively sum current_balance of all descendants (for collapsed group headers)
   const getSubtotal = acc => {
     const children = flat.filter(a => a.parent_account_id === acc.id);
-    if (!children.length) return parseFloat(acc.current_balance || 0);
-    return children.reduce((sum, child) => sum + getSubtotal(child), 0);
+    const own = parseFloat(acc.current_balance || 0);
+    if (!children.length) return own;
+    return own + children.reduce((sum, child) => sum + getSubtotal(child), 0);
   };
 
   return (
@@ -1919,7 +1920,6 @@ function BalanceSheetTab({ centerId = '', centerName = 'All Centers' }) {
     if (centerId) params.set('center_id', centerId);
     const r = await api(`/api/finance/reports/balance-sheet?${params}`);
     const d = await r.json();
-    console.log('[BS] response:', d.success, 'rows:', d.rows?.length, 'equity:', d.rows?.filter(x=>x.account_category==='EQUITY').length, d.rows?.filter(x=>x.account_category==='EQUITY').map(x=>x.account_code+':'+x.balance));
     if (d.success !== false) setRows(d.rows || []);
     setLoading(false);
   }, [asOf, centerId]);
