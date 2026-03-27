@@ -2,7 +2,7 @@
   "name": "new-erp-frontend",
   "version": "1.0.0",
   "description": "Modern ERP system frontend for Kerala Diagnostic Centers",
-  "homepage": ".",
+  "homepage": "/",
   "scripts": {
     "start": "TSC_COMPILE_ON_ERROR=true SKIP_PREFLIGHT_CHECK=true ESLINT_NO_DEV_ERRORS=true react-scripts start",
     "build": "DISABLE_ESLINT_PLUGIN=true TSC_COMPILE_ON_ERROR=true react-scripts build",
