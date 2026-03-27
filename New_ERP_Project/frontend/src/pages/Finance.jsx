@@ -262,7 +262,7 @@ function AccountsTab() {
   const [form, setForm]       = useState(EMPTY_ACC);
   const [saving, setSaving]   = useState(false);
   const [saveErr, setSaveErr] = useState('');
-  const [expanded, setExpanded] = useState(new Set(['1000','2000','3000','3100','4000','5000']));
+  const [expanded, setExpanded] = useState(new Set(['1000','1100','1200','2000','3000','3100','4000','5000']));
 
   const load = useCallback(async () => {
     setLoading(true);
