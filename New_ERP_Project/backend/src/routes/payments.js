@@ -1646,7 +1646,7 @@ router.post('/tele-rad/consolidate', authorizePermission('JE_APPROVE', 'VENDOR_W
         `INSERT INTO vendor_bills
            (bill_number, vendor_code, vendor_name_text, center_id, bill_date, due_date,
             subtotal, total_amount, bill_status, payment_status, bill_type, notes, active)
-         VALUES ($1,$2,$3,$4,$5,$5,$6,$6,'APPROVED','PENDING','REGULAR',$7,true)
+         VALUES ($1,$2,$3,$4,$5,$5,$6,$6,'APPROVED','PENDING','RAD_BATCH',$7,true)
          RETURNING *`,
         [billNumber, reporter.vendor_code, reporter.radiologist_name,
          centerId, today,
