@@ -1379,10 +1379,6 @@ router.post('/depreciation/run', authorizePermission('COA_WRITE', 'JE_APPROVE'),
          `Depreciation ${asset.asset_name} ${periodLabel}`, accumDeprId]
       );
 
-      // Update account balances
-      await client.query(`UPDATE chart_of_accounts SET current_balance = current_balance + $1 WHERE id=$2`, [monthlyDepr, deprExpId]);
-      await client.query(`UPDATE chart_of_accounts SET current_balance = current_balance + $1 WHERE id=$2`, [monthlyDepr, accumDeprId]);
-
       // Update asset accumulated_depreciation
       await client.query(
         `UPDATE asset_master SET accumulated_depreciation = COALESCE(accumulated_depreciation,0) + $1 WHERE id=$2`,
