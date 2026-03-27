@@ -402,68 +402,122 @@ const VoucherDetail = ({ v, onClose }) => (
 );
 
 // ═══════════════════════════════════════════════════════════════
-// CUSTODIAN BALANCE BANNER
+// DASHBOARD SUMMARY
 // ═══════════════════════════════════════════════════════════════
-const CustodianBanner = ({ status }) => {
+const DashboardSummary = ({ status }) => {
   if (!status) return null;
   const { is_custodian, custodian, stats } = status;
 
-  if (!is_custodian) return (
-    <div className="bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 flex items-center gap-3">
-      <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
-        <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-        </svg>
-      </div>
-      <div>
-        <p className="text-xs font-semibold text-slate-700">Not a Petty Cash Custodian</p>
-        <p className="text-[10px] text-slate-500">You can still submit vouchers for reimbursement — Finance will process payment directly.</p>
-      </div>
-    </div>
-  );
+  const consumed   = parseFloat(stats?.consumed_amount   || 0);
+  const inTransit  = parseFloat(stats?.in_transit_amount || 0);
+  const monthAmt   = parseFloat(stats?.month_amount      || 0);
+  const monthCnt   = parseInt(stats?.month_count         || 0);
+  const pending    = parseInt(stats?.pending             || 0);
+  const rejected   = parseInt(stats?.rejected            || 0);
 
-  const advance    = parseFloat(custodian?.advance_amount  || 0);
-  const utilised   = parseFloat(custodian?.amount_utilised || 0);
-  const balance    = parseFloat(custodian?.balance_remaining ?? (advance - utilised));
-  const pct        = advance > 0 ? Math.min(100, (utilised / advance) * 100) : 0;
-  const balColor   = balance < advance * 0.2 ? 'text-red-600' : balance < advance * 0.5 ? 'text-amber-600' : 'text-emerald-600';
-  const barColor   = balance < advance * 0.2 ? 'bg-red-500' : balance < advance * 0.5 ? 'bg-amber-500' : 'bg-emerald-500';
+  // Custodian imprest panel
+  if (is_custodian && custodian) {
+    const advance  = parseFloat(custodian.advance_amount  || 0);
+    const balance  = parseFloat(custodian.balance_remaining ?? Math.max(0, advance - consumed));
+    const hasAdv   = advance > 0;
+    const pctConsumed  = hasAdv ? Math.min(100, (consumed  / advance) * 100) : 0;
+    const pctTransit   = hasAdv ? Math.min(100, (inTransit / advance) * 100) : 0;
+    const balColor     = !hasAdv ? 'text-slate-500' : balance < advance * 0.15 ? 'text-red-600' : balance < advance * 0.4 ? 'text-amber-600' : 'text-emerald-600';
 
-  return (
-    <div className="bg-gradient-to-r from-teal-50 to-white border border-teal-200 rounded-xl px-5 py-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-teal-600 flex items-center justify-center flex-shrink-0">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-          </div>
+    return (
+      <div className="bg-gradient-to-br from-teal-50 to-white border border-teal-200 rounded-2xl p-5 space-y-4">
+        {/* Header row */}
+        <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-teal-800">Petty Cash Custodian — {custodian?.center_name}</p>
+            <p className="text-xs font-bold text-teal-800">Petty Cash Imprest Account</p>
             <p className="text-[10px] text-teal-600 mt-0.5">
-              {custodian?.advance_number
-                ? `Active advance: ${custodian.advance_number} · Issued ${custodian.issued_date ? new Date(custodian.issued_date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : ''}`
-                : 'No active advance — request Finance to issue one'}
+              {custodian.center_name}
+              {custodian.advance_number ? ` · Advance ${custodian.advance_number}` : ' · No active advance'}
+              {custodian.issued_date ? ` · Issued ${new Date(custodian.issued_date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}` : ''}
             </p>
           </div>
+          <div className="text-right">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Credit Limit</p>
+            <p className="text-xs font-bold text-slate-700">{fmt(custodian.credit_limit)}</p>
+          </div>
         </div>
-        <div className="text-right flex-shrink-0">
-          <p className="text-[10px] text-slate-500 uppercase tracking-wider">Balance</p>
-          <p className={`text-lg font-bold ${balColor}`}>₹{balance.toLocaleString('en-IN', {minimumFractionDigits:2})}</p>
+
+        {/* 4 metric cards */}
+        <div className="grid grid-cols-4 gap-3">
+          <div className="bg-white rounded-xl border border-teal-100 px-4 py-3 space-y-0.5">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Advance Issued</p>
+            <p className="text-base font-bold text-teal-700">{fmt(advance)}</p>
+            <p className="text-[10px] text-slate-400">Total cash in hand</p>
+          </div>
+          <div className="bg-white rounded-xl border border-emerald-100 px-4 py-3 space-y-0.5">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Consumed</p>
+            <p className="text-base font-bold text-emerald-700">{fmt(consumed)}</p>
+            <p className="text-[10px] text-slate-400">Approved vouchers</p>
+          </div>
+          <div className="bg-white rounded-xl border border-amber-100 px-4 py-3 space-y-0.5">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Transit</p>
+            <p className="text-base font-bold text-amber-600">{fmt(inTransit)}</p>
+            <p className="text-[10px] text-slate-400">{pending} pending approval</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 space-y-0.5">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Balance</p>
+            <p className={`text-base font-bold ${balColor}`}>{fmt(balance)}</p>
+            <p className="text-[10px] text-slate-400">Available to spend</p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        {hasAdv && (
+          <div className="space-y-1.5">
+            <div className="w-full bg-slate-100 rounded-full h-2 flex overflow-hidden">
+              <div className="bg-emerald-500 h-2 transition-all" style={{ width: `${pctConsumed}%` }} />
+              <div className="bg-amber-400 h-2 transition-all" style={{ width: `${pctTransit}%` }} />
+            </div>
+            <div className="flex items-center gap-4 text-[10px] text-slate-500">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Consumed {pctConsumed.toFixed(0)}%</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />In Transit {pctTransit.toFixed(0)}%</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-200 inline-block" />Available {Math.max(0,100-pctConsumed-pctTransit).toFixed(0)}%</span>
+            </div>
+          </div>
+        )}
+        {!hasAdv && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-xs text-amber-700">
+            No active advance issued. Contact Finance to issue a petty cash advance.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Non-custodian: show own voucher summary
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
+      <div>
+        <p className="text-xs font-bold text-slate-700">My Voucher Summary</p>
+        <p className="text-[10px] text-slate-500 mt-0.5">Submit vouchers for reimbursement — Finance will process payment directly</p>
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        <div className="bg-slate-50 rounded-xl border border-slate-200 px-4 py-3 space-y-0.5">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">This Month</p>
+          <p className="text-base font-bold text-slate-800">{fmt(monthAmt)}</p>
+          <p className="text-[10px] text-slate-400">{monthCnt} vouchers</p>
+        </div>
+        <div className="bg-amber-50 rounded-xl border border-amber-100 px-4 py-3 space-y-0.5">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Transit</p>
+          <p className="text-base font-bold text-amber-600">{fmt(inTransit)}</p>
+          <p className="text-[10px] text-slate-400">{pending} awaiting approval</p>
+        </div>
+        <div className="bg-emerald-50 rounded-xl border border-emerald-100 px-4 py-3 space-y-0.5">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Approved</p>
+          <p className="text-base font-bold text-emerald-700">{fmt(consumed)}</p>
+          <p className="text-[10px] text-slate-400">{parseInt(stats?.approved||0)} paid</p>
+        </div>
+        <div className="bg-red-50 rounded-xl border border-red-100 px-4 py-3 space-y-0.5">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Rejected</p>
+          <p className="text-base font-bold text-red-600">{rejected}</p>
+          <p className="text-[10px] text-slate-400">All time</p>
         </div>
       </div>
-
-      {advance > 0 && (
-        <div className="mt-3 space-y-1.5">
-          <div className="w-full bg-slate-200 rounded-full h-1.5">
-            <div className={`${barColor} h-1.5 rounded-full transition-all`} style={{ width: `${pct}%` }} />
-          </div>
-          <div className="flex justify-between text-[10px] text-slate-500">
-            <span>Utilised: ₹{utilised.toLocaleString('en-IN',{minimumFractionDigits:2})} of ₹{advance.toLocaleString('en-IN',{minimumFractionDigits:2})}</span>
-            <span className="text-slate-400">{parseInt(stats?.pending || 0)} pending vouchers</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -542,21 +596,6 @@ const PettyCash = () => {
     fetchAll();
   };
 
-  // Stats
-  const todayStr = serverToday();
-  const todayVouchers = vouchers.filter(v => v.expense_date?.slice(0,10) === todayStr && v.status === 'APPROVED');
-  const todayTotal    = todayVouchers.reduce((s, v) => s + parseFloat(v.total_amount || 0), 0);
-  const monthVouchers = vouchers.filter(v => v.expense_date?.slice(0,7) === todayStr.slice(0,7) && v.status === 'APPROVED');
-  const monthTotal    = monthVouchers.reduce((s, v) => s + parseFloat(v.total_amount || 0), 0);
-
-  const statCard = (label, value, sub, color) => (
-    <div className={`bg-white rounded-xl border border-slate-200 px-5 py-4 shadow-sm`}>
-      <p className="text-xs text-slate-500 font-medium">{label}</p>
-      <p className={`text-xl font-bold mt-1 ${color}`}>{value}</p>
-      {sub && <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>}
-    </div>
-  );
-
   const VoucherRow = ({ v, showActions }) => (
     <tr className="hover:bg-slate-50 cursor-pointer" onClick={() => setDetail(v)}>
       <td className="px-4 py-3 text-xs font-mono text-teal-700 font-semibold">{v.expense_number}</td>
@@ -617,16 +656,8 @@ const PettyCash = () => {
         )}
       </div>
 
-      {/* Custodian balance banner */}
-      <CustodianBanner status={myStatus} />
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-4 gap-4">
-        {statCard("Today's Expenses", fmt(todayTotal), `${todayVouchers.length} approved vouchers`, 'text-teal-700')}
-        {statCard("This Month", fmt(monthTotal), `${monthVouchers.length} approved vouchers`, 'text-slate-800')}
-        {statCard("Pending Approval", pendingCount, 'Awaiting Finance review', pendingCount > 0 ? 'text-amber-600' : 'text-slate-400')}
-        {statCard("Total Vouchers", vouchers.length, 'All time', 'text-slate-600')}
-      </div>
+      {/* Dashboard summary */}
+      <DashboardSummary status={myStatus} />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">

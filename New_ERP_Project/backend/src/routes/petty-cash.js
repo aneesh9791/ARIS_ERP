@@ -165,10 +165,19 @@ router.get('/my-status', async (req, res) => {
     // Voucher stats for this user
     const { rows: stats } = await client.query(`
       SELECT
-        COUNT(*)                                          AS total_vouchers,
-        COUNT(*) FILTER (WHERE status='SUBMITTED')        AS pending,
-        COUNT(*) FILTER (WHERE status='APPROVED')         AS approved,
-        COALESCE(SUM(total_amount) FILTER (WHERE status='APPROVED'), 0) AS total_approved
+        COUNT(*)                                                                                     AS total_vouchers,
+        COUNT(*) FILTER (WHERE status='SUBMITTED')                                                   AS pending,
+        COUNT(*) FILTER (WHERE status='APPROVED')                                                    AS approved,
+        COUNT(*) FILTER (WHERE status='REJECTED')                                                    AS rejected,
+        COALESCE(SUM(total_amount) FILTER (WHERE status='SUBMITTED'), 0)                             AS in_transit_amount,
+        COALESCE(SUM(total_amount) FILTER (WHERE status='APPROVED'), 0)                              AS consumed_amount,
+        COALESCE(SUM(total_amount) FILTER (
+          WHERE status='APPROVED'
+            AND expense_date >= date_trunc('month', CURRENT_DATE)
+        ), 0)                                                                                        AS month_amount,
+        COUNT(*) FILTER (
+          WHERE expense_date >= date_trunc('month', CURRENT_DATE)
+        )                                                                                            AS month_count
       FROM expense_records
       WHERE created_by = $1
     `, [req.user.id]);
