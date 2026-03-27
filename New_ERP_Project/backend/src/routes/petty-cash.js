@@ -35,11 +35,27 @@ async function nextJENumber(client) {
 // ── helper: get custodian record for a user (by employee record) ──────────
 async function getCustodian(client, userId) {
   const { rows } = await client.query(`
-    SELECT pcc.*, e.name AS employee_name, p.id AS party_id
+    SELECT pcc.*,
+           e.name   AS employee_name,
+           p.id     AS party_id,
+           c.name   AS center_name,
+           adv.id              AS advance_id,
+           adv.advance_number,
+           adv.issued_date,
+           adv.amount          AS advance_amount,
+           adv.amount_utilised,
+           adv.amount - adv.amount_utilised AS balance_remaining,
+           adv.status          AS advance_status
       FROM petty_cash_custodians pcc
       JOIN employees e ON e.id = pcc.employee_id
       JOIN users     u ON u.id = $1
       JOIN parties   p ON p.id = pcc.party_id
+      JOIN centers   c ON c.id = pcc.center_id
+      LEFT JOIN LATERAL (
+        SELECT * FROM petty_cash_advances
+         WHERE custodian_id = pcc.id AND status = 'ACTIVE'
+         ORDER BY issued_date DESC LIMIT 1
+      ) adv ON true
      WHERE e.email = u.email AND pcc.is_active = true
      LIMIT 1
   `, [userId]);
