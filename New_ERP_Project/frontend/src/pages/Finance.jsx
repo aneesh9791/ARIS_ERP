@@ -262,7 +262,7 @@ function AccountsTab() {
   const [form, setForm]       = useState(EMPTY_ACC);
   const [saving, setSaving]   = useState(false);
   const [saveErr, setSaveErr] = useState('');
-  const [expanded, setExpanded] = useState(new Set(['1000','2000','3000','4000','5000']));
+  const [expanded, setExpanded] = useState(new Set(['1000','2000','3000','3100','4000','5000']));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1923,16 +1923,41 @@ function BalanceSheetTab({ centerId = '', centerName = 'All Centers' }) {
   const equity      = rows.filter(r => r.account_category === 'EQUITY').reduce((s, r) => s + parseFloat(r.balance || 0), 0);
 
   const Section = ({ title, cat, color }) => {
-    const items = rows.filter(r => r.account_category === cat && parseFloat(r.balance || 0) !== 0);
+    const allCat = rows.filter(r => r.account_category === cat);
+    const items  = allCat.filter(r => parseFloat(r.balance || 0) !== 0);
     if (!items.length) return null;
     const total = items.reduce((s, r) => s + parseFloat(r.balance || 0), 0);
+    // Collect L2 parents that have children with non-zero balance (even if parent itself is 0)
+    const parentCodes = new Set(
+      items.filter(r => r.account_level > 2 && r.parent_account_id)
+           .map(r => allCat.find(p => p.id === r.parent_account_id)?.account_code)
+           .filter(Boolean)
+    );
+    // Build display list: inject L2 parent headers before their first child
+    const display = [];
+    const shown = new Set();
+    for (const r of items) {
+      if (r.account_level > 2 && r.parent_account_id) {
+        const parent = allCat.find(p => p.id === r.parent_account_id);
+        if (parent && parentCodes.has(parent.account_code) && !shown.has(parent.account_code)) {
+          display.push({ ...parent, _isHeader: true });
+          shown.add(parent.account_code);
+        }
+      }
+      display.push(r);
+    }
     return (
       <div className="mb-4">
         <div className="px-5 py-2 rounded-xl mb-1 flex justify-between" style={{ background: color + '18' }}>
           <span className="font-bold text-sm" style={{ color }}>{title}</span>
           <span className="font-bold text-sm" style={{ color }}>{fmt(total)}</span>
         </div>
-        {items.map((r, i) => (
+        {display.map((r, i) => r._isHeader ? (
+          <div key={'h-' + i} className="flex justify-between px-5 py-1 text-xs font-semibold text-slate-500 uppercase tracking-wide mt-2"
+            style={{ paddingLeft: `${(r.account_level - 1) * 16 + 20}px` }}>
+            <span>{r.account_name}</span>
+          </div>
+        ) : (
           <div key={i} className="flex justify-between px-5 py-1.5 hover:bg-slate-50 text-sm"
             style={{ paddingLeft: `${(r.account_level - 1) * 16 + 20}px` }}>
             <span className="text-slate-600">{r.account_name}</span>

@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16-bookworm
+    container_name: aris_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aris_erp
+      POSTGRES_USER: aris
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker-initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aris -d aris_erp"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - aris_net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aris_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    networks:
+      - aris_net
+
+  caddy:
+    image: caddy:2
+    container_name: aris_caddy
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - aris_net
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  aris_net:
+    driver: bridge
