@@ -285,6 +285,15 @@ router.post('/journals', authorizePermission('JE_WRITE', 'COA_WRITE'), async (re
 
     if (!lines.length) throw new Error('At least one line item required');
 
+    // Account 3300 is a synthetic computed account (Current Year Profit/Loss) — block direct JEs
+    const { rows: lineAccounts } = await client.query(
+      `SELECT id, account_code FROM chart_of_accounts WHERE id = ANY($1::int[])`,
+      [lines.map(l => parseInt(l.account_id)).filter(Boolean)]
+    );
+    const acctCodeMap = Object.fromEntries(lineAccounts.map(a => [String(a.id), a.account_code]));
+    const blockedLine = lines.find(l => acctCodeMap[String(l.account_id)] === '3300');
+    if (blockedLine) throw new Error('Account 3300 (Current Year Profit/Loss) is a system-computed account and cannot be used in manual journal entries.');
+
     const totalDebit  = lines.reduce((s, l) => s + parseFloat(l.debit_amount  || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit_amount || 0), 0);
     if (Math.abs(totalDebit - totalCredit) > 0.01)
