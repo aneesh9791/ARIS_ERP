@@ -1238,7 +1238,7 @@ router.get('/bank-reconciliation-summary', async (req, res) => {
          JOIN journal_entries je ON je.id = jel.journal_entry_id
          WHERE jel.account_id = $1
            AND je.entry_date  <= $2
-           AND je.status IN ('POSTED','APPROVED')`,
+           AND je.status = 'POSTED'`,
         [ba.gl_account_id, asOf]
       );
       glBalance = parseFloat(gl.total_debits) - parseFloat(gl.total_credits);
