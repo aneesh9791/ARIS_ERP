@@ -1928,9 +1928,10 @@ function BalanceSheetTab({ centerId = '', centerName = 'All Centers' }) {
     if (!items.length) return null;
     const total = items.reduce((s, r) => s + parseFloat(r.balance || 0), 0);
     // Collect L2 parents that have children with non-zero balance (even if parent itself is 0)
+    const allById = Object.fromEntries(allCat.filter(r => r.id).map(r => [r.id, r]));
     const parentCodes = new Set(
       items.filter(r => r.account_level > 2 && r.parent_account_id)
-           .map(r => allCat.find(p => p.id === r.parent_account_id)?.account_code)
+           .map(r => allById[r.parent_account_id]?.account_code)
            .filter(Boolean)
     );
     // Build display list: inject L2 parent headers before their first child
@@ -1938,7 +1939,7 @@ function BalanceSheetTab({ centerId = '', centerName = 'All Centers' }) {
     const shown = new Set();
     for (const r of items) {
       if (r.account_level > 2 && r.parent_account_id) {
-        const parent = allCat.find(p => p.id === r.parent_account_id);
+        const parent = allById[r.parent_account_id];
         if (parent && parentCodes.has(parent.account_code) && !shown.has(parent.account_code)) {
           display.push({ ...parent, _isHeader: true });
           shown.add(parent.account_code);

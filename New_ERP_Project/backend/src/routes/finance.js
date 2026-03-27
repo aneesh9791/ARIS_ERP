@@ -546,7 +546,7 @@ router.get('/reports/balance-sheet', async (req, res) => {
     // When filtering by center, movements are center-scoped but opening balances remain consolidated.
     const { rows } = await pool.query(
       `SELECT
-          a.account_code, a.account_name, a.account_category,
+          a.id, a.account_code, a.account_name, a.account_category,
           a.account_level, a.parent_account_id, a.normal_balance,
           a.opening_balance,
           COALESCE(SUM(jel.debit_amount),0)  AS total_debit,
@@ -566,7 +566,47 @@ router.get('/reports/balance-sheet', async (req, res) => {
        ORDER BY a.account_code`,
       [asOf, centerId]
     );
-    ok(res, { rows, as_of: asOf, center_id: centerId });
+
+    // Compute current-year net P&L from INCOME_STATEMENT accounts (posted JEs up to as_of)
+    // This is injected as a synthetic EQUITY row so the balance sheet balances.
+    const { rows: plRows } = await pool.query(
+      `SELECT
+         COALESCE(SUM(
+           CASE WHEN a.account_category = 'REVENUE'
+                THEN CASE WHEN a.normal_balance='credit'
+                          THEN COALESCE(jel.credit_amount,0) - COALESCE(jel.debit_amount,0)
+                          ELSE COALESCE(jel.debit_amount,0) - COALESCE(jel.credit_amount,0)
+                     END
+                WHEN a.account_category IN ('EXPENSE','COGS')
+                THEN CASE WHEN a.normal_balance='debit'
+                          THEN COALESCE(jel.debit_amount,0) - COALESCE(jel.credit_amount,0)
+                          ELSE COALESCE(jel.credit_amount,0) - COALESCE(jel.debit_amount,0)
+                     END
+                ELSE 0
+           END
+         ), 0) AS net_pl
+       FROM journal_entry_lines jel
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+         AND je.status = 'POSTED' AND je.entry_date <= $1
+         AND ($2::int IS NULL OR jel.center_id = $2::int)
+       JOIN chart_of_accounts a ON a.id = jel.account_id
+       WHERE a.account_type = 'INCOME_STATEMENT'`,
+      [asOf, centerId]
+    );
+    const netPL = parseFloat(plRows[0]?.net_pl || 0);
+    // Inject a synthetic row for Current Year P&L into the EQUITY section
+    const plRow = {
+      id: null, account_code: '3300', account_name: 'Current Year Profit / (Loss)',
+      account_category: 'EQUITY', account_level: 2, parent_account_id: null,
+      normal_balance: 'credit', opening_balance: '0',
+      total_debit: '0', total_credit: '0', balance: netPL.toFixed(2),
+      _synthetic: true,
+    };
+    // Replace any existing 3300 row (which would be 0 since it has no direct JEs)
+    const finalRows = rows.filter(r => r.account_code !== '3300').concat(plRow)
+      .sort((a, b) => a.account_code < b.account_code ? -1 : 1);
+
+    ok(res, { rows: finalRows, as_of: asOf, center_id: centerId, net_pl: netPL });
   } catch (e) { logger.error('Balance sheet', e); err(res, 'Server error', 500); }
 });
 
