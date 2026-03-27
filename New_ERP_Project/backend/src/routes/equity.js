@@ -96,6 +96,7 @@ router.get('/summary', async (_req, res) => {
     const totalCapital  = (glByCode['3100'] || 0)
                         + (glByCode['3101'] || 0) + (glByCode['3102'] || 0) + (glByCode['3103'] || 0)
                         + (glByCode['3111'] || 0) + (glByCode['3112'] || 0) + (glByCode['3113'] || 0)
+                        + (glByCode['3200'] || 0)   // Retained Earnings
                         + (glByCode['3400'] || 0);
     const totalDrawings = glByCode['3500'] || 0;   // drawings is debit-normal so positive = amount drawn
     const netEquity     = totalCapital - totalDrawings;
@@ -113,16 +114,22 @@ router.get('/summary', async (_req, res) => {
         r.account_name.toLowerCase().includes(firstName) &&
         ['3101','3102','3103','3111','3112','3113'].includes(r.account_code)
       );
-      const partnerCapital = dirAccounts.reduce((s, r) => s + parseFloat(r.balance || 0), 0);
+      // Find this director's drawings account (3500 sub-accounts by name)
+      const dirDrawings = glRows.filter(r =>
+        r.account_name.toLowerCase().includes(firstName) &&
+        r.account_code.startsWith('35')
+      );
+      const partnerCapital  = dirAccounts.reduce((s, r) => s + parseFloat(r.balance || 0), 0);
+      const partnerDrawings = dirDrawings.reduce((s, r) => s + parseFloat(r.balance || 0), 0);
       return {
         director_id:   cd.id,
         director_name: cd.director_name,
         designation:   cd.designation,
-        total_capital: partnerCapital,
-        total_drawings: 0,
-        net_equity:    partnerCapital,
-        net_loan_owed: 0,
-        last_txn_date: null,
+        total_capital:  partnerCapital,
+        total_drawings: partnerDrawings,
+        net_equity:     partnerCapital - partnerDrawings,
+        net_loan_owed:  glByCode['2230'] || 0,
+        last_txn_date:  null,
       };
     }).sort((a, b) => b.total_capital - a.total_capital);
 

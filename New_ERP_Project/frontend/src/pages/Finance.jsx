@@ -1205,8 +1205,8 @@ function ReportsTab({ centerId = '', centerName = 'All Centers' }) {
           <SumRow label="Total Equity" value={totalEquity} color="#7c3aed" bold bg="#f5f3ff" />
           <tr><td colSpan={3} className="h-1 bg-slate-200" /></tr>
           <SumRow label="Total Liabilities + Equity" value={totalLiab + totalEquity}
-            color={Math.abs(totalAssets - (totalLiab + totalEquity)) < 1 ? '#15803d' : '#dc2626'}
-            bold bg={Math.abs(totalAssets - (totalLiab + totalEquity)) < 1 ? '#dcfce7' : '#fee2e2'} />
+            color={Math.abs(totalAssets - (totalLiab + totalEquity)) < 0.01 ? '#15803d' : '#dc2626'}
+            bold bg={Math.abs(totalAssets - (totalLiab + totalEquity)) < 0.01 ? '#dcfce7' : '#fee2e2'} />
         </tbody>
       </table>
     );
@@ -1260,8 +1260,8 @@ function ReportsTab({ centerId = '', centerName = 'All Centers' }) {
             <td colSpan={4} className="py-3 pl-4 text-xs text-slate-500 uppercase">Totals</td>
             <td className="py-3 text-right font-mono text-sm text-blue-700">{fmt(totalDr)}</td>
             <td className="py-3 text-right font-mono text-sm text-emerald-700">{fmt(totalCr)}</td>
-            <td className="py-3 pr-4 text-right font-mono text-sm" style={{ color: Math.abs(totalDr - totalCr) < 1 ? '#15803d' : '#dc2626' }}>
-              {Math.abs(totalDr - totalCr) < 1 ? '✓ Balanced' : `Diff: ${fmt(Math.abs(totalDr - totalCr))}`}
+            <td className="py-3 pr-4 text-right font-mono text-sm" style={{ color: Math.abs(totalDr - totalCr) < 0.01 ? '#15803d' : '#dc2626' }}>
+              {Math.abs(totalDr - totalCr) < 0.01 ? '✓ Balanced' : `Diff: ${fmt(Math.abs(totalDr - totalCr))}`}
             </td>
           </tr>
         </tfoot>
@@ -1449,7 +1449,7 @@ function ReportsTab({ centerId = '', centerName = 'All Centers' }) {
         });
         startY = doc.lastAutoTable.finalY + 6;
       }
-      const bsBalanced = Math.abs(totalAssets - (totalLiab + totalEquity)) < 1;
+      const bsBalanced = Math.abs(totalAssets - (totalLiab + totalEquity)) < 0.01;
       autoTable(doc, {
         ...baseOpts(P_W, P_A),
         startY,
@@ -1465,7 +1465,7 @@ function ReportsTab({ centerId = '', centerName = 'All Centers' }) {
       const TB_A = ['left', 'left', 'left', 'right', 'right', 'right', 'right'];
       const totalDr  = data.rows.reduce((s, r) => s + parseFloat(r.period_debit  || 0), 0);
       const totalCr  = data.rows.reduce((s, r) => s + parseFloat(r.period_credit || 0), 0);
-      const tbBalanced = Math.abs(totalDr - totalCr) < 1;
+      const tbBalanced = Math.abs(totalDr - totalCr) < 0.01;
       autoTable(doc, {
         ...baseOpts(TB_W, TB_A),
         startY,
@@ -1997,7 +1997,7 @@ function BalanceSheetTab({ centerId = '', centerName = 'All Centers' }) {
     );
   };
 
-  const balanced = Math.abs(assets - (liabilities + equity)) < 1;
+  const balanced = Math.abs(assets - (liabilities + equity)) < 0.01;
 
   return (
     <div className="space-y-4">

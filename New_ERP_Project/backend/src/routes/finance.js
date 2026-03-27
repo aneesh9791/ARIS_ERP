@@ -388,7 +388,7 @@ router.post('/journals/:id/post', authorizePermission('COA_WRITE', 'JE_APPROVE')
       await client.query(
         `UPDATE chart_of_accounts SET
            current_balance = current_balance +
-             CASE WHEN normal_balance = 'DEBIT' THEN $1 - $2
+             CASE WHEN normal_balance = 'debit' THEN $1 - $2
                   ELSE $2 - $1 END,
            updated_at = NOW()
          WHERE id=$3`,
@@ -448,7 +448,7 @@ router.post('/journals/:id/reverse', authorizePermission('COA_WRITE', 'JE_APPROV
       await client.query(
         `UPDATE chart_of_accounts SET
            current_balance = current_balance +
-             CASE WHEN normal_balance = 'DEBIT' THEN $1 - $2
+             CASE WHEN normal_balance = 'debit' THEN $1 - $2
                   ELSE $2 - $1 END,
            updated_at = NOW()
          WHERE id=$3`,
@@ -602,7 +602,7 @@ router.get('/reports/balance-sheet', async (req, res) => {
       id: null, account_code: '3300', account_name: 'Current Year Profit / (Loss)',
       account_category: 'EQUITY', account_level: 2, parent_account_id: null,
       normal_balance: 'credit', opening_balance: '0',
-      total_debit: '0', total_credit: '0', balance: netPL.toFixed(2),
+      total_debit: 0, total_credit: 0, balance: netPL,
       _synthetic: true,
     };
     // Replace any existing 3300 row (which would be 0 since it has no direct JEs)
