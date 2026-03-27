@@ -25,6 +25,7 @@ router.post('/login', rateLimiter(20, 15 * 60 * 1000), [
 
   try {
     const ipAddress = req.ip || req.connection.remoteAddress || '127.0.0.1';
+    console.log('[LOGIN DEBUG] email:', req.body.email, '| pw_len:', req.body.password?.length, '| ip:', ipAddress);
     const result = await login(req.body.email, req.body.password, ipAddress);
 
     if (!result.success) {
