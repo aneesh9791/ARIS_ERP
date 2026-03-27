@@ -42,13 +42,15 @@ class ChartOfAccounts {
       }
 
       const balanceSelect = include_balances ? `
-        coa.current_balance,
-        CASE 
-          WHEN coa.normal_balance = 'DEBIT' THEN coa.current_balance
+        COALESCE(SUM(jel.debit_amount), 0) - COALESCE(SUM(jel.credit_amount), 0) as current_balance,
+        CASE
+          WHEN COALESCE(SUM(jel.debit_amount), 0) - COALESCE(SUM(jel.credit_amount), 0) > 0
+          THEN COALESCE(SUM(jel.debit_amount), 0) - COALESCE(SUM(jel.credit_amount), 0)
           ELSE 0
         END as debit_balance,
-        CASE 
-          WHEN coa.normal_balance = 'CREDIT' THEN coa.current_balance
+        CASE
+          WHEN COALESCE(SUM(jel.credit_amount), 0) - COALESCE(SUM(jel.debit_amount), 0) > 0
+          THEN COALESCE(SUM(jel.credit_amount), 0) - COALESCE(SUM(jel.debit_amount), 0)
           ELSE 0
         END as credit_balance,
         COUNT(jel.id) as transaction_count,
