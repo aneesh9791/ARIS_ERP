@@ -157,70 +157,52 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
 
   try {
     const {
-      date,                    // YYYY-MM-DD  (default: today)
-      status,                  // exam_workflow_status override (default: EXAM_SCHEDULED)
-      accession,               // exact accession lookup
-      days_ahead = 0,          // fetch N future days (0 = today only)
-      include_completed = 'false', // also return EXAM_COMPLETED studies
+      date,                        // YYYY-MM-DD  (default: today)
+      accession,                   // exact accession lookup
+      days_ahead = 0,              // fetch N future days (0 = today only)
+      include_completed = 'false', // also include EXAM_COMPLETED bills
     } = req.query;
 
     const params = [centerId];
-    const conds  = ['s.center_id = $1', 's.active = true'];
+    const conds  = ['pb.center_id = $1', 'pb.active = true', "bi.item_type = 'STUDY'"];
     let   i      = 2;
 
     // ── Date / accession filter ───────────────────────────────────────────
     if (accession) {
-      conds.push(`s.accession_number = $${i++}`);
+      conds.push(`pb.accession_number = $${i++}`);
       params.push(accession);
     } else {
       const fromDate = date || new Date().toLocaleDateString('en-CA');
-      conds.push(`s.appointment_date >= $${i++}`);
+      conds.push(`pb.bill_date >= $${i++}`);
       params.push(fromDate);
       const toDate = new Date(fromDate);
       toDate.setDate(toDate.getDate() + parseInt(days_ahead));
-      conds.push(`s.appointment_date <= $${i++}`);
+      conds.push(`pb.bill_date <= $${i++}`);
       params.push(toDate.toLocaleDateString('en-CA'));
     }
 
-    // ── Status filter — prefer exam_workflow_status, fall back to legacy status column ─
-    // exam_workflow_status values: EXAM_SCHEDULED | EXAM_COMPLETED | REPORT_COMPLETED
-    // Default: show EXAM_SCHEDULED (ready for modality). Pass include_completed=true to
-    // also include EXAM_COMPLETED (done on scanner, waiting for report).
-    if (status) {
-      // Explicit override — direct match on exam_workflow_status
-      conds.push(`s.exam_workflow_status = $${i++}`);
-      params.push(status.toUpperCase());
-    } else if (include_completed === 'true') {
-      conds.push(`(s.exam_workflow_status IN ('EXAM_SCHEDULED','EXAM_COMPLETED')
-                   OR (s.exam_workflow_status IS NULL AND LOWER(s.status) IN ('scheduled','in_progress')))`);
-    } else {
-      conds.push(`(s.exam_workflow_status = 'EXAM_SCHEDULED'
-                   OR (s.exam_workflow_status IS NULL AND LOWER(s.status) = 'scheduled'))`);
+    // ── Status filter — based on payment_status ───────────────────────────
+    // Default: show PAID + PENDING (ready to scan or about to pay)
+    // include_completed=true: also show COMPLETED exam_workflow_status
+    if (include_completed !== 'true') {
+      conds.push(`(pb.exam_workflow_status IS NULL OR pb.exam_workflow_status NOT IN ('EXAM_COMPLETED','REPORT_COMPLETED'))`);
     }
-
-    // No modality filter — the local DICOM app receives ALL modalities for the center
-    // and generates a separate MWL entry per modality from the returned data.
 
     const { rows } = await pool.query(`
       SELECT
-        s.id                                        AS study_id,
-        s.accession_number,
-        s.study_instance_uid,
-        s.study_code,
-        s.requested_procedure,
-        s.actual_procedure,
-        s.scanner_type,
-        s.status,
-        s.exam_workflow_status,
-        s.payment_status,
-        s.appointment_date,
-        s.appointment_time,
-        s.contrast_used,
-        s.emergency_study,
-        s.payment_type,
-        s.notes,
+        pb.id                                       AS study_id,
+        pb.accession_number,
+        pb.bill_date,
+        pb.payment_status,
+        pb.exam_workflow_status,
+        pb.notes,
 
-        -- Patient demographics (including PID — internal patient identifier)
+        -- Bill item (one STUDY item per bill)
+        bi.study_code,
+        bi.study_name,
+        bi.modality,
+
+        -- Patient demographics
         p.id                                        AS patient_id,
         p.pid                                       AS patient_pid,
         p.name                                      AS patient_name,
@@ -233,18 +215,14 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
         p.state                                     AS patient_state,
         p.blood_group                               AS patient_blood_group,
 
-        -- Study definition (canonical catalog — migration 042)
-        -- Falls back to study_master billing row if definition not found
-        COALESCE(sd.study_name, sm.study_name)      AS study_name,
-        COALESCE(sd.modality,   sm.modality)        AS modality,
-        COALESCE(sd.study_type, sm.study_type)      AS study_type,
-        COALESCE(sd.description,sm.description)     AS study_description,
+        -- Study definition extras
+        sd.description                              AS study_description,
+        sd.study_type,
         sm.cpt_code,
         sm.billing_code,
 
-        -- Referring physician — prefer study-level code; fall back to patient registration
-        COALESCE(s.referring_physician_code, p.referring_physician_code)
-                                                    AS resolved_physician_code,
+        -- Referring physician
+        p.referring_physician_code                  AS resolved_physician_code,
         rpm.physician_name                          AS referring_physician_name,
         rpm.specialty                               AS referring_physician_specialty,
 
@@ -252,25 +230,26 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
         c.name                                      AS center_name,
         c.ae_title                                  AS station_ae_title,
         c.address                                   AS center_address,
-        c.city                                      AS center_city
+        c.city                                      AS center_city,
 
-      FROM studies s
-      JOIN patients              p   ON p.id   = s.patient_id
-      JOIN centers               c   ON c.id   = s.center_id
-      -- study_definitions is the canonical catalog (migration 042)
-      LEFT JOIN study_definitions    sd  ON sd.study_code = s.study_code
-      -- study_master holds center pricing and cpt_code / billing_code
-      LEFT JOIN study_master         sm  ON sm.study_code = s.study_code
-      -- referring physician: COALESCE(study-level, patient-level)
+        -- Scheduled time from created_at
+        pb.created_at                               AS scheduled_at
+
+      FROM patient_bills pb
+      JOIN bill_items               bi  ON bi.bill_id    = pb.id
+      JOIN patients                 p   ON p.id          = pb.patient_id
+      JOIN centers                  c   ON c.id          = pb.center_id
+      LEFT JOIN study_definitions   sd  ON sd.study_code = bi.study_code
+      LEFT JOIN study_master        sm  ON sm.study_code = bi.study_code
       LEFT JOIN referring_physician_master rpm
-                ON rpm.physician_code = COALESCE(s.referring_physician_code, p.referring_physician_code)
+                ON rpm.physician_code = p.referring_physician_code
       WHERE ${conds.join(' AND ')}
-      ORDER BY s.appointment_date ASC, s.appointment_time ASC
+      ORDER BY pb.bill_date ASC, pb.created_at ASC
     `, params);
 
     // ── Transform to DICOM MWL format ────────────────────────────────────
     const worklist = rows.map(r => {
-      // DICOM Patient Name: LAST^FIRST^MIDDLE (best-effort from single name field)
+      // DICOM Patient Name: LAST^FIRST^ (best-effort from single name field)
       const nameParts = (r.patient_name || '').trim().split(/\s+/);
       const lastName  = nameParts.pop() || '';
       const firstName = nameParts.join(' ');
@@ -283,71 +262,68 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
         ? new Date(r.patient_dob).toISOString().slice(0, 10).replace(/-/g, '')
         : '';
 
-      // DICOM DateTime: YYYYMMDDHHmm00
-      const apptDate = (r.appointment_date || '').toString().slice(0, 10).replace(/-/g, '');
-      const apptTime = (r.appointment_time || '0000').replace(':', '').padEnd(4, '0');
-      const scheduledDT = `${apptDate}${apptTime}00`;
+      // Scheduled date from bill_date; time from created_at
+      const billDate    = (r.bill_date || '').toString().slice(0, 10).replace(/-/g, '');
+      const scheduledAt = r.scheduled_at ? new Date(r.scheduled_at) : new Date();
+      const schedTime   = scheduledAt.toTimeString().slice(0, 5).replace(':', '').padEnd(4, '0');
+      const scheduledDT = `${billDate}${schedTime}00`;
 
-      // Referring physician DICOM name (LAST^FIRST format, strip Dr. prefix)
-      const refPhysRaw = r.referring_physician_name || '';
+      // Referring physician DICOM name (LAST^FIRST, strip Dr. prefix)
+      const refPhysRaw   = r.referring_physician_name || '';
       const refPhysDicom = refPhysRaw
         ? refPhysRaw.replace(/^(dr\.?\s*)/i, '').trim().toUpperCase().replace(/\s+/, '^')
         : '';
 
-      // AE title: token's center ae_title, then DB ae_title, then empty string
       const stationAeTitle = ae_title || r.station_ae_title || '';
+      const accessionNum   = r.accession_number || null;
 
-      // Accession number — may be null if billing has not been completed yet
-      // The local app should handle null gracefully and retry after billing
-      const accessionNum = r.accession_number || null;
-
-      // Study Instance UID — generate a placeholder if missing (shouldn't happen after billing)
-      const studyUID = r.study_instance_uid || `2.25.${r.study_id.replace(/\D/g, '')}`;
+      // Study Instance UID — derive from bill id (stable, reproducible)
+      const studyUID = `2.25.${BigInt('0x' + r.study_id.replace(/-/g, '')).toString()}`;
 
       return {
         // ── DICOM identifiers ─────────────────────────────────────────────
         accession_number:       accessionNum,
         study_instance_uid:     studyUID,
-        has_accession:          !!accessionNum,   // explicit flag for local app logic
+        has_accession:          !!accessionNum,
 
         // ── Patient identifiers ───────────────────────────────────────────
-        patient_id:             r.patient_id,     // internal UUID
-        patient_pid:            r.patient_pid,    // AR00000001 — ARIS PID (use as DICOM PatientID)
+        patient_id:             r.patient_id,
+        patient_pid:            r.patient_pid,
 
         // ── Patient demographics (DICOM-ready) ────────────────────────────
-        patient_name_dicom:     dicomName,        // LAST^FIRST^ format
+        patient_name_dicom:     dicomName,
         patient_name:           r.patient_name,
-        patient_dob:            dobDicom,         // YYYYMMDD
+        patient_dob:            dobDicom,
         patient_dob_iso:        r.patient_dob,
         patient_sex:            r.patient_sex ? r.patient_sex[0].toUpperCase() : 'O',
-        patient_phone:          r.patient_phone  || '',
-        patient_email:          r.patient_email  || '',
+        patient_phone:          r.patient_phone   || '',
+        patient_email:          r.patient_email   || '',
         patient_address:        r.patient_address || '',
-        patient_city:           r.patient_city   || '',
-        patient_state:          r.patient_state  || '',
+        patient_city:           r.patient_city    || '',
+        patient_state:          r.patient_state   || '',
         patient_blood_group:    r.patient_blood_group || '',
 
         // ── Scheduled procedure step ──────────────────────────────────────
         scheduled_procedure: {
           step_id:               accessionNum || r.study_id,
-          modality:              r.modality || r.scanner_type || 'OT',
+          modality:              r.modality   || 'OT',
           study_type:            r.study_type || '',
           procedure_code:        r.study_code || '',
-          procedure_description: r.study_name || r.requested_procedure || '',
+          procedure_description: r.study_name || '',
           billing_code:          r.billing_code || '',
-          cpt_code:              r.cpt_code || '',
-          scheduled_datetime:    scheduledDT,  // YYYYMMDDHHmmSS
-          scheduled_date:        r.appointment_date,
-          scheduled_time:        r.appointment_time,
+          cpt_code:              r.cpt_code    || '',
+          scheduled_datetime:    scheduledDT,
+          scheduled_date:        r.bill_date,
+          scheduled_time:        schedTime,
           station_ae_title:      stationAeTitle,
-          contrast_used:         r.contrast_used  || false,
-          emergency:             r.emergency_study || false,
+          contrast_used:         false,
+          emergency:             false,
         },
 
         // ── Referring physician ───────────────────────────────────────────
-        referring_physician_dicom:    refPhysDicom,
-        referring_physician_name:     r.referring_physician_name || '',
-        referring_physician_code:     r.resolved_physician_code  || '',
+        referring_physician_dicom:     refPhysDicom,
+        referring_physician_name:      r.referring_physician_name || '',
+        referring_physician_code:      r.resolved_physician_code  || '',
         referring_physician_specialty: r.referring_physician_specialty || '',
 
         // ── Performing center ─────────────────────────────────────────────
@@ -359,10 +335,9 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
         },
 
         // ── Workflow status ───────────────────────────────────────────────
-        workflow_status:  r.exam_workflow_status || r.status || 'scheduled',
-        payment_status:   r.payment_status  || '',
-        payment_type:     r.payment_type    || '',
-        notes:            r.notes           || '',
+        workflow_status:  r.exam_workflow_status || 'EXAM_SCHEDULED',
+        payment_status:   r.payment_status || '',
+        notes:            r.notes         || '',
       };
     });
 
