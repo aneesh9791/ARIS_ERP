@@ -44,7 +44,11 @@ router.get('/accounts', async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT a.*, p.account_name as parent_name,
+      `SELECT a.*,
+          p.account_name as parent_name,
+          COALESCE(SUM(jel.debit_amount),0) - COALESCE(SUM(jel.credit_amount),0) AS current_balance,
+          COALESCE(SUM(jel.debit_amount),0) AS total_debits,
+          COALESCE(SUM(jel.credit_amount),0) AS total_credits,
           -- journal_only: account is linked to at least one non-item-master category
           --               AND linked to NO item-master categories
           CASE
@@ -61,7 +65,10 @@ router.get('/accounts', async (req, res) => {
           END AS journal_only
          FROM chart_of_accounts a
          LEFT JOIN chart_of_accounts p ON p.id = a.parent_account_id
+         LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
+         LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id AND je.status = 'POSTED'
         WHERE ${conds.join(' AND ')}
+        GROUP BY a.id, p.account_name
         ORDER BY a.account_code`,
       params
     );
