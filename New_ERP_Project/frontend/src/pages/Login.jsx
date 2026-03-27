@@ -239,15 +239,10 @@ export default function Login() {
         }}>
           <div className="fadeUp" style={{ width:'100%', maxWidth:'420px' }}>
 
-            {/* Mobile wordmark */}
+            {/* Mobile wordmark — text only, no logo (logo shown inside card) */}
             <div style={{ textAlign:'center', marginBottom:'2rem' }} className="flex flex-col items-center lg:hidden">
-              {logoConfig.customLogo
-                ? <img src={logoConfig.customLogo} alt="Logo" style={{ height:52, maxWidth:180, objectFit:'contain' }} />
-                : <>
-                    <div style={{ fontSize:'1.15rem', fontWeight:900, letterSpacing:'0.22em', color:'#134e4a' }}>ARIS</div>
-                    <div style={{ fontSize:'0.58rem', color:'#0d9488', letterSpacing:'0.18em', textTransform:'uppercase', marginTop:2 }}>Diagnostic Centre</div>
-                  </>
-              }
+              <div style={{ fontSize:'1.15rem', fontWeight:900, letterSpacing:'0.22em', color:'#134e4a' }}>ARIS</div>
+              <div style={{ fontSize:'0.58rem', color:'#0d9488', letterSpacing:'0.18em', textTransform:'uppercase', marginTop:2 }}>Diagnostic Centre</div>
             </div>
 
             {/* Card */}
