@@ -59,71 +59,88 @@ router.get('/directors', async (_req, res) => {
 
 // ════════════════════════════════════════════════════════════════════════════
 // GET /api/equity/summary  —  per-director totals + overall equity position
+// Reads live GL balances from journal_entry_lines (posted JEs only)
+// so it shows all capital even when entered via direct JEs (not equity module)
 // ════════════════════════════════════════════════════════════════════════════
 router.get('/summary', async (_req, res) => {
   try {
-    // Per-director breakdown
-    const { rows: partners } = await pool.query(`
+    // Helper: compute live GL balance for a set of account codes
+    // normal_balance='credit' → balance = credits − debits
+    const { rows: glRows } = await pool.query(`
       SELECT
-        cd.id                                                   AS director_id,
-        cd.director_name,
-        cd.designation,
-        COALESCE(SUM(CASE WHEN et.transaction_type IN ('CAPITAL_CONTRIBUTION','CAPITAL_RESERVE')
-                         THEN et.amount ELSE 0 END), 0)        AS total_capital,
-        COALESCE(SUM(CASE WHEN et.transaction_type = 'DRAWING'
-                         THEN et.amount ELSE 0 END), 0)        AS total_drawings,
-        COALESCE(SUM(CASE WHEN et.transaction_type = 'DIRECTOR_LOAN_IN'
-                         THEN et.amount ELSE 0 END), 0)        AS director_loan_in,
-        COALESCE(SUM(CASE WHEN et.transaction_type = 'DIRECTOR_LOAN_REPAYMENT'
-                         THEN et.amount ELSE 0 END), 0)        AS director_loan_repaid,
-        COUNT(et.id)                                            AS txn_count,
-        MAX(et.transaction_date)                                AS last_txn_date
-      FROM company_directors cd
-      LEFT JOIN equity_transactions et ON et.director_id = cd.id
-      WHERE cd.active = true
-      GROUP BY cd.id, cd.director_name, cd.designation
-      ORDER BY total_capital DESC
+        a.account_code,
+        a.account_name,
+        a.normal_balance,
+        a.opening_balance,
+        COALESCE(SUM(jel.debit_amount),  0) AS total_debit,
+        COALESCE(SUM(jel.credit_amount), 0) AS total_credit,
+        CASE WHEN a.normal_balance = 'debit'
+             THEN a.opening_balance + COALESCE(SUM(jel.debit_amount),0) - COALESCE(SUM(jel.credit_amount),0)
+             ELSE a.opening_balance + COALESCE(SUM(jel.credit_amount),0) - COALESCE(SUM(jel.debit_amount),0)
+        END AS balance
+      FROM chart_of_accounts a
+      LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
+      LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
+        AND je.status = 'POSTED'
+      WHERE a.is_active = true
+        AND a.account_code IN ('3101','3102','3103','3111','3112','3113',
+                               '3100','3200','3300','3400','3500','2230')
+      GROUP BY a.id, a.account_code, a.account_name, a.normal_balance, a.opening_balance
     `);
 
-    // Overall totals
-    const { rows: totals } = await pool.query(`
-      SELECT
-        COALESCE(SUM(CASE WHEN transaction_type IN ('CAPITAL_CONTRIBUTION','CAPITAL_RESERVE')
-                         THEN amount ELSE 0 END), 0) AS total_capital,
-        COALESCE(SUM(CASE WHEN transaction_type = 'DRAWING'
-                         THEN amount ELSE 0 END), 0) AS total_drawings,
-        COALESCE(SUM(CASE WHEN transaction_type = 'DIRECTOR_LOAN_IN'
-                         THEN amount ELSE 0 END), 0) AS total_loan_in,
-        COALESCE(SUM(CASE WHEN transaction_type = 'DIRECTOR_LOAN_REPAYMENT'
-                         THEN amount ELSE 0 END), 0) AS total_loan_repaid
-      FROM equity_transactions
+    const glByCode = Object.fromEntries(glRows.map(r => [r.account_code, parseFloat(r.balance || 0)]));
+
+    // Overall totals from GL
+    const totalCapital  = (glByCode['3101'] || 0) + (glByCode['3102'] || 0) + (glByCode['3103'] || 0)
+                        + (glByCode['3111'] || 0) + (glByCode['3112'] || 0) + (glByCode['3113'] || 0)
+                        + (glByCode['3400'] || 0);
+    const totalDrawings = glByCode['3500'] || 0;   // drawings is debit-normal so positive = amount drawn
+    const netEquity     = totalCapital - totalDrawings;
+    const loanBalance   = glByCode['2230'] || 0;
+
+    // Per-director: match COA accounts by director first name in account_name
+    const { rows: directors } = await pool.query(`
+      SELECT id, director_name, designation FROM company_directors WHERE active = true ORDER BY sort_order
     `);
 
-    const t = totals[0];
-    const netEquity    = parseFloat(t.total_capital)  - parseFloat(t.total_drawings);
-    const netLoanOwed  = parseFloat(t.total_loan_in)  - parseFloat(t.total_loan_repaid);
+    const partnersWithStake = directors.map(cd => {
+      const firstName = cd.director_name.split(' ')[0].toLowerCase();
+      // Find this director's equity accounts (Capital + Current)
+      const dirAccounts = glRows.filter(r =>
+        r.account_name.toLowerCase().includes(firstName) &&
+        ['3101','3102','3103','3111','3112','3113'].includes(r.account_code)
+      );
+      const partnerCapital = dirAccounts.reduce((s, r) => s + parseFloat(r.balance || 0), 0);
+      return {
+        director_id:   cd.id,
+        director_name: cd.director_name,
+        designation:   cd.designation,
+        total_capital: partnerCapital,
+        total_drawings: 0,
+        net_equity:    partnerCapital,
+        net_loan_owed: 0,
+        last_txn_date: null,
+      };
+    }).sort((a, b) => b.total_capital - a.total_capital);
 
-    // Compute % stake per partner
-    const grandCapital = parseFloat(t.total_capital) || 1;
-    const partnersWithStake = partners.map(p => ({
+    const grandCapital = totalCapital || 1;
+    const partnersOut = partnersWithStake.map(p => ({
       ...p,
-      net_equity:   parseFloat(p.total_capital) - parseFloat(p.total_drawings),
-      net_loan_owed: parseFloat(p.director_loan_in) - parseFloat(p.director_loan_repaid),
-      stake_pct:    grandCapital > 0
-        ? ((parseFloat(p.total_capital) / grandCapital) * 100).toFixed(2)
+      stake_pct: grandCapital > 0
+        ? ((p.total_capital / grandCapital) * 100).toFixed(2)
         : '0.00',
     }));
 
     ok(res, {
       summary: {
-        total_capital:    parseFloat(t.total_capital),
-        total_drawings:   parseFloat(t.total_drawings),
-        net_equity:       netEquity,
-        total_loan_in:    parseFloat(t.total_loan_in),
-        total_loan_repaid:parseFloat(t.total_loan_repaid),
-        net_loan_owed:    netLoanOwed,
+        total_capital:     totalCapital,
+        total_drawings:    totalDrawings,
+        net_equity:        netEquity,
+        total_loan_in:     loanBalance,
+        total_loan_repaid: 0,
+        net_loan_owed:     loanBalance,
       },
-      partners: partnersWithStake,
+      partners: partnersOut,
     });
   } catch (e) {
     logger.error('equity summary error', e);
