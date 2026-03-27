@@ -584,7 +584,7 @@ const PettyCash = () => {
           </div>
         </td>
       )}
-      {!showActions && v.status === 'SUBMITTED' && has('PETTY_CASH_CREATE') && (
+      {!showActions && v.status === 'SUBMITTED' && has('PETTY_CASH_WRITE') && (
         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
           <button onClick={() => deleteVoucher(v)}
             className="text-slate-400 hover:text-red-500 transition-colors">
@@ -606,7 +606,7 @@ const PettyCash = () => {
           <h1 className="text-lg font-bold text-slate-800">Petty Cash Vouchers</h1>
           <p className="text-xs text-slate-500 mt-0.5">Submit daily cash expenses for Finance approval</p>
         </div>
-        {has('PETTY_CASH_CREATE') && (
+        {has('PETTY_CASH_WRITE') && (
           <button onClick={() => setShowForm(true)} disabled={loading}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

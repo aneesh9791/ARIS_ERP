@@ -445,7 +445,7 @@ const voucherValidators = [
   body('description').trim().isLength({ min: 3 }),
 ];
 
-router.post('/', authorizePermission('PETTY_CASH_CREATE'), voucherValidators, async (req, res) => {
+router.post('/', authorizePermission('PETTY_CASH_WRITE'), voucherValidators, async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
 
@@ -700,7 +700,7 @@ router.put('/:id/reject', authorizePermission('PETTY_CASH_APPROVE'), async (req,
 // ═══════════════════════════════════════════════════════════════
 // DELETE /api/petty-cash/:id  — creator deletes own SUBMITTED voucher
 // ═══════════════════════════════════════════════════════════════
-router.delete('/:id', authorizePermission('PETTY_CASH_CREATE'), async (req, res) => {
+router.delete('/:id', authorizePermission('PETTY_CASH_WRITE'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `DELETE FROM expense_records WHERE id=$1 AND status='SUBMITTED' AND created_by=$2 RETURNING id`,

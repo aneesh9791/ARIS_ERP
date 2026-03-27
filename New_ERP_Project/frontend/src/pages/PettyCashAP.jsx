@@ -264,7 +264,7 @@ const PettyCashAP = () => {
         api(`/api/petty-cash?${vParams}`).then(r => r.json()),
         api('/api/petty-cash/advances').then(r => r.json()),
         api('/api/centers').then(r => r.json()),
-        api('/api/employees').then(r => r.json()),
+        api('/api/payroll/employees?active_only=true&limit=200').then(r => r.json()),
         api('/api/petty-cash/pending-count').then(r => r.json()),
       ]);
       setCustodians(cRes.custodians || []);
