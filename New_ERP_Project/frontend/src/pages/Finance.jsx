@@ -342,6 +342,13 @@ function AccountsTab() {
 
   const hasChildren = acc => flat.some(a => a.parent_account_id === acc.id);
 
+  // Recursively sum current_balance of all descendants (for collapsed group headers)
+  const getSubtotal = acc => {
+    const children = flat.filter(a => a.parent_account_id === acc.id);
+    if (!children.length) return parseFloat(acc.current_balance || 0);
+    return children.reduce((sum, child) => sum + getSubtotal(child), 0);
+  };
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
@@ -405,7 +412,7 @@ function AccountsTab() {
                     <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
                       <span className="px-2 py-0.5 rounded-full font-bold" style={{ background: catCfg.bg, color: catCfg.color }}>{catCfg.label || acc.account_category}</span>
                       <span className={`px-2 py-0.5 rounded-full font-semibold ${acc.normal_balance === 'debit' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>{acc.normal_balance === 'debit' ? 'Dr' : 'Cr'}</span>
-                      {acc.current_balance != 0 && <span className="font-mono font-semibold text-slate-700">{fmt(acc.current_balance)}</span>}
+                      {(() => { const v = hasChildren(acc) ? getSubtotal(acc) : parseFloat(acc.current_balance || 0); return v !== 0 ? <span className="font-mono font-semibold text-slate-700">{fmt(v)}</span> : null; })()}
                       {!acc.is_active && <span className="bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Inactive</span>}
                     </div>
                   </div>
@@ -468,7 +475,7 @@ function AccountsTab() {
                           <span className={`text-xs font-semibold ${acc.normal_balance === 'debit' ? 'text-blue-600' : 'text-emerald-600'}`}>{acc.normal_balance === 'debit' ? 'Dr' : 'Cr'}</span>
                         </td>
                         <td className="px-4 py-2.5 text-right text-sm font-mono text-slate-600">{acc.opening_balance != 0 ? fmt(acc.opening_balance) : '—'}</td>
-                        <td className="px-4 py-2.5 text-right text-sm font-mono font-semibold text-slate-800">{acc.current_balance != 0 ? fmt(acc.current_balance) : '—'}</td>
+                        <td className="px-4 py-2.5 text-right text-sm font-mono font-semibold text-slate-800">{(() => { const v = hasKids ? getSubtotal(acc) : parseFloat(acc.current_balance || 0); return v !== 0 ? fmt(v) : '—'; })()}</td>
                         <td className="px-4 py-2.5 text-center">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${acc.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>{acc.is_active ? 'Active' : 'Inactive'}</span>
                         </td>
