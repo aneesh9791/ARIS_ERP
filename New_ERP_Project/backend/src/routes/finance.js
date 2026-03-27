@@ -46,7 +46,10 @@ router.get('/accounts', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT a.*,
           p.account_name as parent_name,
-          COALESCE(SUM(jel.debit_amount),0) - COALESCE(SUM(jel.credit_amount),0) AS current_balance,
+          CASE WHEN a.normal_balance = 'debit'
+               THEN a.opening_balance + COALESCE(SUM(jel.debit_amount),0) - COALESCE(SUM(jel.credit_amount),0)
+               ELSE a.opening_balance + COALESCE(SUM(jel.credit_amount),0) - COALESCE(SUM(jel.debit_amount),0)
+          END AS current_balance,
           COALESCE(SUM(jel.debit_amount),0) AS total_debits,
           COALESCE(SUM(jel.credit_amount),0) AS total_credits,
           -- journal_only: account is linked to at least one non-item-master category
@@ -641,10 +644,24 @@ router.get('/summary', async (req, res) => {
       [from, to, centerId]
     );
 
-    // Cash balance is entity-wide (chart_of_accounts has no center dimension)
+    // Cash balance — live GL computation from posted JEs
     const { rows: cash } = await pool.query(
-      `SELECT COALESCE(SUM(current_balance),0) AS cash_balance
-         FROM chart_of_accounts WHERE account_code LIKE '111%' AND is_active=true`
+      `SELECT COALESCE(SUM(
+           CASE WHEN a.normal_balance = 'debit'
+                THEN a.opening_balance + COALESCE(jel_sum.debit,0) - COALESCE(jel_sum.credit,0)
+                ELSE a.opening_balance + COALESCE(jel_sum.credit,0) - COALESCE(jel_sum.debit,0)
+           END
+         ),0) AS cash_balance
+         FROM chart_of_accounts a
+         LEFT JOIN (
+           SELECT jel.account_id,
+                  SUM(jel.debit_amount) AS debit,
+                  SUM(jel.credit_amount) AS credit
+             FROM journal_entry_lines jel
+             JOIN journal_entries je ON je.id = jel.journal_entry_id AND je.status = 'POSTED'
+            GROUP BY jel.account_id
+         ) jel_sum ON jel_sum.account_id = a.id
+         WHERE a.account_code LIKE '111%' AND a.is_active = true`
     );
 
     const { rows: jeCounts } = await pool.query(

@@ -1855,16 +1855,36 @@ function ProfitLossTab({ centerId = '', centerName = 'All Centers' }) {
   const netProfit = revenue - cogs - expenses;
 
   const Section = ({ title, cat, color }) => {
-    const items = rows.filter(r => r.account_category === cat && parseFloat(r.net_amount || 0) !== 0);
+    const allCat = rows.filter(r => r.account_category === cat);
+    const items  = allCat.filter(r => parseFloat(r.net_amount || 0) !== 0);
     if (!items.length) return null;
     const total = items.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
+    // Inject L2 parent headers before their first child (same pattern as Balance Sheet)
+    const allById = Object.fromEntries(allCat.filter(r => r.id).map(r => [r.id, r]));
+    const display = [];
+    const shown = new Set();
+    for (const r of items) {
+      if (r.account_level > 2 && r.parent_account_id) {
+        const parent = allById[r.parent_account_id];
+        if (parent && !shown.has(parent.account_code)) {
+          display.push({ ...parent, _isHeader: true });
+          shown.add(parent.account_code);
+        }
+      }
+      display.push(r);
+    }
     return (
       <div className="mb-4">
         <div className="px-5 py-2 rounded-xl mb-1 flex justify-between" style={{ background: color + '18' }}>
           <span className="font-bold text-sm" style={{ color }}>{title}</span>
           <span className="font-bold text-sm" style={{ color }}>{fmt(total)}</span>
         </div>
-        {items.map((r, i) => (
+        {display.map((r, i) => r._isHeader ? (
+          <div key={'h-' + i} className="flex justify-between px-5 py-1 text-xs font-semibold text-slate-500 uppercase tracking-wide mt-2"
+            style={{ paddingLeft: `${(r.account_level - 1) * 16 + 20}px` }}>
+            <span>{r.account_name}</span>
+          </div>
+        ) : (
           <div key={i} className="flex justify-between px-5 py-1.5 hover:bg-slate-50 text-sm"
             style={{ paddingLeft: `${(r.account_level - 1) * 16 + 20}px` }}>
             <span className="text-slate-600">{r.account_name}</span>
