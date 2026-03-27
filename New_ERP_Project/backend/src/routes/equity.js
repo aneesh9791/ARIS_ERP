@@ -83,15 +83,18 @@ router.get('/summary', async (_req, res) => {
       LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
         AND je.status = 'POSTED'
       WHERE a.is_active = true
-        AND a.account_code IN ('3101','3102','3103','3111','3112','3113',
-                               '3100','3200','3300','3400','3500','2230')
+        AND a.account_code IN ('3100','3101','3102','3103','3111','3112','3113',
+                               '3200','3300','3400','3500','2230')
       GROUP BY a.id, a.account_code, a.account_name, a.normal_balance, a.opening_balance
     `);
 
     const glByCode = Object.fromEntries(glRows.map(r => [r.account_code, parseFloat(r.balance || 0)]));
 
     // Overall totals from GL
-    const totalCapital  = (glByCode['3101'] || 0) + (glByCode['3102'] || 0) + (glByCode['3103'] || 0)
+    // 3100 direct balance catches any entries posted to the parent account (e.g., before director-specific
+    // accounts existed). Individual sub-accounts (3101-3113) are the preferred target for new entries.
+    const totalCapital  = (glByCode['3100'] || 0)
+                        + (glByCode['3101'] || 0) + (glByCode['3102'] || 0) + (glByCode['3103'] || 0)
                         + (glByCode['3111'] || 0) + (glByCode['3112'] || 0) + (glByCode['3113'] || 0)
                         + (glByCode['3400'] || 0);
     const totalDrawings = glByCode['3500'] || 0;   // drawings is debit-normal so positive = amount drawn
@@ -224,13 +227,43 @@ router.post('/transactions', authorizePermission('EQUITY_WRITE'), async (req, re
     const cfg = TYPE_CONFIG[transaction_type];
     if (!cfg) throw new Error('Invalid transaction type');
 
-    // Resolve equity account automatically from the transaction type
-    const { rows: eqRows } = await client.query(
-      `SELECT id FROM chart_of_accounts WHERE account_code = $1 AND is_active = true LIMIT 1`,
-      [cfg.equityCode]
-    );
-    if (!eqRows.length) throw new Error(`Equity COA account ${cfg.equityCode} not found — run migrations`);
-    const equity_account_id = eqRows[0].id;
+    // Resolve equity account: for CAPITAL_CONTRIBUTION, prefer the director's
+    // specific Current Account (311x / 310x) matched by first name in account_name.
+    // Fall back to the generic equityCode (3100) if no specific account found.
+    let equity_account_id;
+    if (transaction_type === 'CAPITAL_CONTRIBUTION') {
+      const { rows: dNameRows } = await client.query(
+        `SELECT director_name FROM company_directors WHERE id=$1 AND active=true LIMIT 1`,
+        [director_id]
+      );
+      const firstName = dNameRows[0]?.director_name?.split(' ')[0] || '';
+      const { rows: specificRows } = await client.query(
+        `SELECT id FROM chart_of_accounts
+          WHERE is_active = true
+            AND account_code LIKE '31%'
+            AND account_name ILIKE $1
+          ORDER BY account_code
+          LIMIT 1`,
+        [`%${firstName}%`]
+      );
+      if (specificRows.length) {
+        equity_account_id = specificRows[0].id;
+      } else {
+        const { rows: fallback } = await client.query(
+          `SELECT id FROM chart_of_accounts WHERE account_code = $1 AND is_active = true LIMIT 1`,
+          [cfg.equityCode]
+        );
+        if (!fallback.length) throw new Error(`Equity COA account ${cfg.equityCode} not found`);
+        equity_account_id = fallback[0].id;
+      }
+    } else {
+      const { rows: eqRows } = await client.query(
+        `SELECT id FROM chart_of_accounts WHERE account_code = $1 AND is_active = true LIMIT 1`,
+        [cfg.equityCode]
+      );
+      if (!eqRows.length) throw new Error(`Equity COA account ${cfg.equityCode} not found — run migrations`);
+      equity_account_id = eqRows[0].id;
+    }
 
     const txnDate = transaction_date || new Date().toLocaleDateString('en-CA');
 
