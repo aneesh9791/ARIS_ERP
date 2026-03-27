@@ -338,7 +338,7 @@ router.post('/bills/:id/pay', authorizePermission('VENDOR_WRITE', 'JE_APPROVE'),
               ) AS ap_account_id
        FROM vendor_bills vb
        LEFT JOIN vendor_master vm ON vm.vendor_code = vb.vendor_code AND vm.active = true
-       WHERE vb.id=$1 AND vb.active=true FOR UPDATE`,
+       WHERE vb.id=$1 AND vb.active=true FOR UPDATE OF vb`,
       [req.params.id]
     );
     if (!bill) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Bill not found' }); }
