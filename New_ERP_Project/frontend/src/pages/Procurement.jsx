@@ -2161,17 +2161,16 @@ export default function Procurement() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex gap-1 bg-white rounded-xl p-1 border border-slate-200 shadow-sm overflow-x-auto flex-shrink-0 max-w-full">
             {[
-              { key: 'prs', label: 'Purchase Requisitions', short: 'PRs' },
-              { key: 'pos', label: 'Purchase Orders',       short: 'POs' },
-              { key: 'grn', label: 'Goods Receipts',        short: 'GRNs' },
+              { key: 'prs', label: 'Requisitions' },
+              { key: 'pos', label: 'Purchase Orders' },
+              { key: 'grn', label: 'Goods Receipts' },
             ].map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className="px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap"
+                className="px-3 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap"
                 style={tab === t.key
                   ? { background: 'linear-gradient(135deg,#0f766e,#0d9488)', color: '#fff' }
                   : { color: '#64748b' }}>
-                <span className="sm:hidden">{t.short}</span>
-                <span className="hidden sm:inline">{t.label}</span>
+                {t.label}
               </button>
             ))}
           </div>
