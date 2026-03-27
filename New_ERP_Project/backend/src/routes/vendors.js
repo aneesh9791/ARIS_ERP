@@ -482,7 +482,7 @@ async function _postVendorBillJE(client, bill, items, vendor) {
   for (const item of items) {
     const glId  = item.gl_account_id || 'fallback';
     const net   = parseFloat(item.quantity) * parseFloat(item.rate);
-    const gst   = parseFloat(item.cgst_amount||0) + parseFloat(item.sgst_amount||0) + parseFloat(item.igst_amount||0);
+    const gst   = parseFloat(item.gst_amount||0);
     const debit = itcAccountId ? net : net + gst;
     if (!glGroups[glId]) glGroups[glId] = { accountId: item.gl_account_id || null, amount: 0 };
     glGroups[glId].amount += debit;
