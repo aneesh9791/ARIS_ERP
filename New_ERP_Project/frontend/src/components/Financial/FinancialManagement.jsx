@@ -62,187 +62,66 @@ const FinancialManagement = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Mock API calls - replace with real APIs
+  const authFetch = (url, opts = {}) => fetch(url, {
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+    ...opts,
+  });
+
   useEffect(() => {
     fetchChartOfAccounts();
     fetchJournalEntries();
-    fetchTrialBalance();
   }, []);
 
   const fetchChartOfAccounts = async () => {
     setLoading(true);
     setError(null);
-    
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockAccounts = [
-        {
-          id: 1,
-          accountCode: '1001',
-          accountName: 'Cash Account',
-          accountType: 'ASSET',
-          accountCategory: 'Current Assets',
-          parentAccountId: null,
-          description: 'Primary cash account for daily operations',
-          openingBalance: 500000.00,
-          currentBalance: 750000.00,
-          debit: 250000.00,
-          credit: 0,
-          status: 'ACTIVE',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          createdBy: 'Admin',
-          createdDate: '2023-01-01',
-          lastModified: '2024-02-15',
-          notes: 'Main operating cash account'
-        },
-        {
-          id: 2,
-          accountCode: '1002',
-          accountName: 'Bank Account - SBI',
-          accountType: 'ASSET',
-          accountCategory: 'Current Assets',
-          parentAccountId: null,
-          description: 'Primary bank account with State Bank of India',
-          openingBalance: 2000000.00,
-          currentBalance: 3500000.00,
-          debit: 1500000.00,
-          credit: 0,
-          status: 'ACTIVE',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          createdBy: 'Admin',
-          createdDate: '2023-01-01',
-          lastModified: '2024-02-15',
-          notes: 'Main bank account for hospital operations'
-        },
-        {
-          id: 3,
-          accountCode: '2001',
-          accountName: 'Accounts Receivable',
-          accountType: 'ASSET',
-          accountCategory: 'Current Assets',
-          parentAccountId: null,
-          description: 'Money owed by patients and insurance companies',
-          openingBalance: 800000.00,
-          currentBalance: 1200000.00,
-          debit: 400000.00,
-          credit: 0,
-          status: 'ACTIVE',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          createdBy: 'Admin',
-          createdDate: '2023-01-01',
-          lastModified: '2024-02-15',
-          notes: 'Patient billing receivables'
-        },
-        {
-          id: 4,
-          accountCode: '3001',
-          accountName: 'Accounts Payable',
-          accountType: 'LIABILITY',
-          accountCategory: 'Current Liabilities',
-          parentAccountId: null,
-          description: 'Money owed to vendors and suppliers',
-          openingBalance: 300000.00,
-          currentBalance: 450000.00,
-          debit: 0,
-          credit: 150000.00,
-          status: 'ACTIVE',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          createdBy: 'Admin',
-          createdDate: '2023-01-01',
-          lastModified: '2024-02-15',
-          notes: 'Vendor payments due'
-        },
-        {
-          id: 5,
-          accountCode: '4001',
-          accountName: 'Service Revenue',
-          accountType: 'REVENUE',
-          accountCategory: 'Operating Revenue',
-          parentAccountId: null,
-          description: 'Revenue from medical services',
-          openingBalance: 0,
-          currentBalance: 8000000.00,
-          debit: 0,
-          credit: 8000000.00,
-          status: 'ACTIVE',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          createdBy: 'Admin',
-          createdDate: '2023-01-01',
-          lastModified: '2024-02-15',
-          notes: 'Medical service income'
-        },
-        {
-          id: 6,
-          accountCode: '5001',
-          accountName: 'Salaries and Wages',
-          accountType: 'EXPENSE',
-          accountCategory: 'Operating Expenses',
-          parentAccountId: null,
-          description: 'Employee salaries and wages',
-          openingBalance: 0,
-          currentBalance: 2500000.00,
-          debit: 2500000.00,
-          credit: 0,
-          status: 'ACTIVE',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          createdBy: 'Admin',
-          createdDate: '2023-01-01',
-          lastModified: '2024-02-15',
-          notes: 'Staff compensation'
-        },
-        {
-          id: 7,
-          accountCode: '5002',
-          accountName: 'Medical Supplies',
-          accountType: 'EXPENSE',
-          accountCategory: 'Operating Expenses',
-          parentAccountId: null,
-          description: 'Cost of medical supplies and consumables',
-          openingBalance: 0,
-          currentBalance: 1500000.00,
-          debit: 1500000.00,
-          credit: 0,
-          status: 'ACTIVE',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          createdBy: 'Admin',
-          createdDate: '2023-01-01',
-          lastModified: '2024-02-15',
-          notes: 'Medical supplies expense'
-        },
-        {
-          id: 8,
-          accountCode: '6001',
-          accountName: 'Equipment Depreciation',
-          accountType: 'EXPENSE',
-          accountCategory: 'Operating Expenses',
-          parentAccountId: null,
-          description: 'Depreciation on medical equipment',
-          openingBalance: 0,
-          currentBalance: 800000.00,
-          debit: 800000.00,
-          credit: 0,
-          status: 'ACTIVE',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          createdBy: 'Admin',
-          createdDate: '2023-01-01',
-          lastModified: '2024-02-15',
-          notes: 'Equipment depreciation expense'
-        }
-      ];
-      
-      setChartOfAccounts(mockAccounts);
+      const res = await authFetch('/api/chart-of-accounts?include_balances=true&limit=500');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to fetch');
+      const accounts = (data.data || data.accounts || data || []).map(a => ({
+        id: a.id,
+        accountCode: a.account_code,
+        accountName: a.account_name,
+        accountType: a.account_type,
+        accountCategory: a.account_category,
+        parentAccountId: a.parent_account_id,
+        description: a.description,
+        openingBalance: parseFloat(a.opening_balance) || 0,
+        currentBalance: parseFloat(a.current_balance) || 0,
+        debit: parseFloat(a.debit_balance) || 0,
+        credit: parseFloat(a.credit_balance) || 0,
+        totalDebits: parseFloat(a.total_debits) || 0,
+        totalCredits: parseFloat(a.total_credits) || 0,
+        status: a.is_active ? 'ACTIVE' : 'INACTIVE',
+        centerName: a.center_name || '',
+        createdBy: a.created_by_name || '',
+        createdDate: a.created_at ? a.created_at.split('T')[0] : '',
+        lastModified: a.updated_at ? a.updated_at.split('T')[0] : '',
+        transactionCount: parseInt(a.transaction_count) || 0,
+        lastTransactionDate: a.last_transaction_date,
+      }));
+      setChartOfAccounts(accounts);
+      // Build trial balance from COA data
+      const tb = accounts
+        .filter(a => a.transactionCount > 0 || a.openingBalance !== 0)
+        .map(a => {
+          const net = parseFloat(a.openingBalance) + parseFloat(a.totalDebits) - parseFloat(a.totalCredits);
+          return {
+            id: a.id,
+            accountCode: a.accountCode,
+            accountName: a.accountName,
+            accountType: a.accountType,
+            openingBalance: a.openingBalance,
+            totalDebit: a.totalDebits,
+            totalCredit: a.totalCredits,
+            closingBalance: Math.abs(net),
+            balanceType: net >= 0 ? 'DEBIT' : 'CREDIT',
+          };
+        });
+      setTrialBalance(tb);
     } catch (err) {
-      setError('Failed to fetch chart of accounts');
+      setError('Failed to fetch chart of accounts: ' + err.message);
       console.error('Error fetching chart of accounts:', err);
     } finally {
       setLoading(false);
@@ -251,230 +130,30 @@ const FinancialManagement = () => {
 
   const fetchJournalEntries = async () => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const mockEntries = [
-        {
-          id: 1,
-          entryNumber: 'JE-2024-001',
-          entryDate: '2024-02-15',
-          description: 'Patient payment received',
-          referenceNumber: 'PAT-001',
-          referenceType: 'PATIENT_PAYMENT',
-          totalDebit: 5000.00,
-          totalCredit: 5000.00,
-          status: 'POSTED',
-          createdBy: 'John Doe',
-          createdDate: '2024-02-15',
-          approvedBy: 'Jane Smith',
-          approvedDate: '2024-02-15',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          lines: [
-            {
-              id: 1,
-              accountId: 1001,
-              accountName: 'Cash Account',
-              accountCode: '1001',
-              debitAmount: 5000.00,
-              creditAmount: 0,
-              description: 'Cash received from patient'
-            },
-            {
-              id: 2,
-              accountId: 2001,
-              accountName: 'Accounts Receivable',
-              accountCode: '2001',
-              debitAmount: 0,
-              creditAmount: 5000.00,
-              description: 'Patient payment received'
-            }
-          ]
-        },
-        {
-          id: 2,
-          entryNumber: 'JE-2024-002',
-          entryDate: '2024-02-14',
-          description: 'Vendor payment for medical supplies',
-          referenceNumber: 'PO-2024-015',
-          referenceType: 'PURCHASE_ORDER',
-          totalDebit: 25000.00,
-          totalCredit: 25000.00,
-          status: 'POSTED',
-          createdBy: 'John Doe',
-          createdDate: '2024-02-14',
-          approvedBy: 'Jane Smith',
-          approvedDate: '2024-02-14',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          lines: [
-            {
-              id: 3,
-              accountId: 3001,
-              accountName: 'Accounts Payable',
-              accountCode: '3001',
-              debitAmount: 25000.00,
-              creditAmount: 0,
-              description: 'Payment to Medical Supplies Co.'
-            },
-            {
-              id: 4,
-              accountId: 1002,
-              accountName: 'Bank Account - SBI',
-              accountCode: '1002',
-              debitAmount: 0,
-              creditAmount: 25000.00,
-              description: 'Bank payment for supplies'
-            }
-          ]
-        },
-        {
-          id: 3,
-          entryNumber: 'JE-2024-003',
-          entryDate: '2024-02-13',
-          description: 'Monthly salary payment',
-          referenceNumber: 'SAL-2024-02',
-          referenceType: 'SALARY_PAYMENT',
-          totalDebit: 800000.00,
-          totalCredit: 800000.00,
-          status: 'POSTED',
-          createdBy: 'John Doe',
-          createdDate: '2024-02-13',
-          approvedBy: 'Jane Smith',
-          approvedDate: '2024-02-13',
-          centerId: 1,
-          centerName: 'Main Hospital',
-          lines: [
-            {
-              id: 5,
-              accountId: 5001,
-              accountName: 'Salaries and Wages',
-              accountCode: '5001',
-              debitAmount: 800000.00,
-              creditAmount: 0,
-              description: 'February salary payment'
-            },
-            {
-              id: 6,
-              accountId: 1002,
-              accountName: 'Bank Account - SBI',
-              accountCode: '1002',
-              debitAmount: 0,
-              creditAmount: 800000.00,
-              description: 'Bank transfer for salaries'
-            }
-          ]
-        }
-      ];
-      
-      setJournalEntries(mockEntries);
+      const res = await authFetch('/api/finance/journals?limit=100');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to fetch');
+      const entries = (data.journals || data.data || data || []).map(e => ({
+        id: e.id,
+        entryNumber: e.entry_number,
+        entryDate: e.entry_date ? e.entry_date.split('T')[0] : '',
+        description: e.description,
+        referenceNumber: e.source_ref || '',
+        referenceType: e.source_module || '',
+        totalDebit: parseFloat(e.total_debit) || 0,
+        totalCredit: parseFloat(e.total_credit) || 0,
+        status: e.status,
+        createdBy: e.created_by_name || '',
+        createdDate: e.created_at ? e.created_at.split('T')[0] : '',
+        centerName: e.center_name || '',
+      }));
+      setJournalEntries(entries);
     } catch (err) {
       console.error('Error fetching journal entries:', err);
     }
   };
 
-  const fetchTrialBalance = async () => {
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const mockTrialBalance = [
-        {
-          id: 1,
-          accountCode: '1001',
-          accountName: 'Cash Account',
-          accountType: 'ASSET',
-          openingBalance: 500000.00,
-          totalDebit: 250000.00,
-          totalCredit: 0,
-          closingBalance: 750000.00,
-          balanceType: 'DEBIT'
-        },
-        {
-          id: 2,
-          accountCode: '1002',
-          accountName: 'Bank Account - SBI',
-          accountType: 'ASSET',
-          openingBalance: 2000000.00,
-          totalDebit: 1500000.00,
-          totalCredit: 825000.00,
-          closingBalance: 2675000.00,
-          balanceType: 'DEBIT'
-        },
-        {
-          id: 3,
-          accountCode: '2001',
-          accountName: 'Accounts Receivable',
-          accountType: 'ASSET',
-          openingBalance: 800000.00,
-          totalDebit: 400000.00,
-          totalCredit: 5000.00,
-          closingBalance: 1195000.00,
-          balanceType: 'DEBIT'
-        },
-        {
-          id: 4,
-          accountCode: '3001',
-          accountName: 'Accounts Payable',
-          accountType: 'LIABILITY',
-          openingBalance: 300000.00,
-          totalDebit: 25000.00,
-          totalCredit: 150000.00,
-          closingBalance: 425000.00,
-          balanceType: 'CREDIT'
-        },
-        {
-          id: 5,
-          accountCode: '4001',
-          accountName: 'Service Revenue',
-          accountType: 'REVENUE',
-          openingBalance: 0,
-          totalDebit: 0,
-          totalCredit: 8000000.00,
-          closingBalance: 8000000.00,
-          balanceType: 'CREDIT'
-        },
-        {
-          id: 6,
-          accountCode: '5001',
-          accountName: 'Salaries and Wages',
-          accountType: 'EXPENSE',
-          openingBalance: 0,
-          totalDebit: 2500000.00,
-          totalCredit: 0,
-          closingBalance: 2500000.00,
-          balanceType: 'DEBIT'
-        },
-        {
-          id: 7,
-          accountCode: '5002',
-          accountName: 'Medical Supplies',
-          accountType: 'EXPENSE',
-          openingBalance: 0,
-          totalDebit: 1500000.00,
-          totalCredit: 0,
-          closingBalance: 1500000.00,
-          balanceType: 'DEBIT'
-        },
-        {
-          id: 8,
-          accountCode: '6001',
-          accountName: 'Equipment Depreciation',
-          accountType: 'EXPENSE',
-          openingBalance: 0,
-          totalDebit: 800000.00,
-          totalCredit: 0,
-          closingBalance: 800000.00,
-          balanceType: 'DEBIT'
-        }
-      ];
-      
-      setTrialBalance(mockTrialBalance);
-    } catch (err) {
-      console.error('Error fetching trial balance:', err);
-    }
-  };
+  const fetchTrialBalance = fetchChartOfAccounts;
 
   const handleAddAccount = async (formData) => {
     try {
