@@ -71,7 +71,8 @@ const NAV_GROUPS = [
     items: [
       { to: '/finance',    label: 'Finance',         iconKey: 'finance',  permission: 'JE_VIEW' },
       { to: '/equity',     label: 'Equity & Capital', iconKey: 'equity', iconKey2: 'equitySlice', permission: 'EQUITY_VIEW' },
-      { to: '/petty-cash', label: 'Petty Cash',       iconKey: 'expenses', permission: 'PETTY_CASH_VIEW' },
+      { to: '/petty-cash',    label: 'Petty Cash',        iconKey: 'expenses', permission: 'PETTY_CASH_VIEW' },
+      { to: '/petty-cash-ap', label: 'Petty Cash AP',     iconKey: 'finance',  permission: 'PETTY_CASH_APPROVE' },
     ],
   },
   {
@@ -124,6 +125,7 @@ const PAGE_TITLES = {
   '/asset-maintenance': 'Asset Maintenance',
   '/procurement':       'Procurement',
   '/petty-cash':        'Petty Cash Vouchers',
+  '/petty-cash-ap':     'Petty Cash AP',
   '/stock':             'Stock Management',
   '/item-master':       'Item Master',
   '/study-reporting':   'Worklist',

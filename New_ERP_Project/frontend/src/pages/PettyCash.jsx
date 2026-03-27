@@ -27,7 +27,7 @@ const sel = inp;
 // ═══════════════════════════════════════════════════════════════
 // VOUCHER FORM MODAL
 // ═══════════════════════════════════════════════════════════════
-const VoucherModal = ({ user, centers, expenseAccounts, cashAccounts, onClose, onSaved }) => {
+const VoucherModal = ({ user, centers, expenseAccounts, cashAccounts, onClose, onSaved, hasActiveAdvance }) => {
   const today = serverToday();
   const isCorporate = !!user?.is_corporate_role;
   const [form, setForm] = useState({
@@ -214,15 +214,24 @@ const VoucherModal = ({ user, centers, expenseAccounts, cashAccounts, onClose, o
             )}
           </div>
 
-          {/* Payment source */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Pay from <span className="text-red-500">*</span></label>
-            <select value={form.credit_account_id} onChange={e => set('credit_account_id', e.target.value)} className={sel}>
-              {cashAccounts.map(a => (
-                <option key={a.id} value={a.id}>{a.account_code} – {a.account_name}</option>
-              ))}
-            </select>
-          </div>
+          {/* Payment source — hidden for custodians (auto knock-off against advance) */}
+          {hasActiveAdvance ? (
+            <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-teal-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <p className="text-xs text-teal-700">This voucher will be <strong>knocked off against your advance</strong> when approved.</p>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Pay from <span className="text-red-500">*</span></label>
+              <select value={form.credit_account_id} onChange={e => set('credit_account_id', e.target.value)} className={sel}>
+                {cashAccounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.account_code} – {a.account_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Notes */}
           <div>
@@ -393,6 +402,73 @@ const VoucherDetail = ({ v, onClose }) => (
 );
 
 // ═══════════════════════════════════════════════════════════════
+// CUSTODIAN BALANCE BANNER
+// ═══════════════════════════════════════════════════════════════
+const CustodianBanner = ({ status }) => {
+  if (!status) return null;
+  const { is_custodian, custodian, stats } = status;
+
+  if (!is_custodian) return (
+    <div className="bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 flex items-center gap-3">
+      <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
+        <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+        </svg>
+      </div>
+      <div>
+        <p className="text-xs font-semibold text-slate-700">Not a Petty Cash Custodian</p>
+        <p className="text-[10px] text-slate-500">You can still submit vouchers for reimbursement — Finance will process payment directly.</p>
+      </div>
+    </div>
+  );
+
+  const advance    = parseFloat(custodian?.advance_amount  || 0);
+  const utilised   = parseFloat(custodian?.amount_utilised || 0);
+  const balance    = parseFloat(custodian?.balance_remaining ?? (advance - utilised));
+  const pct        = advance > 0 ? Math.min(100, (utilised / advance) * 100) : 0;
+  const balColor   = balance < advance * 0.2 ? 'text-red-600' : balance < advance * 0.5 ? 'text-amber-600' : 'text-emerald-600';
+  const barColor   = balance < advance * 0.2 ? 'bg-red-500' : balance < advance * 0.5 ? 'bg-amber-500' : 'bg-emerald-500';
+
+  return (
+    <div className="bg-gradient-to-r from-teal-50 to-white border border-teal-200 rounded-xl px-5 py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-teal-600 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <div>
+            <p className="text-xs font-bold text-teal-800">Petty Cash Custodian — {custodian?.center_name}</p>
+            <p className="text-[10px] text-teal-600 mt-0.5">
+              {custodian?.advance_number
+                ? `Active advance: ${custodian.advance_number} · Issued ${custodian.issued_date ? new Date(custodian.issued_date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : ''}`
+                : 'No active advance — request Finance to issue one'}
+            </p>
+          </div>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wider">Balance</p>
+          <p className={`text-lg font-bold ${balColor}`}>₹{balance.toLocaleString('en-IN', {minimumFractionDigits:2})}</p>
+        </div>
+      </div>
+
+      {advance > 0 && (
+        <div className="mt-3 space-y-1.5">
+          <div className="w-full bg-slate-200 rounded-full h-1.5">
+            <div className={`${barColor} h-1.5 rounded-full transition-all`} style={{ width: `${pct}%` }} />
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-500">
+            <span>Utilised: ₹{utilised.toLocaleString('en-IN',{minimumFractionDigits:2})} of ₹{advance.toLocaleString('en-IN',{minimumFractionDigits:2})}</span>
+            <span className="text-slate-400">{parseInt(stats?.pending || 0)} pending vouchers</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════
 const PettyCash = () => {
@@ -406,6 +482,7 @@ const PettyCash = () => {
   const [cashAccts,      setCashAccts]      = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [pendingCount,   setPendingCount]   = useState(0);
+  const [myStatus,       setMyStatus]       = useState(null);
   const [showForm,       setShowForm]       = useState(false);
   const [detail,         setDetail]         = useState(null);
   const [rejectTarget,   setRejectTarget]   = useState(null);
@@ -425,12 +502,13 @@ const PettyCash = () => {
       if (filterFrom)  params.set('from', filterFrom);
       if (filterTo)    params.set('to', filterTo);
 
-      const [vRes, pRes, cRes, glRes, pcRes] = await Promise.all([
+      const [vRes, pRes, cRes, glRes, pcRes, msRes] = await Promise.all([
         api(`/api/petty-cash?${params}`).then(r => r.json()),
         api('/api/petty-cash?status=SUBMITTED&limit=200').then(r => r.json()),
         api('/api/centers').then(r => r.json()),
         api('/api/petty-cash/gl-accounts').then(r => r.json()),
         api('/api/petty-cash/pending-count').then(r => r.json()),
+        api('/api/petty-cash/my-status').then(r => r.json()),
       ]);
       setVouchers(vRes.vouchers || []);
       setPending(pRes.vouchers || []);
@@ -438,6 +516,7 @@ const PettyCash = () => {
       setExpenseAccts(glRes.expense_accounts || []);
       setCashAccts(glRes.cash_accounts || []);
       setPendingCount(pcRes.count || 0);
+      if (msRes.success) setMyStatus(msRes);
     } catch (e) {
       console.error('Petty cash fetch failed:', e);
     }
@@ -537,6 +616,9 @@ const PettyCash = () => {
           </button>
         )}
       </div>
+
+      {/* Custodian balance banner */}
+      <CustodianBanner status={myStatus} />
 
       {/* Stat cards */}
       <div className="grid grid-cols-4 gap-4">
@@ -640,6 +722,7 @@ const PettyCash = () => {
         <VoucherModal
           user={user}
           centers={centers} expenseAccounts={expenseAccts} cashAccounts={cashAccts}
+          hasActiveAdvance={!!(myStatus?.is_custodian && myStatus?.custodian?.advance_id)}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); fetchAll(); }}
         />

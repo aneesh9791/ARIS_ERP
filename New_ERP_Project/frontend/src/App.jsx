@@ -27,6 +27,7 @@ const AssetMaintenance    = React.lazy(() => import('./pages/AssetMaintenance'))
 const Procurement         = React.lazy(() => import('./pages/Procurement'));
 const Stock               = React.lazy(() => import('./pages/Stock'));
 const PettyCash           = React.lazy(() => import('./pages/PettyCash'));
+const PettyCashAP         = React.lazy(() => import('./pages/PettyCashAP'));
 const StudyReporting      = React.lazy(() => import('./pages/StudyReporting'));
 const Finance             = React.lazy(() => import('./pages/Finance'));
 const Equity              = React.lazy(() => import('./pages/Equity'));
@@ -106,6 +107,7 @@ function App() {
                 <Route path="finance"          element={<ProtectedRoute permission="JE_VIEW"               element={<Finance />} />} />
                 <Route path="equity"           element={<ProtectedRoute permission="EQUITY_VIEW"           element={<Equity />} />} />
                 <Route path="petty-cash"       element={<ProtectedRoute permission="PETTY_CASH_VIEW"       element={<PettyCash />} />} />
+                <Route path="petty-cash-ap"    element={<ProtectedRoute permission="PETTY_CASH_APPROVE"    element={<PettyCashAP />} />} />
                 <Route path="hr"               element={<ProtectedRoute permission={['HR_DASHBOARD_VIEW','EMPLOYEE_VIEW','ATTENDANCE_VIEW','ATTENDANCE_MARK','LEAVE_APPLY','LEAVE_APPROVE','PAYROLL_VIEW']} element={<HR />} />} />
                 <Route path="payroll"          element={<ProtectedRoute permission="PAYROLL_VIEW"          element={<Payroll />} />} />
                 <Route path="assets"           element={<ProtectedRoute permission="ASSET_VIEW"            element={<Assets />} />} />
