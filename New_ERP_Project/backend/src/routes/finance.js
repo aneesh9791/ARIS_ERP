@@ -579,8 +579,8 @@ router.get('/reports/balance-sheet', async (req, res) => {
                      END
                 WHEN a.account_category IN ('EXPENSE','COGS')
                 THEN CASE WHEN a.normal_balance='debit'
-                          THEN COALESCE(jel.debit_amount,0) - COALESCE(jel.credit_amount,0)
-                          ELSE COALESCE(jel.credit_amount,0) - COALESCE(jel.debit_amount,0)
+                          THEN -(COALESCE(jel.debit_amount,0) - COALESCE(jel.credit_amount,0))
+                          ELSE -(COALESCE(jel.credit_amount,0) - COALESCE(jel.debit_amount,0))
                      END
                 ELSE 0
            END
