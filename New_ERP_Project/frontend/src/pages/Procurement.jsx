@@ -2130,7 +2130,7 @@ export default function Procurement() {
       </div>
 
       {/* Workflow banner */}
-      <div className="max-w-7xl mx-auto px-6 py-3">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3">
         <div className="flex items-center gap-2 text-xs text-slate-500 overflow-x-auto whitespace-nowrap pb-1">
           {[
             { icon: '📝', label: 'Create PR', sub: 'Requester' },
@@ -2157,20 +2157,21 @@ export default function Procurement() {
       </div>
 
       {/* Tabs + Actions */}
-      <div className="max-w-7xl mx-auto px-6 pb-6 space-y-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex gap-1 bg-white rounded-xl p-1 border border-slate-200 shadow-sm">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 pb-6 space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex gap-1 bg-white rounded-xl p-1 border border-slate-200 shadow-sm overflow-x-auto flex-shrink-0 max-w-full">
             {[
-              { key: 'prs', label: 'Purchase Requisitions' },
-              { key: 'pos', label: 'Purchase Orders' },
-              { key: 'grn', label: 'Goods Receipts' },
+              { key: 'prs', label: 'Purchase Requisitions', short: 'PRs' },
+              { key: 'pos', label: 'Purchase Orders',       short: 'POs' },
+              { key: 'grn', label: 'Goods Receipts',        short: 'GRNs' },
             ].map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className="px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+                className="px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap"
                 style={tab === t.key
                   ? { background: 'linear-gradient(135deg,#0f766e,#0d9488)', color: '#fff' }
                   : { color: '#64748b' }}>
-                {t.label}
+                <span className="sm:hidden">{t.short}</span>
+                <span className="hidden sm:inline">{t.label}</span>
               </button>
             ))}
           </div>
@@ -2196,8 +2197,8 @@ export default function Procurement() {
         {tab === 'prs' && (
           <div className="space-y-3">
             {/* Summary chips + filters */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-3">
-              <div className="flex gap-2">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { label: `All (${prCounts.all})`, val: '' },
                   { label: `⏳ Pending (${prCounts.pending})`, val: 'SUBMITTED' },
