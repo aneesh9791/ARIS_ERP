@@ -152,14 +152,26 @@ class App(ctk.CTk):
         ctk.CTkButton(bar, text='⟳  Refresh Now', width=130,
                       command=self._cmd_refresh).pack(side='left', padx=(0, 12))
 
+        _INTERVALS = ['1', '2', '3', '5', '10', '15', '30', '60']
+        _saved_int  = str(self.cfg.get('refresh_interval_min', 5))
+        _init_int   = _saved_int if _saved_int in _INTERVALS else '5'
         ctk.CTkLabel(bar, text='Auto every').pack(side='left', padx=(0, 4))
-        self._var_interval = tk.StringVar(value=str(self.cfg.get('refresh_interval_min', 5)))
-        ctk.CTkEntry(bar, textvariable=self._var_interval, width=46).pack(side='left')
+        self._var_interval = tk.StringVar(value=_init_int)
+        ctk.CTkOptionMenu(bar, variable=self._var_interval,
+                          values=_INTERVALS, width=70,
+                          command=lambda _: self._sync_runtime_cfg()
+                          ).pack(side='left')
         ctk.CTkLabel(bar, text='min').pack(side='left', padx=(3, 16))
 
+        _DAYS      = ['0', '1', '2', '3', '5', '7']
+        _saved_days = str(self.cfg.get('days_ahead', 1))
+        _init_days  = _saved_days if _saved_days in _DAYS else '1'
         ctk.CTkLabel(bar, text='Days ahead:').pack(side='left', padx=(0, 4))
-        self._var_days = tk.StringVar(value=str(self.cfg.get('days_ahead', 1)))
-        ctk.CTkEntry(bar, textvariable=self._var_days, width=46).pack(side='left', padx=(0, 16))
+        self._var_days = tk.StringVar(value=_init_days)
+        ctk.CTkOptionMenu(bar, variable=self._var_days,
+                          values=_DAYS, width=60,
+                          command=lambda _: self._sync_runtime_cfg()
+                          ).pack(side='left', padx=(0, 16))
 
         self._var_completed = tk.BooleanVar(value=self.cfg.get('include_completed', False))
         ctk.CTkCheckBox(bar, text='Include Completed',
