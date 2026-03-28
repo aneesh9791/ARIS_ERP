@@ -160,6 +160,7 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
       date,                        // YYYY-MM-DD  (default: today)
       accession,                   // exact accession lookup
       days_ahead = 0,              // fetch N future days (0 = today only)
+      days_back  = 1,              // also include bills from N days ago (default 1 = yesterday)
       include_completed = 'false', // also include EXAM_COMPLETED bills
     } = req.query;
 
@@ -172,11 +173,13 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
       conds.push(`pb.accession_number = $${i++}`);
       params.push(accession);
     } else {
-      const fromDate = date || new Date().toLocaleDateString('en-CA');
-      conds.push(`pb.bill_date >= $${i++}`);
-      params.push(fromDate);
-      const toDate = new Date(fromDate);
+      const baseDate = date ? new Date(date) : new Date();
+      const fromDate = new Date(baseDate);
+      fromDate.setDate(fromDate.getDate() - parseInt(days_back));
+      const toDate = new Date(baseDate);
       toDate.setDate(toDate.getDate() + parseInt(days_ahead));
+      conds.push(`pb.bill_date >= $${i++}`);
+      params.push(fromDate.toLocaleDateString('en-CA'));
       conds.push(`pb.bill_date <= $${i++}`);
       params.push(toDate.toLocaleDateString('en-CA'));
     }
