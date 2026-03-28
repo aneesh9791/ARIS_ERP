@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getPermissions } from '../utils/permissions';
+import { printInvoice } from '../utils/printInvoice';
 
 const token = () => localStorage.getItem('token');
 const api = (path, opts = {}) => fetch(path, {
@@ -113,209 +114,27 @@ const ModalityBadge = ({ m }) => (
 // ── Print Bill ────────────────────────────────────────────────────────────────
 const PrintBill = ({ bill, patient, onClose }) => {
   const handlePrint = async () => {
-    // Open window FIRST — must be synchronous within the user gesture for iOS Safari
     const w = window.open('', '_blank');
     if (!w) { alert('Please allow pop-ups for this site to print invoices.'); return; }
-    w.document.write('<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;color:#64748b">Preparing invoice…</body></html>');
-    w.document.close();
-
-    // Fetch live company settings
-    let co = {};
-    try {
-      const r = await fetch('/api/settings/company', { headers: { Authorization: `Bearer ${token()}` } });
-      const d = await r.json();
-      co = d.company || {};
-    } catch { /* ignore */ }
-    if (!co.company_name) {
-      try { co = { ...co, ...JSON.parse(localStorage.getItem('companyInfo') || '{}') }; } catch { /* ignore */ }
-    }
-
-    // Logo — prefer localStorage base64
-    const lgc = (() => { try { return JSON.parse(localStorage.getItem('logoConfig')) || {}; } catch { return {}; } })();
-    const logoSrc = lgc.customLogo || co.logo_path || null;
-
-    const coName     = co.company_name || 'ARIS Healthcare';
-    const coAddr     = [co.address_line1, co.address_line2].filter(Boolean).join(', ');
-    const coCityLine = [co.city, co.state, co.pincode].filter(Boolean).join(', ');
-    const coTaxLine  = co.gstin ? `GSTIN: ${co.gstin}` : '';
-    const coContact  = [co.phone ? `Ph: ${co.phone}` : '', co.email || ''].filter(Boolean).join('  |  ');
-
-    const billHeader = co.bill_header_text || '';
-    const billFooter = co.bill_footer_text || 'Thank you for choosing our services. Wishing you good health!';
-    const termsText  = co.terms_and_conditions || '';
-
-    const AC = '#0d9488';
-    // HTML-escape all user-supplied values before injecting into document.write
-    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const html = `<!DOCTYPE html><html><head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Invoice ${bill.bill_number}</title>
-    <style>
-      *{box-sizing:border-box;margin:0;padding:0}
-      @page{size:148mm 210mm;margin:0}
-      html,body{width:148mm;margin:0;padding:0;background:#fff}
-      body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-
-      /* Page container — flex column fills exactly A5 */
-      .page{width:148mm;min-height:210mm;display:flex;flex-direction:column}
-
-      /* Header band */
-      .hdr-band{background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);color:#fff;text-align:center;padding:4px 8mm;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border-bottom:2px solid #0f766e;flex-shrink:0}
-
-      /* Main header */
-      .hdr{display:flex;justify-content:space-between;align-items:center;padding:6px 8mm;border-bottom:2px solid ${AC};flex-shrink:0}
-      .hdr-left{flex:1;min-width:0}
-      .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 6px}
-      .co-info{display:flex;flex-direction:column;gap:1px}
-      .co-name{font-size:12px;font-weight:800;color:#1e293b;line-height:1.2}
-      .co-line{font-size:7px;color:#64748b;line-height:1.5}
-      .co-tax{font-size:7px;color:#475569;font-weight:600}
-      .hdr-right{text-align:right;flex-shrink:0}
-      .inv-title{font-size:18px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
-      .inv-meta{margin-top:3px;font-size:7.5px;line-height:1.7;color:#475569}
-      .inv-meta b{color:#1e293b}
-      .badge{display:inline-block;padding:1px 5px;border-radius:20px;font-size:7px;font-weight:700}
-      .badge-paid{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
-      .badge-pending{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
-
-      /* Body — flex:1 pushes footer to bottom */
-      .body{flex:1;padding:0 8mm;padding-top:6px;padding-bottom:6px}
-
-      /* Patient info box */
-      .pt-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:5px;padding:6px 10px;margin-bottom:8px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px}
-      .pt-label{font-size:6.5px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.05em}
-      .pt-val{font-size:9px;font-weight:600;margin-top:1px;color:#1e293b}
-
-      /* Table */
-      table{width:100%;border-collapse:collapse;margin-bottom:8px}
-      thead tr{background:${AC}}
-      th{padding:4px 6px;text-align:left;font-size:7.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.04em}
-      th.r,td.r{text-align:right}
-      tbody tr:nth-child(even){background:#f0fdfa}
-      td{padding:4px 6px;border-bottom:1px solid #f1f5f9;font-size:8.5px;color:#334155}
-
-      /* Totals */
-      .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:8px}
-      .totals{width:175px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden}
-      .tot-row{display:flex;justify-content:space-between;padding:3px 8px;font-size:8.5px;border-bottom:1px solid #f1f5f9;color:#475569}
-      .tot-disc{color:#16a34a}
-      .grand{display:flex;justify-content:space-between;padding:5px 8px;background:${AC};color:#fff;font-size:10.5px;font-weight:800}
-
-      /* Notes */
-      .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:4px;padding:4px 8px;margin-bottom:7px;font-size:8px;color:#134e4a}
-
-      /* Terms */
-      .terms-box{padding-top:6px;border-top:1px dashed #e2e8f0;margin-bottom:7px}
-      .terms-hdr{font-size:7px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
-      .t-line{display:flex;gap:3px;font-size:7px;color:#94a3b8;line-height:1.5;padding:1px 0}
-      .t-num{flex-shrink:0;color:#64748b;font-weight:700;min-width:11px}
-
-      /* Signature */
-      .sig-row{display:flex;justify-content:flex-end;padding-top:8px;margin-top:auto}
-      .sig-box{text-align:center;width:110px}
-      .sig-line{border-top:1px solid #334155;padding-top:3px;font-size:7.5px;color:#64748b}
-
-      /* Footer band — natural flow at bottom of flex column */
-      .ftr-band{flex-shrink:0;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);border-top:2px solid #0f766e;padding:4px 8mm;display:flex;justify-content:space-between;align-items:center;font-size:7px;color:rgba(255,255,255,0.9)}
-      .ftr-text{font-style:italic;color:rgba(255,255,255,0.75);flex:1;text-align:center;padding:0 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-
-      /* Print button — screen only */
-      #printBtn{position:fixed;top:12px;right:12px;z-index:9999}
-      #printBtn button{background:#0d9488;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.25)}
-      @media print{#printBtn{display:none}html,body{width:148mm}}
-    </style>
-    </head><body>
-
-    <div id="printBtn"><button onclick="window.print()">🖨️ Print / Save</button></div>
-
-    <div class="page">
-
-      ${billHeader ? `<div class="hdr-band">${esc(billHeader)}</div>` : ''}
-
-      <!-- Company Header -->
-      <div class="hdr">
-        <div class="hdr-left">
-          <div class="co-info">
-            <div class="co-name">${esc(coName)}</div>
-            ${coAddr     ? `<div class="co-line">${esc(coAddr)}</div>` : ''}
-            ${coCityLine ? `<div class="co-line">${esc(coCityLine)}</div>` : ''}
-            ${coTaxLine  ? `<div class="co-tax">${esc(coTaxLine)}</div>` : ''}
-            ${coContact  ? `<div class="co-line">${esc(coContact)}</div>` : ''}
-          </div>
-        </div>
-        <div class="hdr-center">
-          ${logoSrc ? `<img src="${esc(logoSrc)}" style="max-height:44px;max-width:100px;object-fit:contain;" />` : ''}
-        </div>
-        <div class="hdr-right">
-          <div class="inv-title">INVOICE</div>
-          <div class="inv-meta">
-            <b>Bill #:</b> ${esc(bill.bill_number || '—')}<br>
-            <b>Date:</b> ${new Date(bill.bill_date || Date.now()).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}<br>
-            <b>Status:</b>&nbsp;<span class="badge ${bill.payment_status === 'PAID' ? 'badge-paid' : 'badge-pending'}">${esc(bill.payment_status)}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="body">
-
-        <!-- Patient Details -->
-        <div class="pt-box">
-          ${[
-            ['Patient', patient.name],
-            ['PID', patient.pid || '—'],
-            ['Phone', patient.phone || '—'],
-            ['Gender', patient.gender || '—'],
-            ['Age', calcAge(patient.date_of_birth)],
-            ['Payment Mode', bill.payment_mode || '—'],
-            ...(bill.referring_physician_name ? [['Ref. Physician', bill.referring_physician_name]] : []),
-          ].map(([l, v]) => `<div><div class="pt-label">${esc(l)}</div><div class="pt-val">${esc(v)}</div></div>`).join('')}
-        </div>
-
-        <!-- Services Table -->
-        <table>
-          <thead><tr><th style="width:22px">#</th><th>Study / Service</th><th>Code</th><th class="r">Amount</th></tr></thead>
-          <tbody>
-            ${(bill.study_details || []).map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.study_name)}</td><td>${esc(s.study_code || '—')}</td><td class="r">${fmt(s.rate)}</td></tr>`).join('')}
-          </tbody>
-        </table>
-
-        <!-- Totals -->
-        <div class="totals-wrap">
-          <div class="totals">
-            <div class="tot-row"><span>Subtotal</span><span>${fmt(bill.subtotal)}</span></div>
-            ${bill.discount_amount > 0 ? `<div class="tot-row tot-disc"><span>Discount</span><span>− ${fmt(bill.discount_amount)}</span></div>` : ''}
-            ${bill.gst_amount > 0 ? `<div class="tot-row"><span>GST</span><span>${fmt(bill.gst_amount)}</span></div>` : ''}
-            <div class="grand"><span>Total</span><span>${fmt(bill.total_amount)}</span></div>
-          </div>
-        </div>
-
-        ${bill.notes ? `<div class="notes-box"><b>Clinical Notes:</b> ${esc(bill.notes)}</div>` : ''}
-        ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${esc(l.trim().replace(/^\d+[\.\)]\s*/,''))}</span></div>`).join('')}</div>` : ''}
-
-        <div class="sig-row">
-          <div class="sig-box"><div class="sig-line">Authorised Signatory</div></div>
-        </div>
-
-      </div>
-
-      <!-- Footer — flex-column natural flow, always at bottom -->
-      <div class="ftr-band">
-        <span style="white-space:nowrap;flex-shrink:0">${esc(coName)}</span>
-        <span class="ftr-text">${esc(billFooter)}</span>
-        <span style="white-space:nowrap;flex-shrink:0">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
-      </div>
-
-    </div>
-    <script>
-      function tryPrint(){ try{ window.print(); }catch(e){} }
-      if(document.readyState==='complete'){ setTimeout(tryPrint,300); }
-      else{ window.onload=function(){ setTimeout(tryPrint,300); }; setTimeout(tryPrint,1200); }
-    </script>
-    </body></html>`;
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
+    await printInvoice({
+      invoiceNumber:          bill.bill_number,
+      billDate:               bill.bill_date,
+      paymentStatus:          bill.payment_status,
+      patientName:            patient.name,
+      pid:                    patient.pid,
+      phone:                  patient.phone,
+      gender:                 patient.gender,
+      dateOfBirth:            patient.date_of_birth,
+      paymentMode:            bill.payment_mode,
+      referringPhysicianName: bill.referring_physician_name,
+      notes:                  bill.notes,
+      itemDetailLabel:        'Code',
+      items: (bill.study_details || []).map(s => ({ name: s.study_name, detail: s.study_code || '—', amount: s.rate })),
+      subtotal:               bill.subtotal,
+      discountAmount:         bill.discount_amount,
+      gst:                    bill.gst_amount,
+      totalAmount:            bill.total_amount,
+    }, w);
   };
 
   const isPaid = bill.payment_status === 'PAID';
