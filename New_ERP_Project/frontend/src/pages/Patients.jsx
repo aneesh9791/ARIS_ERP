@@ -431,21 +431,12 @@ const PatientForm = ({ onSave, onCancel }) => {
 
   const [form, setForm] = useState({
     first_name: '', last_name: '', phone: '', gender: '', date_of_birth: '', email: '',
-    blood_group: '', allergies: '', referring_physician_code: '',
+    blood_group: '', allergies: '',
     id_proof_type: '', id_proof_number: '',
   });
-  const [physicians, setPhysicians]           = useState([]);
-  const [showAddPhysician, setShowAddPhysician] = useState(false);
-  const [errors, setErrors]                   = useState({});
-  const [saving, setSaving]                   = useState(false);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
   const set = f => e => setForm(p => ({ ...p, [f]: e.target.value }));
-
-  useEffect(() => {
-    api('/api/masters/referring-physician-master')
-      .then(r => r.json())
-      .then(d => setPhysicians(d.referring_physician_masters || []))
-      .catch(() => {});
-  }, []);
 
   const validate = () => {
     const e = {};
@@ -472,7 +463,6 @@ const PatientForm = ({ onSave, onCancel }) => {
         ...(form.email           ? { email: form.email }                              : {}),
         ...(form.blood_group     ? { blood_group: form.blood_group }                  : {}),
         ...(form.allergies       ? { allergies: form.allergies }                      : {}),
-        ...(form.referring_physician_code ? { referring_physician_code: form.referring_physician_code } : {}),
         ...(form.id_proof_type   ? { id_proof_type: form.id_proof_type }     : {}),
         ...(form.id_proof_number ? { id_proof_number: form.id_proof_number } : {}),
       };
@@ -537,38 +527,6 @@ const PatientForm = ({ onSave, onCancel }) => {
         <Field label="Email">
           <input type="email" value={form.email} onChange={set('email')} className={inp} placeholder="optional" />
         </Field>
-        <Field label="Referring Physician">
-          <div className="flex gap-2">
-            <select value={form.referring_physician_code} onChange={set('referring_physician_code')} className={inp}>
-              <option value="">— None —</option>
-              {physicians.map(p => (
-                <option key={p.physician_code} value={p.physician_code}>
-                  {p.physician_name}{p.specialty ? ` (${p.specialty})` : ''}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={() => setShowAddPhysician(true)}
-              title="Add new referring physician"
-              className="flex-shrink-0 px-3 py-2 text-sm font-semibold text-teal-700 border border-teal-300 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors whitespace-nowrap">
-              + New
-            </button>
-          </div>
-        </Field>
-        {showAddPhysician && (
-          <QuickAddPhysicianModal
-            onClose={() => setShowAddPhysician(false)}
-            onSave={physician => {
-              const entry = {
-                physician_code: physician.physician_code,
-                physician_name: `${physician.first_name} ${physician.last_name}`.trim(),
-                specialty: physician.specialty,
-              };
-              setPhysicians(prev => [...prev, entry]);
-              setForm(f => ({ ...f, referring_physician_code: physician.physician_code }));
-              setShowAddPhysician(false);
-            }}
-          />
-        )}
         <Field label="ID Type">
           <select value={form.id_proof_type} onChange={set('id_proof_type')} className={inp}>
             <option value="">— None —</option>
@@ -627,6 +585,9 @@ export default function Patients() {
   const [gst, setGst]             = useState(false);
   const [notes, setNotes]         = useState('');
   const [payRef, setPayRef]       = useState('');
+  const [refPhysician, setRefPhysician]         = useState('');
+  const [physicians, setPhysicians]             = useState([]);
+  const [showAddPhysician, setShowAddPhysician] = useState(false);
   const [creating, setCreating]   = useState(false);
   const [billResult, setBillResult] = useState(null);
   const [billError, setBillError]   = useState('');
@@ -644,6 +605,13 @@ export default function Patients() {
     if (!isCorp) return;
     api('/api/centers').then(r => r.json()).then(d => setCenters(d.centers || d || [])).catch(() => {});
   }, [isCorp]);
+
+  useEffect(() => {
+    api('/api/masters/referring-physician-master')
+      .then(r => r.json())
+      .then(d => setPhysicians(d.referring_physician_masters || []))
+      .catch(() => {});
+  }, []);
 
   // Reload studies/modalities whenever the billing center changes
   useEffect(() => {
@@ -761,8 +729,9 @@ export default function Patients() {
         gst_rate: gst ? 0.18 : 0,
         discount_amount: discountAmt,
         ...(discountAmt > 0 ? { discount_reason: `${discount.type === 'percent' ? discount.value + '%' : '₹' + discount.value} discount` } : {}),
-        ...(payRef.trim() ? { payment_reference: payRef.trim() } : {}),
-        ...(notes.trim() ? { notes: notes.trim() } : {}),
+        ...(payRef.trim()      ? { payment_reference: payRef.trim() } : {}),
+        ...(notes.trim()       ? { notes: notes.trim() } : {}),
+        ...(refPhysician.trim() ? { referring_physician_code: refPhysician.trim() } : {}),
       };
       const r = await api('/api/billing/patient-bill', { method: 'POST', body: JSON.stringify(body) });
       const d = await r.json();
@@ -779,7 +748,7 @@ export default function Patients() {
           payment_mode: payMode, payment_status: payStatus,
           payment_reference: payRef.trim() || null,
         });
-        setCart([]);  // clear cart so a re-press cannot create a duplicate
+        setCart([]); setNotes(''); setRefPhysician('');  // clear for next bill
       } else {
         setBillError(d.errors?.[0]?.msg || d.error || 'Billing failed');
       }
@@ -1232,12 +1201,47 @@ export default function Patients() {
                     </div>
                   </div>
 
-                  {/* Notes */}
+                  {/* Referring Physician */}
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Notes</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Referring Physician</label>
+                    <div className="flex gap-2">
+                      <select value={refPhysician} onChange={e => setRefPhysician(e.target.value)}
+                        className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500">
+                        <option value="">— None —</option>
+                        {physicians.map(p => (
+                          <option key={p.physician_code} value={p.physician_code}>
+                            {p.physician_name}{p.specialty ? ` (${p.specialty})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => setShowAddPhysician(true)}
+                        className="flex-shrink-0 px-3 py-2 text-xs font-semibold text-teal-700 border border-teal-300 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors whitespace-nowrap">
+                        + New
+                      </button>
+                    </div>
+                    {showAddPhysician && (
+                      <QuickAddPhysicianModal
+                        onClose={() => setShowAddPhysician(false)}
+                        onSave={physician => {
+                          const entry = {
+                            physician_code: physician.physician_code,
+                            physician_name: `${physician.first_name} ${physician.last_name}`.trim(),
+                            specialty: physician.specialty,
+                          };
+                          setPhysicians(prev => [...prev, entry]);
+                          setRefPhysician(physician.physician_code);
+                          setShowAddPhysician(false);
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Clinical Notes */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Clinical Notes</label>
                     <textarea value={notes} onChange={e => setNotes(e.target.value)}
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none text-slate-600 placeholder-slate-300 bg-slate-50"
-                      rows={2} placeholder="Clinical notes, referral info…" />
+                      rows={3} placeholder="Symptoms, clinical history, indication for study…" />
                   </div>
 
                   {/* Totals */}
