@@ -657,7 +657,7 @@ export default function Reports() {
       let url;
       const period = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000));
       if (id === 'worklist') {
-        url = `/api/dashboard-reports/worklist?date_from=${from}&date_to=${to}${cq}`;
+        url = `/api/reports/worklist?date_from=${from}&date_to=${to}${cq}`;
       } else if (id === 'dashboard' || id === 'billing') {
         url = `/api/dashboard-reports/dashboard?date_from=${from}&date_to=${to}&period=${period}${cq}`;
       } else if (id === 'radiology') {
