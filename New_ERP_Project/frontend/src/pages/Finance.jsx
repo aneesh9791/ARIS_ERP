@@ -4467,6 +4467,7 @@ function PaymentsTab() {
       setBulkSelected(new Set());
       setBulkVendor('');
       setBulkMode(false);
+      setBulkForm(f => ({ ...f, transaction_reference: '', notes: '' }));
       load();
     } catch { setBulkErr('Network error'); }
     finally { setBulkPaying(false); }

@@ -31,7 +31,14 @@ const StatusBadge = ({ status }) => {
 };
 
 // ── Print invoice ──────────────────────────────────────────────────────────────
-const printInvoice = async (bill, items) => {
+const printInvoice = async (bill, items, printWin = null) => {
+  // NOTE: caller must pass an already-opened window (opened synchronously on user gesture)
+  // to avoid iOS Safari popup blocking. If not provided, open now (desktop fallback).
+  let w = printWin || window.open('', '_blank');
+  if (!w) { alert('Please allow pop-ups for this site to print invoices.'); return; }
+  w.document.write('<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;color:#64748b">Preparing invoice…</body></html>');
+  w.document.close();
+
   let co = {};
   try {
     const r = await fetch('/api/settings/company', { headers: { Authorization: `Bearer ${token()}` } });
@@ -58,56 +65,61 @@ const printInvoice = async (bill, items) => {
   // HTML-escape all user-supplied values before injecting into innerHTML
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-  const w = window.open('', '_blank');
   const html = `<!DOCTYPE html><html><head>
   <meta charset="utf-8">
   <title>Invoice ${bill.invoice_number}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;font-size:12px}
-    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-    .page{width:210mm;min-height:297mm;margin:0 auto;padding:0 0 24mm;position:relative}
-    .hdr-band{background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);color:#fff;text-align:center;padding:7px 14mm;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border-bottom:3px solid #0f766e}
-    .hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 14mm 10px;border-bottom:3px solid ${AC}}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;font-size:10px}
+    @page{size:148mm 210mm;margin:0}
+    html,body{width:148mm;margin:0;padding:0;background:#fff}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}html,body{width:148mm}#printBtn{display:none}}
+    .page{width:148mm;min-height:210mm;display:flex;flex-direction:column}
+    .hdr-band{background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);color:#fff;text-align:center;padding:4px 8mm;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border-bottom:2px solid #0f766e}
+    .hdr{display:flex;justify-content:space-between;align-items:center;padding:7px 8mm 7px;border-bottom:2px solid ${AC}}
     .hdr-left{flex:1}
-    .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 16px}
-    .co-info{display:flex;flex-direction:column;gap:2px}
-    .co-name{font-size:16px;font-weight:800;color:#1e293b;line-height:1.2}
-    .co-line{font-size:9px;color:#64748b;line-height:1.5}
-    .co-tax{font-size:9px;color:#475569;font-weight:600}
+    .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 8px}
+    .co-info{display:flex;flex-direction:column;gap:1px}
+    .co-name{font-size:12px;font-weight:800;color:#1e293b;line-height:1.2}
+    .co-line{font-size:7.5px;color:#64748b;line-height:1.5}
+    .co-tax{font-size:7.5px;color:#475569;font-weight:600}
     .hdr-right{text-align:right;flex-shrink:0;flex:1}
-    .inv-title{font-size:26px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
-    .inv-meta{margin-top:6px;font-size:10px;line-height:1.9;color:#475569}
+    .inv-title{font-size:18px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
+    .inv-meta{margin-top:4px;font-size:8px;line-height:1.8;color:#475569}
     .inv-meta b{color:#1e293b}
-    .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:9px;font-weight:700}
+    .badge{display:inline-block;padding:1px 6px;border-radius:20px;font-size:7.5px;font-weight:700}
     .badge-paid{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
     .badge-pending{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
-    .body{padding:0 14mm}
-    .pt-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:7px;padding:10px 14px;margin:12px 0;display:grid;grid-template-columns:repeat(3,1fr);gap:7px 18px}
-    .pt-label{font-size:8px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.05em}
-    .pt-val{font-size:12px;font-weight:600;margin-top:1px;color:#1e293b}
-    table{width:100%;border-collapse:collapse;margin-bottom:14px}
+    .body{flex:1;padding:0 8mm}
+    .pt-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:5px;padding:7px 10px;margin:8px 0;display:grid;grid-template-columns:repeat(3,1fr);gap:5px 12px}
+    .pt-label{font-size:7px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.05em}
+    .pt-val{font-size:9.5px;font-weight:600;margin-top:1px;color:#1e293b}
+    table{width:100%;border-collapse:collapse;margin-bottom:10px}
     thead tr{background:${AC}}
-    th{padding:8px 10px;text-align:left;font-size:9.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.05em}
+    th{padding:5px 7px;text-align:left;font-size:8px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.05em}
     th.r,td.r{text-align:right}
     tbody tr:nth-child(even){background:#f0fdfa}
-    td{padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:11px;color:#334155}
-    .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:14px}
-    .totals{width:240px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
-    .tot-row{display:flex;justify-content:space-between;padding:5px 11px;font-size:11px;border-bottom:1px solid #f1f5f9;color:#475569}
+    td{padding:5px 7px;border-bottom:1px solid #f1f5f9;font-size:9px;color:#334155}
+    .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:10px}
+    .totals{width:190px;border:1px solid #e2e8f0;border-radius:5px;overflow:hidden}
+    .tot-row{display:flex;justify-content:space-between;padding:4px 9px;font-size:9px;border-bottom:1px solid #f1f5f9;color:#475569}
     .tot-disc{color:#16a34a}
-    .grand{display:flex;justify-content:space-between;padding:8px 11px;background:${AC};color:#fff;font-size:14px;font-weight:800}
-    .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:5px;padding:7px 11px;margin-bottom:12px;font-size:10px;color:#134e4a}
-    .terms-box{margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;margin-bottom:12px}
-    .terms-hdr{font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
-    .t-line{display:flex;gap:5px;font-size:8.5px;color:#94a3b8;line-height:1.65;padding:1px 0}
-    .t-num{flex-shrink:0;color:#64748b;font-weight:700;min-width:14px}
-    .sig-row{display:flex;justify-content:space-between;margin-top:24px;padding-top:10px}
-    .sig-box{text-align:center;width:160px}
-    .sig-line{border-top:1px solid #334155;padding-top:5px;font-size:9px;color:#64748b}
-    .ftr-band{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);border-top:3px solid #0f766e;padding:6px 14mm;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:rgba(255,255,255,0.9)}
-    .ftr-text{font-style:italic;color:rgba(255,255,255,0.75);flex:1;text-align:center;padding:0 12px}
+    .grand{display:flex;justify-content:space-between;padding:6px 9px;background:${AC};color:#fff;font-size:11px;font-weight:800}
+    .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:4px;padding:5px 9px;margin-bottom:9px;font-size:8.5px;color:#134e4a}
+    .terms-box{margin-top:8px;padding-top:8px;border-top:1px dashed #e2e8f0;margin-bottom:9px}
+    .terms-hdr{font-size:7.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+    .t-line{display:flex;gap:4px;font-size:7.5px;color:#94a3b8;line-height:1.55;padding:1px 0}
+    .t-num{flex-shrink:0;color:#64748b;font-weight:700;min-width:12px}
+    .sig-row{display:flex;justify-content:space-between;margin-top:16px;padding-top:8px}
+    .sig-box{text-align:center;width:120px}
+    .sig-line{border-top:1px solid #334155;padding-top:4px;font-size:8px;color:#64748b}
+    .ftr-band{flex-shrink:0;width:148mm;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);border-top:2px solid #0f766e;padding:4px 8mm;display:flex;justify-content:space-between;align-items:center;font-size:7.5px;color:rgba(255,255,255,0.9)}
+    .ftr-text{font-style:italic;color:rgba(255,255,255,0.75);flex:1;text-align:center;padding:0 8px}
+    #printBtn{position:fixed;top:12px;right:12px;z-index:9999}
   </style></head><body>
+  <div id="printBtn">
+    <button onclick="window.print()" style="background:#0d9488;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2)">🖨️ Print / Save</button>
+  </div>
   <div class="page">
     ${billHeader ? `<div class="hdr-band">${esc(billHeader)}</div>` : ''}
     <div class="hdr">
@@ -121,7 +133,7 @@ const printInvoice = async (bill, items) => {
         </div>
       </div>
       <div class="hdr-center">
-        ${logoSrc ? `<img src="${esc(logoSrc)}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
+        ${logoSrc ? `<img src="${esc(logoSrc)}" style="max-height:46px;max-width:110px;object-fit:contain;" />` : ''}
       </div>
       <div class="hdr-right">
         <div class="inv-title">INVOICE</div>
@@ -170,9 +182,16 @@ const printInvoice = async (bill, items) => {
       <span class="ftr-text">${esc(billFooter)}</span>
       <span style="white-space:nowrap">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
     </div>
-  </div></body></html>`;
-  w.document.documentElement.innerHTML = html;
-  setTimeout(() => w.print(), 500);
+  </div>
+  <script>
+    function tryPrint(){ try{ window.print(); }catch(e){} }
+    if(document.readyState==='complete'){ setTimeout(tryPrint,300); }
+    else{ window.onload=function(){ setTimeout(tryPrint,300); }; setTimeout(tryPrint,1200); }
+  </script>
+  </body></html>`;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 };
 
 // ── Update Payment Status Modal ────────────────────────────────────────────────
@@ -670,9 +689,11 @@ export default function PatientHistory() {
                         <button
                           title="Print Invoice"
                           onClick={async () => {
+                            // Open window synchronously on user gesture (required for iOS Safari)
+                            const pw = window.open('', '_blank');
                             const r = await api(`/api/billing/${bill.id}/items`);
                             const d = await r.json();
-                            printInvoice({ ...bill, pid: bill.patient_pid }, d.items || []);
+                            printInvoice({ ...bill, pid: bill.patient_pid }, d.items || [], pw);
                           }}
                           className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-slate-100 text-slate-500">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

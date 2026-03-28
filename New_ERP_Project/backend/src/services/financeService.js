@@ -676,15 +676,29 @@ async function postVendorPaymentJE(payment, createdBy, txClient = null) {
     );
 
     // Update matching payables by vendor_bill_id (exact FK match, not broad text search)
-    await db.query(
-      `UPDATE payables
-       SET paid_amount    = LEAST(amount, paid_amount + $1),
-           balance_amount = GREATEST(0, balance_amount - $1),
-           status         = CASE WHEN balance_amount - $1 <= 0.01 THEN 'PAID' ELSE status END,
-           updated_at     = NOW()
-       WHERE vendor_bill_id = $2`,
-      [amount, payment.vendor_bill_id]
-    );
+    // If the vendor bill is now fully PAID, mark linked payables as PAID regardless of TDS gap
+    // (net payment < gross payable is expected when TDS is withheld)
+    if (newStatus === 'PAID') {
+      await db.query(
+        `UPDATE payables
+         SET paid_amount    = amount,
+             balance_amount = 0,
+             status         = 'PAID',
+             updated_at     = NOW()
+         WHERE vendor_bill_id = $1 AND status != 'PAID'`,
+        [payment.vendor_bill_id]
+      );
+    } else {
+      await db.query(
+        `UPDATE payables
+         SET paid_amount    = LEAST(amount, paid_amount + $1),
+             balance_amount = GREATEST(0, balance_amount - $1),
+             status         = CASE WHEN balance_amount - $1 <= 0.01 THEN 'PAID' ELSE status END,
+             updated_at     = NOW()
+         WHERE vendor_bill_id = $2`,
+        [amount, payment.vendor_bill_id]
+      );
+    }
 
     logger.info(`postVendorPaymentJE: posted JE ${je.entry_number} for ₹${amount} on bill ${bill.bill_number}`);
   }
@@ -1918,19 +1932,19 @@ async function postReportingPayoutJE(study, userId) {
     );
     const party = partyRows[0];
 
-    // Resolve study_master id from study_code
-    let studyMasterId = null;
+    // Resolve study_definition_id from study_code (radiologist_study_rates uses study_definitions.id)
+    let studyDefinitionId = null;
     if (study.study_code) {
       const { rows: smRows } = await pool.query(
-        'SELECT id FROM study_master WHERE study_code = $1 LIMIT 1',
+        'SELECT study_definition_id FROM study_master WHERE study_code = $1 LIMIT 1',
         [study.study_code]
       );
-      studyMasterId = smRows[0]?.id || null;
+      studyDefinitionId = smRows[0]?.study_definition_id || null;
     }
 
     // Look up radiologist rate (center-specific > global, latest effective date)
     let rate = null;
-    if (studyMasterId) {
+    if (studyDefinitionId) {
       const reportDate = study.report_date
         ? new Date(study.report_date).toLocaleDateString('en-CA')
         : new Date().toLocaleDateString('en-CA');
@@ -1944,17 +1958,24 @@ async function postReportingPayoutJE(study, userId) {
            AND (center_id = $4 OR center_id IS NULL)
          ORDER BY center_id DESC NULLS LAST, effective_from DESC
          LIMIT 1`,
-        [radiologist.id, studyMasterId, reportDate, study.center_id]
+        [radiologist.id, studyDefinitionId, reportDate, study.center_id]
       );
       rate = rateRows[0]?.rate ? parseFloat(rateRows[0].rate) : null;
     }
 
+    // Fall back to rate_snapshot captured at exam-complete time
     if (!rate || rate <= 0) {
-      logger.warn(
-        `postReportingPayoutJE: no rate found for radiologist=${study.radiologist_code} ` +
-        `study_code=${study.study_code} center=${study.center_id} — skipping JE`
-      );
-      return null;
+      const fallback = study.rate_snapshot ? parseFloat(study.rate_snapshot) : null;
+      if (fallback && fallback > 0) {
+        rate = fallback;
+        logger.info(`postReportingPayoutJE: using rate_snapshot fallback ${rate} for ${study.radiologist_code} / ${study.study_code}`);
+      } else {
+        logger.warn(
+          `postReportingPayoutJE: no rate found for radiologist=${study.radiologist_code} ` +
+          `study_code=${study.study_code} center=${study.center_id} — skipping JE`
+        );
+        return null;
+      }
     }
 
     // Determine expense GL — normalize both type columns for backward compatibility

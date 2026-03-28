@@ -21,7 +21,7 @@ router.get('/worklist', async (req, res) => {
     const { exam_workflow_status, center_id, page = 1, limit = 50 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const conds  = ["pb.payment_status = 'PAID'", 'pb.active = true', 'bi.active = true'];
+    const conds  = ["pb.payment_status = 'PAID'", 'pb.active = true', 'bi.active = true', "bi.item_type = 'STUDY'"];
     const params = [];
 
     if (center_id) {
@@ -77,6 +77,7 @@ router.get('/worklist', async (req, res) => {
     const { rows: cnt } = await pool.query(
       `SELECT COUNT(*) FROM bill_items bi
        JOIN patient_bills pb ON pb.id = bi.bill_id
+       LEFT JOIN study_master sm ON sm.study_code = bi.study_code AND sm.active = true
        WHERE ${conds.join(' AND ')}`,
       params
     );

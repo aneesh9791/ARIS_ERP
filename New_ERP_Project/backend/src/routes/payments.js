@@ -1761,7 +1761,13 @@ router.post('/vendor-bulk-pay', authorizePermission('VENDOR_WRITE', 'JE_WRITE'),
                  JOIN item_categories ic ON ic.id = im.category_id
                  WHERE poi.po_id = vb.source_po_id AND ic.ap_account_id IS NOT NULL
                  LIMIT 1),
-                (SELECT id FROM chart_of_accounts WHERE account_code='2112' AND is_active=true LIMIT 1)
+                -- Reporter/service-provider vendor bills (no JE/GRN/PO) → 2113
+                CASE WHEN EXISTS (
+                  SELECT 1 FROM payables p
+                  WHERE p.vendor_bill_id = vb.id AND p.reporter_id IS NOT NULL LIMIT 1
+                ) THEN (SELECT id FROM chart_of_accounts WHERE account_code='2113' AND is_active=true LIMIT 1)
+                ELSE (SELECT id FROM chart_of_accounts WHERE account_code='2112' AND is_active=true LIMIT 1)
+                END
               ) AS ap_account_id,
               COALESCE(vm.vendor_name, vb.vendor_name_text) AS vendor_name,
               (SELECT p.id FROM parties p JOIN vendor_master vm2 ON vm2.id = p.vendor_id
@@ -1893,6 +1899,25 @@ router.post('/vendor-bulk-pay', authorizePermission('VENDOR_WRITE', 'JE_WRITE'),
         `UPDATE vendor_bills SET payment_status=$1, updated_at=NOW() WHERE id=$2`,
         [newStatus, bill.id]
       );
+
+      // Update linked payables — when bill fully paid, mark PAID (TDS gap is expected for reporters)
+      if (newStatus === 'PAID') {
+        await client.query(
+          `UPDATE payables
+           SET paid_amount = amount, balance_amount = 0, status = 'PAID', updated_at = NOW()
+           WHERE vendor_bill_id = $1 AND status != 'PAID'`,
+          [bill.id]
+        );
+      } else {
+        await client.query(
+          `UPDATE payables
+           SET paid_amount    = LEAST(amount, paid_amount + $1),
+               balance_amount = GREATEST(0, balance_amount - $1),
+               updated_at     = NOW()
+           WHERE vendor_bill_id = $2`,
+          [balance, bill.id]
+        );
+      }
 
       if (bill.party_id) {
         await financeService.writePartyLedger(

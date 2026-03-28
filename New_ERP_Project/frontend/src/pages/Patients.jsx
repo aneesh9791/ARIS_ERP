@@ -113,6 +113,12 @@ const ModalityBadge = ({ m }) => (
 // ── Print Bill ────────────────────────────────────────────────────────────────
 const PrintBill = ({ bill, patient, onClose }) => {
   const handlePrint = async () => {
+    // Open window FIRST — must be synchronous within the user gesture for iOS Safari
+    const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups for this site to print invoices.'); return; }
+    w.document.write('<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;color:#64748b">Preparing invoice…</body></html>');
+    w.document.close();
+
     // Fetch live company settings
     let co = {};
     try {
@@ -141,77 +147,88 @@ const PrintBill = ({ bill, patient, onClose }) => {
     const AC = '#0d9488';
     // HTML-escape all user-supplied values before injecting into document.write
     const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const w = window.open('', '_blank');
     const html = `<!DOCTYPE html><html><head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Invoice ${bill.bill_number}</title>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;font-size:12px}
-      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-      .page{width:210mm;min-height:297mm;margin:0 auto;padding:0 0 24mm;position:relative}
+      @page{size:148mm 210mm;margin:0}
+      html,body{width:148mm;margin:0;padding:0;background:#fff}
+      body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+      /* Page container — flex column fills exactly A5 */
+      .page{width:148mm;min-height:210mm;display:flex;flex-direction:column}
 
       /* Header band */
-      .hdr-band{background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);color:#fff;text-align:center;padding:7px 14mm;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border-bottom:3px solid #0f766e}
+      .hdr-band{background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);color:#fff;text-align:center;padding:4px 8mm;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border-bottom:2px solid #0f766e;flex-shrink:0}
 
       /* Main header */
-      .hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 14mm 10px;border-bottom:3px solid ${AC}}
-      .hdr-left{flex:1}
-      .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 16px}
-      .co-info{display:flex;flex-direction:column;gap:2px}
-      .co-name{font-size:16px;font-weight:800;color:#1e293b;line-height:1.2}
-      .co-line{font-size:9px;color:#64748b;line-height:1.5}
-      .co-tax{font-size:9px;color:#475569;font-weight:600}
-      .hdr-right{text-align:right;flex-shrink:0;flex:1}
-      .inv-title{font-size:26px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
-      .inv-meta{margin-top:6px;font-size:10px;line-height:1.9;color:#475569}
+      .hdr{display:flex;justify-content:space-between;align-items:center;padding:6px 8mm;border-bottom:2px solid ${AC};flex-shrink:0}
+      .hdr-left{flex:1;min-width:0}
+      .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 6px}
+      .co-info{display:flex;flex-direction:column;gap:1px}
+      .co-name{font-size:12px;font-weight:800;color:#1e293b;line-height:1.2}
+      .co-line{font-size:7px;color:#64748b;line-height:1.5}
+      .co-tax{font-size:7px;color:#475569;font-weight:600}
+      .hdr-right{text-align:right;flex-shrink:0}
+      .inv-title{font-size:18px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
+      .inv-meta{margin-top:3px;font-size:7.5px;line-height:1.7;color:#475569}
       .inv-meta b{color:#1e293b}
-      .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:9px;font-weight:700}
+      .badge{display:inline-block;padding:1px 5px;border-radius:20px;font-size:7px;font-weight:700}
       .badge-paid{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
       .badge-pending{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
 
-      /* Body */
-      .body{padding:0 14mm}
+      /* Body — flex:1 pushes footer to bottom */
+      .body{flex:1;padding:0 8mm;padding-top:6px;padding-bottom:6px}
 
       /* Patient info box */
-      .pt-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:7px;padding:10px 14px;margin:12px 0;display:grid;grid-template-columns:repeat(3,1fr);gap:7px 18px}
-      .pt-label{font-size:8px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.05em}
-      .pt-val{font-size:12px;font-weight:600;margin-top:1px;color:#1e293b}
+      .pt-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:5px;padding:6px 10px;margin-bottom:8px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px}
+      .pt-label{font-size:6.5px;text-transform:uppercase;font-weight:700;color:#94a3b8;letter-spacing:.05em}
+      .pt-val{font-size:9px;font-weight:600;margin-top:1px;color:#1e293b}
 
       /* Table */
-      table{width:100%;border-collapse:collapse;margin-bottom:14px}
+      table{width:100%;border-collapse:collapse;margin-bottom:8px}
       thead tr{background:${AC}}
-      th{padding:8px 10px;text-align:left;font-size:9.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.05em}
+      th{padding:4px 6px;text-align:left;font-size:7.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.04em}
       th.r,td.r{text-align:right}
       tbody tr:nth-child(even){background:#f0fdfa}
-      td{padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:11px;color:#334155}
+      td{padding:4px 6px;border-bottom:1px solid #f1f5f9;font-size:8.5px;color:#334155}
 
       /* Totals */
-      .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:14px}
-      .totals{width:240px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
-      .tot-row{display:flex;justify-content:space-between;padding:5px 11px;font-size:11px;border-bottom:1px solid #f1f5f9;color:#475569}
+      .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:8px}
+      .totals{width:175px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden}
+      .tot-row{display:flex;justify-content:space-between;padding:3px 8px;font-size:8.5px;border-bottom:1px solid #f1f5f9;color:#475569}
       .tot-disc{color:#16a34a}
-      .grand{display:flex;justify-content:space-between;padding:8px 11px;background:${AC};color:#fff;font-size:14px;font-weight:800}
+      .grand{display:flex;justify-content:space-between;padding:5px 8px;background:${AC};color:#fff;font-size:10.5px;font-weight:800}
 
       /* Notes */
-      .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:5px;padding:7px 11px;margin-bottom:12px;font-size:10px;color:#134e4a}
+      .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:4px;padding:4px 8px;margin-bottom:7px;font-size:8px;color:#134e4a}
 
       /* Terms */
-      .terms-box{margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;margin-bottom:12px}
-      .terms-hdr{font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
-      .t-line{display:flex;gap:5px;font-size:8.5px;color:#94a3b8;line-height:1.65;padding:1px 0}
-      .t-num{flex-shrink:0;color:#64748b;font-weight:700;min-width:14px}
+      .terms-box{padding-top:6px;border-top:1px dashed #e2e8f0;margin-bottom:7px}
+      .terms-hdr{font-size:7px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+      .t-line{display:flex;gap:3px;font-size:7px;color:#94a3b8;line-height:1.5;padding:1px 0}
+      .t-num{flex-shrink:0;color:#64748b;font-weight:700;min-width:11px}
 
       /* Signature */
-      .sig-row{display:flex;justify-content:space-between;margin-top:24px;padding-top:10px}
-      .sig-box{text-align:center;width:160px}
-      .sig-line{border-top:1px solid #334155;padding-top:5px;font-size:9px;color:#64748b}
+      .sig-row{display:flex;justify-content:flex-end;padding-top:8px;margin-top:auto}
+      .sig-box{text-align:center;width:110px}
+      .sig-line{border-top:1px solid #334155;padding-top:3px;font-size:7.5px;color:#64748b}
 
-      /* Footer band */
-      .ftr-band{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);border-top:3px solid #0f766e;padding:6px 14mm;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:rgba(255,255,255,0.9)}
-      .ftr-text{font-style:italic;color:rgba(255,255,255,0.75);flex:1;text-align:center;padding:0 12px}
+      /* Footer band — natural flow at bottom of flex column */
+      .ftr-band{flex-shrink:0;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);border-top:2px solid #0f766e;padding:4px 8mm;display:flex;justify-content:space-between;align-items:center;font-size:7px;color:rgba(255,255,255,0.9)}
+      .ftr-text{font-style:italic;color:rgba(255,255,255,0.75);flex:1;text-align:center;padding:0 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+      /* Print button — screen only */
+      #printBtn{position:fixed;top:12px;right:12px;z-index:9999}
+      #printBtn button{background:#0d9488;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.25)}
+      @media print{#printBtn{display:none}html,body{width:148mm}}
     </style>
     </head><body>
+
+    <div id="printBtn"><button onclick="window.print()">🖨️ Print / Save</button></div>
+
     <div class="page">
 
       ${billHeader ? `<div class="hdr-band">${esc(billHeader)}</div>` : ''}
@@ -228,7 +245,7 @@ const PrintBill = ({ bill, patient, onClose }) => {
           </div>
         </div>
         <div class="hdr-center">
-          ${logoSrc ? `<img src="${esc(logoSrc)}" style="max-height:64px;max-width:160px;object-fit:contain;" />` : ''}
+          ${logoSrc ? `<img src="${esc(logoSrc)}" style="max-height:44px;max-width:100px;object-fit:contain;" />` : ''}
         </div>
         <div class="hdr-right">
           <div class="inv-title">INVOICE</div>
@@ -249,7 +266,7 @@ const PrintBill = ({ bill, patient, onClose }) => {
 
         <!-- Services Table -->
         <table>
-          <thead><tr><th style="width:28px">#</th><th>Study / Service</th><th>Code</th><th class="r">Amount</th></tr></thead>
+          <thead><tr><th style="width:22px">#</th><th>Study / Service</th><th>Code</th><th class="r">Amount</th></tr></thead>
           <tbody>
             ${(bill.study_details || []).map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.study_name)}</td><td>${esc(s.study_code || '—')}</td><td class="r">${fmt(s.rate)}</td></tr>`).join('')}
           </tbody>
@@ -266,27 +283,31 @@ const PrintBill = ({ bill, patient, onClose }) => {
         </div>
 
         ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${esc(bill.notes)}</div>` : ''}
-
         ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${esc(l.trim().replace(/^\d+[\.\)]\s*/,''))}</span></div>`).join('')}</div>` : ''}
 
         <div class="sig-row">
-          <div style="flex:1"></div>
           <div class="sig-box"><div class="sig-line">Authorised Signatory</div></div>
         </div>
 
       </div>
 
-      <!-- Footer Band -->
+      <!-- Footer — flex-column natural flow, always at bottom -->
       <div class="ftr-band">
-        <span style="white-space:nowrap">${esc(coName)}</span>
+        <span style="white-space:nowrap;flex-shrink:0">${esc(coName)}</span>
         <span class="ftr-text">${esc(billFooter)}</span>
-        <span style="white-space:nowrap">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
+        <span style="white-space:nowrap;flex-shrink:0">Printed: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
       </div>
 
-    </div></body></html>`;
+    </div>
+    <script>
+      function tryPrint(){ try{ window.print(); }catch(e){} }
+      if(document.readyState==='complete'){ setTimeout(tryPrint,300); }
+      else{ window.onload=function(){ setTimeout(tryPrint,300); }; setTimeout(tryPrint,1200); }
+    </script>
+    </body></html>`;
+    w.document.open();
     w.document.write(html);
     w.document.close();
-    w.onload = () => w.print();
   };
 
   const isPaid = bill.payment_status === 'PAID';

@@ -213,6 +213,21 @@ router.post('/patient-bill', authorizePermission('BILLING_WRITE'), [
         }
       }
 
+      // Generate per-study accession numbers for STUDY-type items when bill is created as PAID
+      if (payment_status === 'PAID') {
+        const { rows: studyItems } = await client.query(
+          `SELECT id FROM bill_items WHERE bill_id = $1 AND item_type = 'STUDY' AND active = true ORDER BY id`,
+          [bill.id]
+        );
+        for (const item of studyItems) {
+          const { rows: [acc] } = await client.query('SELECT generate_accession_number() AS acc');
+          await client.query(
+            `UPDATE bill_items SET accession_number = $1, exam_workflow_status = 'EXAM_SCHEDULED', updated_at = NOW() WHERE id = $2`,
+            [acc.acc, item.id]
+          );
+        }
+      }
+
       await client.query('COMMIT');
     } catch (txErr) {
       await client.query('ROLLBACK');
@@ -541,6 +556,19 @@ router.patch('/:id/payment', authorizePermission('BILLING_WRITE'), [
         await pool.query(
           'UPDATE studies SET accession_number = $1, accession_generated_at = CURRENT_TIMESTAMP WHERE id = $2',
           [accessionNumber, currentBill.study_id]
+        );
+      }
+
+      // Generate per-study accession numbers for STUDY-type bill_items
+      const { rows: studyItems } = await pool.query(
+        `SELECT id FROM bill_items WHERE bill_id = $1 AND item_type = 'STUDY' AND active = true AND accession_number IS NULL ORDER BY id`,
+        [id]
+      );
+      for (const item of studyItems) {
+        const { rows: [acc] } = await pool.query('SELECT generate_accession_number() AS acc');
+        await pool.query(
+          `UPDATE bill_items SET accession_number = $1, exam_workflow_status = 'EXAM_SCHEDULED', updated_at = NOW() WHERE id = $2`,
+          [acc.acc, item.id]
         );
       }
 

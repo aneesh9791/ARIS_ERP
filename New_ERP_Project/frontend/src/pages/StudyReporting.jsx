@@ -80,6 +80,9 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
   const [loadingRep, setLoadingRep]   = useState(true);
   const [saving, setSaving]           = useState(false);
   const [err, setErr]                 = useState('');
+  const [sharedAlreadySaved, setSharedAlreadySaved] = useState(false);
+  // items already used in OTHER studies of same bill: Set of item_master_id
+  const [crossStudyDupes, setCrossStudyDupes] = useState(new Set());
 
   useEffect(() => {
     const load = async () => {
@@ -110,6 +113,7 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
           // Shared: bill_item_id IS NULL
           const savedShared = allSaved.filter(c => !c.bill_item_id);
           if (savedShared.length) {
+            setSharedAlreadySaved(true);
             const savedIds = new Set(savedShared.map(s => s.item_master_id));
             setSharedRows([
               ...savedShared.map(c => ({ item_master_id: c.item_master_id, item_name: c.item_name,
@@ -130,6 +134,12 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
               ...tplStudy.filter(t => !savedIds.has(t.item_master_id)),
             ]);
           } else { setStudyRows(tplStudy); }
+
+          // Cross-study duplicate detection: items saved for OTHER studies in this bill
+          const otherStudyItems = allSaved.filter(c => c.bill_item_id && c.bill_item_id !== study.id);
+          if (otherStudyItems.length) {
+            setCrossStudyDupes(new Set(otherStudyItems.map(c => c.item_master_id)));
+          }
         } else {
           setSharedRows(tplShared);
           setStudyRows(tplStudy);
@@ -183,6 +193,25 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
 
   const confirm = async () => {
     if (!selected) { setErr('Please select a reporter'); return; }
+
+    // Warn if shared consumables already exist for this bill (entered from another study)
+    const hasExistingShared = sharedRows.some(r => r.alreadySaved);
+    const hasNewShared = sharedRows.some(r => !r.alreadySaved && parseInt(r.qty_used) > 0);
+    if (hasExistingShared || hasNewShared) {
+      const existingNames = sharedRows.filter(r => r.alreadySaved).map(r => r.item_name).join(', ');
+      const msg = hasExistingShared
+        ? `Shared consumables already recorded for this patient from a previous study:\n${existingNames}\n\nSaving will update these shared records. Continue?`
+        : `You are saving shared (patient-level) consumables that apply to the whole bill, not just this study. Continue?`;
+      if (!window.confirm(msg)) return;
+    }
+
+    // Warn if any per-study items in this study already appear in another study of the same bill
+    const crossDupeRows = studyRows.filter(r => parseInt(r.qty_used) > 0 && crossStudyDupes.has(r.item_master_id));
+    if (crossDupeRows.length > 0) {
+      const names = crossDupeRows.map(r => r.item_name).join(', ');
+      if (!window.confirm(`The following items were already recorded for another study in this bill:\n\n${names}\n\nThis may be a duplicate entry (e.g. contrast given once but entered twice). Continue anyway?`)) return;
+    }
+
     setSaving(true); setErr('');
     try {
       // Step 1: Mark exam complete
@@ -191,7 +220,7 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
         headers: hdrs(),
         body: JSON.stringify({
           reporter_radiologist_id: selected.id,
-          rate_snapshot: selected.rate,
+          rate_snapshot: selected.total_rate,
         }),
       });
       const d = await r.json();
@@ -277,6 +306,16 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
                         <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                           Patient-level (shared — one per bill)
                         </p>
+                        {sharedAlreadySaved && (
+                          <div className="flex items-start gap-2 mb-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                            <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                            </svg>
+                            <p className="text-xs text-amber-700">
+                              These shared items were already recorded for another study in this bill. Grayed items are saved — edit only if quantities differ.
+                            </p>
+                          </div>
+                        )}
                         <ConsumableRowList rows={sharedRows} onChangeQty={changeSharedQty} onRemove={removeShared}/>
                       </div>
                     )}
@@ -286,6 +325,16 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
                         <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                           This study — {study.study_name || study.modality}
                         </p>
+                        {studyRows.some(r => crossStudyDupes.has(r.item_master_id)) && (
+                          <div className="flex items-start gap-2 mb-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
+                            <svg className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                            </svg>
+                            <p className="text-xs text-orange-700">
+                              <strong>Possible duplicate:</strong> {studyRows.filter(r => crossStudyDupes.has(r.item_master_id)).map(r => r.item_name).join(', ')} already recorded for another study in this bill. Remove if this was a single administration.
+                            </p>
+                          </div>
+                        )}
                         <ConsumableRowList rows={studyRows} onChangeQty={changeStudyQty} onRemove={removeStudy}/>
                       </div>
                     )}
