@@ -1,9 +1,10 @@
 # ARIS MWL Server — Python dependencies
+# Compatible with Python 3.8.x and above
 # Install with:  pip install -r requirements.txt
 
-customtkinter>=5.2.0     # Modern Tk UI (Windows dark/light mode aware)
-pynetdicom>=2.0.2        # DICOM networking — C-FIND SCP
-pydicom>=2.4.0           # DICOM dataset / dataset building
-requests>=2.31.0         # HTTP calls to ARIS ERP API
-pystray>=0.19.0          # Windows system tray icon
-Pillow>=10.0.0           # Icon image generation (required by pystray)
+customtkinter>=5.2.0          # Modern Tk UI (Windows dark/light mode aware)
+pynetdicom>=2.0.2,<3.0        # DICOM networking — C-FIND SCP
+pydicom>=2.4.0,<3.0           # DICOM dataset building  (3.x requires Python 3.9+)
+requests>=2.28.0               # HTTP calls to ARIS ERP API
+pystray>=0.19.0                # Windows system tray icon
+Pillow>=9.5.0,<10.4.0         # Icon image generation  (10.4+ requires Python 3.9+)

@@ -7,10 +7,9 @@
 ;   →  output:   dist\ARIS_MWL_Server_Setup.exe
 ;
 ; Windows compatibility:
-;   Minimum: Windows 8.1 / Server 2012 R2  (Python 3.9+ requirement)
-;   Tested:  Windows 8.1, 10, 11
-;   Note:    Windows 7 is NOT supported — Python 3.9+ does not run on Win 7.
-;            For Win 7 support a Python 3.8 build would be required.
+;   Minimum: Windows 7 SP1  (Python 3.8 supports Vista SP2 and later)
+;   Tested:  Windows 7, 10, 11
+;   Built with Python 3.8.x
 ; ─────────────────────────────────────────────────────────────────────────────
 
 [Setup]
@@ -66,9 +65,8 @@ DisableProgramGroupPage=no
 
 ; ── Platform ───────────────────────────────────────────────────────────────
 ArchitecturesInstallIn64BitMode=x64compatible
-; Windows 8.1 (NT 6.3) is the true minimum for Python 3.9+.
-; Blocking Win 7 prevents a confusing silent failure on first launch.
-MinVersion=6.3
+; Windows 7 SP1 (NT 6.1.1) — Python 3.8 supports Windows Vista SP2 and later.
+MinVersion=6.1sp1
 
 
 ; ─────────────────────────────────────────────────────────────────────────────
