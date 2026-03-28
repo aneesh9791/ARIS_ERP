@@ -342,12 +342,17 @@ def self_test(local_ae: str, port: int, timeout: int = 10) -> tuple:
         except Exception as exc:
             return False, f'{type(exc).__name__}: {exc}', 0
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        fut = ex.submit(_attempt)
-        try:
-            return fut.result(timeout=timeout + 2)
-        except concurrent.futures.TimeoutError:
-            return False, f'Self-test timed out after {timeout}s — SCP not responding', 0
+    # Use explicit shutdown(wait=False) so that a TimeoutError doesn't cause
+    # the with-block __exit__ to block waiting for the still-running thread.
+    ex  = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(_attempt)
+    try:
+        result = fut.result(timeout=timeout + 2)
+    except concurrent.futures.TimeoutError:
+        result = (False, f'Self-test timed out after {timeout}s — SCP not responding', 0)
+    finally:
+        ex.shutdown(wait=False)
+    return result
 
 
 def echo_modality(remote_ip: str, remote_port: int,
@@ -388,9 +393,12 @@ def echo_modality(remote_ip: str, remote_port: int,
             ms = int((time.monotonic() - t0) * 1000)
             return False, f'{type(exc).__name__}: {exc}', ms
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        fut = ex.submit(_attempt)
-        try:
-            return fut.result(timeout=timeout + 2)
-        except concurrent.futures.TimeoutError:
-            return False, f'C-ECHO timed out after {timeout}s — {remote_ip}:{remote_port} not responding', 0
+    ex  = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(_attempt)
+    try:
+        result = fut.result(timeout=timeout + 2)
+    except concurrent.futures.TimeoutError:
+        result = (False, f'C-ECHO timed out after {timeout}s — {remote_ip}:{remote_port} not responding', 0)
+    finally:
+        ex.shutdown(wait=False)
+    return result

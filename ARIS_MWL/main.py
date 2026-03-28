@@ -61,10 +61,12 @@ class App(ctk.CTk):
         self.minsize(900, 580)
 
         self.cfg, _config_warning = cfg_module.load()
-        self._stop_refresh    = threading.Event()
-        self._refresh_running = False
+        self._stop_refresh       = threading.Event()
+        self._refresh_running    = False
+        self._refresh_in_progress = False   # guard against parallel manual refreshes
         self._last_good_sync: Optional[datetime] = None
         self._config_warning  = _config_warning
+        self._alive           = True        # cleared on destroy; guards self.after() in threads
 
         # Register DICOM log callback before building UI
         dicom_server.set_log_callback(self._log)
@@ -337,8 +339,9 @@ class App(ctk.CTk):
 
         row1 = ctk.CTkFrame(frm1, fg_color='transparent')
         row1.pack(anchor='w', padx=14, pady=(0, 12))
-        ctk.CTkButton(row1, text='▶  Test ERP Connection', width=180,
-                      command=self._diag_test_erp).pack(side='left')
+        self._btn_diag_erp = ctk.CTkButton(row1, text='▶  Test ERP Connection', width=180,
+                                            command=self._diag_test_erp)
+        self._btn_diag_erp.pack(side='left')
         self._diag_lbl_erp = ctk.CTkLabel(row1, text='', width=420,
                                            font=ctk.CTkFont(size=12))
         self._diag_lbl_erp.pack(side='left', padx=12)
@@ -358,8 +361,9 @@ class App(ctk.CTk):
 
         row2 = ctk.CTkFrame(frm2, fg_color='transparent')
         row2.pack(anchor='w', padx=14, pady=(0, 12))
-        ctk.CTkButton(row2, text='▶  Run Self-test', width=180,
-                      command=self._diag_self_test).pack(side='left')
+        self._btn_diag_self = ctk.CTkButton(row2, text='▶  Run Self-test', width=180,
+                                             command=self._diag_self_test)
+        self._btn_diag_self.pack(side='left')
         self._diag_lbl_self = ctk.CTkLabel(row2, text='', width=420,
                                             font=ctk.CTkFont(size=12))
         self._diag_lbl_self.pack(side='left', padx=12)
@@ -397,8 +401,9 @@ class App(ctk.CTk):
 
         row3 = ctk.CTkFrame(frm3, fg_color='transparent')
         row3.pack(anchor='w', padx=14, pady=(4, 12))
-        ctk.CTkButton(row3, text='▶  Send C-ECHO', width=180,
-                      command=self._diag_echo).pack(side='left')
+        self._btn_diag_echo = ctk.CTkButton(row3, text='▶  Send C-ECHO', width=180,
+                                             command=self._diag_echo)
+        self._btn_diag_echo.pack(side='left')
         self._diag_lbl_echo = ctk.CTkLabel(row3, text='', width=420,
                                             font=ctk.CTkFont(size=12))
         self._diag_lbl_echo.pack(side='left', padx=12)
@@ -447,26 +452,36 @@ class App(ctk.CTk):
     # ── Diagnostics commands ──────────────────────────────────────────────────
 
     def _diag_test_erp(self):
-        self._diag_lbl_erp.configure(text='Testing…', text_color=GRAY)
+        self._btn_diag_erp.configure(state='disabled', text='Testing…')
+        self._diag_lbl_erp.configure(text='', text_color=GRAY)
         def _run():
             ok, msg = erp_client.test_connection(self.cfg)
-            color = SUCCESS if ok else DANGER
+            color  = SUCCESS if ok else DANGER
             prefix = '✓  ' if ok else '✗  '
-            self.after(0, lambda: self._diag_lbl_erp.configure(
-                text=prefix + msg, text_color=color))
+            self.after(0, lambda: (
+                self._diag_lbl_erp.configure(text=prefix + msg, text_color=color),
+                self._btn_diag_erp.configure(state='normal', text='▶  Test ERP Connection'),
+            ))
             self._log(f'ERP test: {msg}')
         threading.Thread(target=_run, daemon=True).start()
 
     def _diag_self_test(self):
-        self._diag_lbl_self.configure(text='Testing…', text_color=GRAY)
-        ae   = self.cfg.get('ae_title', 'ARIS_MWL')
-        port = int(self.cfg.get('dicom_port', 104))
+        self._btn_diag_self.configure(state='disabled', text='Testing…')
+        self._diag_lbl_self.configure(text='', text_color=GRAY)
+        # Read port from the live UI field (not stale cfg) so test matches what's configured
+        ae   = self._vars_dicom['ae_title'].get().strip() or self.cfg.get('ae_title', 'ARIS_MWL')
+        try:
+            port = int(self._vars_dicom['dicom_port'].get().strip() or self.cfg.get('dicom_port', 104))
+        except ValueError:
+            port = int(self.cfg.get('dicom_port', 104))
         def _run():
             ok, msg, count = dicom_server.self_test(ae, port)
             color  = SUCCESS if ok else DANGER
             prefix = '✓  ' if ok else '✗  '
-            self.after(0, lambda: self._diag_lbl_self.configure(
-                text=prefix + msg, text_color=color))
+            self.after(0, lambda: (
+                self._diag_lbl_self.configure(text=prefix + msg, text_color=color),
+                self._btn_diag_self.configure(state='normal', text='▶  Run Self-test'),
+            ))
             self._log(f'DICOM self-test: {msg}')
         threading.Thread(target=_run, daemon=True).start()
 
@@ -475,6 +490,8 @@ class App(ctk.CTk):
         port      = port      or self._diag_port.get().strip()
         remote_ae = remote_ae or self._diag_remote_ae.get().strip()
         lbl       = result_label or self._diag_lbl_echo
+        # Only manage the main echo button when called directly (not from Echo All/Selected)
+        own_btn   = result_label is None
 
         if not ip or not port or not remote_ae:
             lbl.configure(text='Fill in IP, Port and AE Title', text_color=WARN)
@@ -488,6 +505,8 @@ class App(ctk.CTk):
             lbl.configure(text=f'Invalid port: "{port}"', text_color=WARN)
             return
 
+        if own_btn:
+            self._btn_diag_echo.configure(state='disabled', text='Sending…')
         lbl.configure(text=f'Sending C-ECHO to {remote_ae} @ {ip}:{port_int} …', text_color=GRAY)
         local_ae = self.cfg.get('ae_title', 'ARIS_MWL')
 
@@ -495,9 +514,12 @@ class App(ctk.CTk):
             ok, msg, ms = dicom_server.echo_modality(ip, port_int, remote_ae, local_ae)
             color  = SUCCESS if ok else DANGER
             prefix = '✓  ' if ok else '✗  '
-            self.after(0, lambda: lbl.configure(text=prefix + msg, text_color=color))
+            def _done():
+                lbl.configure(text=prefix + msg, text_color=color)
+                if own_btn:
+                    self._btn_diag_echo.configure(state='normal', text='▶  Send C-ECHO')
+            self.after(0, _done)
             self._log(f'C-ECHO {remote_ae}@{ip}:{port} → {msg}')
-            return ok, ms
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -611,6 +633,9 @@ class App(ctk.CTk):
 
     def _cmd_refresh(self):
         """Fetch worklist from ERP in a background thread."""
+        if self._refresh_in_progress:
+            return   # drop duplicate request — previous fetch still running
+        self._refresh_in_progress = True
         self._sync_runtime_cfg()
 
         def _fetch():
@@ -625,13 +650,14 @@ class App(ctk.CTk):
                 msg = str(exc)
                 self.after(0, self._set_erp_status, False, msg)
                 self._log(f'Refresh error: {msg}')
+            finally:
+                self._refresh_in_progress = False
 
         threading.Thread(target=_fetch, daemon=True).start()
 
     def _cmd_start_dicom(self):
         ae          = self._vars_dicom['ae_title'].get().strip()    or 'ARIS_MWL'
-        allowed_ips = self._vars_dicom.get('allowed_ips',
-                          tk.StringVar()).get().strip()
+        allowed_ips = self._vars_dicom['allowed_ips'].get().strip()
         port_str    = self._vars_dicom['dicom_port'].get().strip()
         try:
             port = int(port_str) if port_str else self.cfg.get('dicom_port', 104)
@@ -877,7 +903,12 @@ class App(ctk.CTk):
     def _log(self, msg: str):
         ts   = datetime.now().strftime('%H:%M:%S')
         line = f'[{ts}]  {msg}\n'
-        self.after(0, self._append_log, line)
+        if not self._alive:
+            return   # window already destroyed — log to file handler only
+        try:
+            self.after(0, self._append_log, line)
+        except Exception:
+            pass   # Tcl/Tk destroyed before thread finished
 
     _MAX_LOG_LINES = 2000
 
@@ -936,12 +967,16 @@ class App(ctk.CTk):
         self.after(0, self.focus_force)
 
     def _tray_exit(self, icon=None, item=None):
+        self._alive = False
         self._stop_refresh.set()
         if dicom_server.is_running():
             dicom_server.stop()
         if self._tray_icon:
             self._tray_icon.stop()
-        self.after(0, self.destroy)
+        try:
+            self.after(0, self.destroy)
+        except Exception:
+            pass
 
     # ── Windows startup registration ──────────────────────────────────────────
 

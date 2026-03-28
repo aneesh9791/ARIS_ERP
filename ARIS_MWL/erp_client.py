@@ -20,9 +20,12 @@ def fetch_worklist(cfg: dict) -> list:
     """
     Call GET /api/mwl/worklist on the ARIS ERP.
     Returns list of DICOM-ready worklist items.
-    Raises ValueError if URL is not HTTPS.
+    Raises ValueError if URL is not HTTPS or required config keys are missing.
     Raises requests.HTTPError or requests.ConnectionError on failure.
     """
+    missing = [k for k in ('erp_url', 'erp_token', 'erp_center_id') if not cfg.get(k)]
+    if missing:
+        raise ValueError(f'Missing config: {", ".join(missing)}')
     _check_https(cfg['erp_url'])
 
     url = cfg['erp_url'].rstrip('/') + '/api/mwl/worklist'
