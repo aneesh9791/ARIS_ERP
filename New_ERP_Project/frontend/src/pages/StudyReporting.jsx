@@ -924,6 +924,11 @@ const StudyReporting = () => {
   const [centerId, setCenterId] = useState(userCenterId);
   const [centers, setCenters] = useState([]);
 
+  const today = new Date().toISOString().slice(0, 10);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
+  const [dateTo, setDateTo]     = useState(today);
+
   useEffect(() => {
     if (!isCorp) return;
     fetch('/api/centers', { headers: hdrs() }).then(r => r.json()).then(d => {
@@ -961,11 +966,12 @@ const StudyReporting = () => {
   // Always fetch KPI totals across all statuses (independent of active tab)
   const loadKpis = useCallback(async () => {
     const cq = centerId ? `&center_id=${centerId}` : '';
+    const dq = `&from=${dateFrom}&to=${dateTo}`;
     try {
       const [s1, s2, s3] = await Promise.all([
-        fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_SCHEDULED&limit=1000${cq}`, { headers: hdrs() }).then(r => r.json()),
-        fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_COMPLETED&limit=1000${cq}`, { headers: hdrs() }).then(r => r.json()),
-        fetch(`/api/rad-reporting/worklist?exam_workflow_status=REPORT_COMPLETED&limit=1000${cq}`, { headers: hdrs() }).then(r => r.json()),
+        fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_SCHEDULED&limit=1000${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
+        fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_COMPLETED&limit=1000${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
+        fetch(`/api/rad-reporting/worklist?exam_workflow_status=REPORT_COMPLETED&limit=1000${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
       ]);
       setKpis({
         scheduled:  s1.total || s1.studies?.length || 0,
@@ -973,18 +979,19 @@ const StudyReporting = () => {
         reportDone: s3.total || s3.studies?.length || 0,
       });
     } catch { /* non-critical */ }
-  }, [centerId]);
+  }, [centerId, dateFrom, dateTo]);
 
   const load = useCallback(async () => {
     setLoading(true);
     const status = statusForTab[activeTab];
     const cq = centerId ? `&center_id=${centerId}` : '';
+    const dq = `&from=${dateFrom}&to=${dateTo}`;
     try {
       if (!status) {
         const [s1, s2, s3] = await Promise.all([
-          fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_SCHEDULED&limit=100${cq}`, { headers: hdrs() }).then(r => r.json()),
-          fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_COMPLETED&limit=100${cq}`, { headers: hdrs() }).then(r => r.json()),
-          fetch(`/api/rad-reporting/worklist?exam_workflow_status=REPORT_COMPLETED&limit=100${cq}`, { headers: hdrs() }).then(r => r.json()),
+          fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_SCHEDULED&limit=100${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
+          fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_COMPLETED&limit=100${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
+          fetch(`/api/rad-reporting/worklist?exam_workflow_status=REPORT_COMPLETED&limit=100${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
         ]);
         const all = [
           ...(s1.studies || []),
@@ -993,12 +1000,12 @@ const StudyReporting = () => {
         ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         setStudies(all);
       } else {
-        const r = await fetch(`/api/rad-reporting/worklist?exam_workflow_status=${status}&limit=100${cq}`, { headers: hdrs() });
+        const r = await fetch(`/api/rad-reporting/worklist?exam_workflow_status=${status}&limit=100${cq}${dq}`, { headers: hdrs() });
         const d = await r.json();
         if (d.success) setStudies(d.studies || []);
       }
     } finally { setLoading(false); }
-  }, [activeTab, centerId]);
+  }, [activeTab, centerId, dateFrom, dateTo]);
 
   useEffect(() => { load(); loadKpis(); }, [load, loadKpis]);
 
@@ -1023,17 +1030,29 @@ const StudyReporting = () => {
           <h1 className="text-xl font-bold text-slate-800">Worklist</h1>
           <p className="text-sm text-slate-500 mt-0.5">Track exam and reporting workflow for all paid studies</p>
         </div>
-        {isCorp && (
-          <select
-            value={centerId}
-            onChange={e => setCenterId(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 w-full sm:w-auto sm:min-w-[180px]">
-            <option value="">All Centers</option>
-            {centers.filter(c => c.active !== false).map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-slate-500 whitespace-nowrap">From</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-slate-500 whitespace-nowrap">To</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          {isCorp && (
+            <select
+              value={centerId}
+              onChange={e => setCenterId(e.target.value)}
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 sm:min-w-[160px]">
+              <option value="">All Centers</option>
+              {centers.filter(c => c.active !== false).map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
       {/* KPI row */}

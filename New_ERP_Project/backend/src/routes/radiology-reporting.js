@@ -18,7 +18,7 @@ router.use(authorizePermission('RADIOLOGY_REPORT', 'RADIOLOGY_VIEW'));
 // status, and reporter assignment.
 router.get('/worklist', async (req, res) => {
   try {
-    const { exam_workflow_status, center_id, page = 1, limit = 50 } = req.query;
+    const { exam_workflow_status, center_id, from, to, page = 1, limit = 50 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const conds  = ["pb.payment_status = 'PAID'", 'pb.active = true', 'bi.active = true', "bi.item_type = 'STUDY'"];
@@ -31,6 +31,14 @@ router.get('/worklist', async (req, res) => {
     if (exam_workflow_status) {
       params.push(exam_workflow_status);
       conds.push(`COALESCE(bi.exam_workflow_status, 'EXAM_SCHEDULED') = $${params.length}`);
+    }
+    if (from) {
+      params.push(from);
+      conds.push(`pb.bill_date >= $${params.length}`);
+    }
+    if (to) {
+      params.push(to);
+      conds.push(`pb.bill_date <= $${params.length}`);
     }
 
     const { rows } = await pool.query(
