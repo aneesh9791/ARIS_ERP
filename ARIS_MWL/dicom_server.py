@@ -263,18 +263,20 @@ def start(ae_title: str, port: int, allowed_ips: str = '') -> None:
     else:
         _allowed_ips = set()
 
-    ae_title_bytes = ae_title.encode('ascii', errors='ignore').ljust(16)[:16]
-    ae = AE(ae_title=ae_title_bytes)
+    ae_title_clean = ae_title.strip()
+    ae = AE(ae_title=ae_title_clean)
     ae.add_supported_context(ModalityWorklistInformationFind)
+    ae.add_supported_context(Verification)   # C-ECHO — modalities always ping first
 
     handlers = [
         (evt.EVT_C_FIND,     _handle_find),
+        (evt.EVT_C_ECHO,     lambda event: 0x0000),  # accept all C-ECHO pings
         (evt.EVT_CONN_OPEN,  _handle_conn_open),
         (evt.EVT_CONN_CLOSE, _handle_conn_close),
     ]
 
-    _server = ae.start_server(('', port), block=False, evt_handlers=handlers)
-    _log(f'DICOM MWL SCP started — AE={ae_title.strip()}  Port={port}')
+    _server = ae.start_server(('0.0.0.0', port), block=False, evt_handlers=handlers)
+    _log(f'DICOM MWL SCP started — AE={ae_title_clean}  Port={port}')
 
 
 def stop() -> None:
@@ -296,7 +298,7 @@ def is_running() -> bool:
 
 # ── Diagnostic tests ──────────────────────────────────────────────────────────
 
-def self_test(local_ae: str, port: int) -> tuple:
+def self_test(local_ae: str, port: int, timeout: int = 10) -> tuple:
     """
     C-FIND self-test: connect to localhost SCP and send empty query.
     Returns (success: bool, message: str, count: int).
@@ -306,6 +308,9 @@ def self_test(local_ae: str, port: int) -> tuple:
 
     ae = AE()
     ae.add_requested_context(ModalityWorklistInformationFind)
+    ae.acse_timeout    = timeout   # cap association setup
+    ae.network_timeout = timeout   # cap network inactivity
+    ae.dimse_timeout   = timeout   # cap C-FIND response wait
 
     try:
         assoc = ae.associate(
@@ -338,15 +343,16 @@ def self_test(local_ae: str, port: int) -> tuple:
 
 def echo_modality(remote_ip: str, remote_port: int,
                   remote_ae: str, local_ae: str,
-                  timeout: int = 15) -> tuple:
+                  timeout: int = 10) -> tuple:
     """
     C-ECHO to a remote modality (DICOM ping).
     Returns (success: bool, message: str, elapsed_ms: int).
     """
     ae = AE(ae_title=local_ae.encode('ascii').ljust(16)[:16])
     ae.add_requested_context(Verification)
-    ae.acse_timeout  = timeout
+    ae.acse_timeout    = timeout
     ae.network_timeout = timeout
+    ae.dimse_timeout   = timeout
 
     t0 = time.monotonic()
     try:

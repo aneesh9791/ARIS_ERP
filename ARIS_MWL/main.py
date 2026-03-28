@@ -647,15 +647,28 @@ class App(ctk.CTk):
                                       fg_color=DANGER, hover_color='#a93226')
         except PermissionError:
             msg = (f'Permission denied on port {port}.\n\n'
-                   f'Port {port} requires Administrator privileges.\n\n'
-                   'Solution: Right-click the EXE → Properties → Compatibility\n'
-                   '→ tick "Run this program as an administrator"\n\n'
-                   'Or change the port to 4242 in Settings.')
+                   f'Port {port} requires Administrator privileges on Windows.\n\n'
+                   'Fix 1 (recommended):  Change the port to 11112 in Settings\n'
+                   '         (set your scanner to port 11112 too — no admin needed)\n\n'
+                   'Fix 2:  Right-click the EXE → Run as Administrator\n\n'
+                   'Fix 3:  Right-click EXE → Properties → Compatibility\n'
+                   '        → tick "Run this program as an administrator"')
             self._log(f'DICOM start failed: permission denied on port {port}')
             messagebox.showerror('Permission Denied', msg, parent=self)
+        except OSError as exc:
+            err = str(exc)
+            if 'in use' in err.lower() or '98' in err or '10048' in err:
+                msg = (f'Port {port} is already in use by another application.\n\n'
+                       'Another DICOM server or service may be running on this port.\n\n'
+                       'Try changing the port to 11112 in Settings.')
+            else:
+                msg = f'Network error starting DICOM server:\n\n{exc}'
+            self._log(f'DICOM start failed (OSError): {exc}')
+            messagebox.showerror('DICOM Server Error', msg, parent=self)
         except Exception as exc:
-            self._log(f'DICOM start failed: {exc}')
-            messagebox.showerror('DICOM Server Error', str(exc), parent=self)
+            self._log(f'DICOM start failed: {type(exc).__name__}: {exc}')
+            messagebox.showerror('DICOM Server Error',
+                                 f'{type(exc).__name__}:\n\n{exc}', parent=self)
 
     def _cmd_stop_dicom(self):
         dicom_server.stop()
