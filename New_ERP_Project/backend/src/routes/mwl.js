@@ -226,8 +226,9 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
         sm.cpt_code,
         sm.billing_code,
 
-        -- Referring physician
-        p.referring_physician_code                  AS resolved_physician_code,
+        -- Referring physician: bill-level overrides patient default
+        COALESCE(pb.referring_physician_code,
+                 p.referring_physician_code)        AS resolved_physician_code,
         rpm.physician_name                          AS referring_physician_name,
         rpm.specialty                               AS referring_physician_specialty,
 
@@ -247,7 +248,7 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
       LEFT JOIN study_definitions   sd  ON sd.study_code = bi.study_code
       LEFT JOIN study_master        sm  ON sm.study_code = bi.study_code
       LEFT JOIN referring_physician_master rpm
-                ON rpm.physician_code = p.referring_physician_code
+                ON rpm.physician_code = COALESCE(pb.referring_physician_code, p.referring_physician_code)
       WHERE ${conds.join(' AND ')}
       ORDER BY pb.bill_date ASC, pb.created_at ASC
     `, params);
