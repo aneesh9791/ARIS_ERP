@@ -15,28 +15,36 @@ const today = () => new Date().toISOString().split('T')[0];
 const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0]; };
 
 // ── REPORT CATALOGUE ──────────────────────────────────────────────────────────
+// techOnly: true  → visible to all roles
+// techOnly: false → hidden from TECHNICIAN / LAB_TECHNICIAN
 const REPORTS = [
+  {
+    group: 'Clinical',
+    items: [
+      { id: 'worklist', label: 'Completed Studies', desc: 'All patients with completed study & report', techOnly: true },
+    ],
+  },
   {
     group: 'Operations',
     items: [
-      { id: 'dashboard',   label: 'Operations Dashboard',  desc: 'Studies, revenue & modality summary' },
-      { id: 'radiology',   label: 'Radiology Report',      desc: 'Radiologist performance & workload' },
+      { id: 'dashboard',   label: 'Operations Dashboard',  desc: 'Studies, revenue & modality summary',   techOnly: false },
+      { id: 'radiology',   label: 'Radiology Report',      desc: 'Radiologist performance & workload',    techOnly: false },
     ],
   },
   {
     group: 'Billing',
     items: [
-      { id: 'billing',     label: 'Billing Summary',       desc: 'Collections, pending & payment modes' },
+      { id: 'billing',     label: 'Billing Summary',       desc: 'Collections, pending & payment modes',  techOnly: false },
     ],
   },
   {
     group: 'Finance',
     items: [
-      { id: 'pl',          label: 'Profit & Loss',         desc: 'Revenue vs expenses by account' },
-      { id: 'trial',       label: 'Trial Balance',         desc: 'Debit / credit balances by account' },
-      { id: 'balsheet',    label: 'Balance Sheet',         desc: 'Assets, liabilities & equity' },
-      { id: 'ap-aging',    label: 'AP Aging',              desc: 'Outstanding vendor payables' },
-      { id: 'gst',         label: 'GST Reconciliation',    desc: 'GST collected vs input tax credit' },
+      { id: 'pl',          label: 'Profit & Loss',         desc: 'Revenue vs expenses by account',        techOnly: false },
+      { id: 'trial',       label: 'Trial Balance',         desc: 'Debit / credit balances by account',    techOnly: false },
+      { id: 'balsheet',    label: 'Balance Sheet',         desc: 'Assets, liabilities & equity',          techOnly: false },
+      { id: 'ap-aging',    label: 'AP Aging',              desc: 'Outstanding vendor payables',            techOnly: false },
+      { id: 'gst',         label: 'GST Reconciliation',    desc: 'GST collected vs input tax credit',      techOnly: false },
     ],
   },
 ];
@@ -559,10 +567,70 @@ const GSTReport = ({ data, dateFrom, dateTo }) => {
   );
 };
 
+// 9. Completed Studies Worklist
+const WorklistReport = ({ data }) => {
+  const rows  = data?.rows  || [];
+  const total = data?.total_amount || 0;
+
+  const calcAge = dob => {
+    if (!dob) return '—';
+    return `${new Date().getFullYear() - new Date(dob).getFullYear()} yrs`;
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Stat label="Completed Studies" value={fmtNum(data?.total_studies)} color="teal" />
+        <Stat label="Total Bill Amount" value={fmtINR(total)}               color="green" />
+        <Stat label="Period"            value={`${fmtDate(data?.date_from)} – ${fmtDate(data?.date_to)}`} color="gray" />
+      </div>
+      <Card>
+        <Table
+          cols={[
+            { key: 'study_date',   label: 'Date',         fmt: v => fmtDate(v) },
+            { key: 'patient_name', label: 'Patient Name', bold: true },
+            { key: 'pid',          label: 'PID' },
+            { key: 'age',          label: 'Age',          fmt: (v, row) => v != null ? `${v} yrs` : calcAge(row.date_of_birth) },
+            { key: 'study_name',   label: 'Study' },
+            { key: 'bill_amount',  label: 'Bill Amount',  right: true, bold: true, fmt: v => fmtINR(v) },
+          ]}
+          rows={rows}
+          empty="No completed studies for the selected period"
+        />
+        {rows.length > 0 && (
+          <div className="flex justify-end pt-3 border-t border-gray-100 mt-2">
+            <div className="text-sm font-bold text-teal-700">
+              Total: {fmtINR(total)}
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
 // ── Main Reports Page ──────────────────────────────────────────────────────────
+const getUserRole = () => {
+  try { return (JSON.parse(localStorage.getItem('user')) || {}).role || ''; } catch { return ''; }
+};
+
+const TECH_ROLES = ['TECHNICIAN', 'LAB_TECHNICIAN'];
+
+const visibleReports = (role) => {
+  const isTech = TECH_ROLES.includes(role);
+  return REPORTS.map(g => ({
+    ...g,
+    items: g.items.filter(i => !isTech || i.techOnly),
+  })).filter(g => g.items.length > 0);
+};
+
 export default function Reports() {
-  const [selected,  setSelected]  = useState('dashboard');
-  const [dateFrom,  setDateFrom]  = useState(daysAgo(30));
+  const userRole = getUserRole();
+  const isTech   = TECH_ROLES.includes(userRole);
+  const reports  = visibleReports(userRole);
+
+  const [selected,  setSelected]  = useState(isTech ? 'worklist' : 'dashboard');
+  const [dateFrom,  setDateFrom]  = useState(isTech ? today() : daysAgo(30));
   const [dateTo,    setDateTo]    = useState(today());
   const [centerId,  setCenterId]  = useState('');
   const [centers,   setCenters]   = useState([]);
@@ -588,7 +656,9 @@ export default function Reports() {
     try {
       let url;
       const period = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000));
-      if (id === 'dashboard' || id === 'billing') {
+      if (id === 'worklist') {
+        url = `/api/dashboard-reports/worklist?date_from=${from}&date_to=${to}${cq}`;
+      } else if (id === 'dashboard' || id === 'billing') {
         url = `/api/dashboard-reports/dashboard?date_from=${from}&date_to=${to}&period=${period}${cq}`;
       } else if (id === 'radiology') {
         url = `/api/radiology-reporting/dashboard?period=${period}${cq}`;
@@ -622,6 +692,25 @@ export default function Reports() {
     const label = REPORTS.flatMap(g => g.items).find(i => i.id === selected)?.label || selected;
     const centerName = centerId ? (centers.find(c => String(c.id) === String(centerId))?.name || '') : 'All Centers';
     const subtitle = `Period: ${dateFrom} to ${dateTo}  |  Center: ${centerName}`;
+
+    if (selected === 'worklist') {
+      const calcAgeExport = (dob) => {
+        if (!dob) return '—';
+        return `${new Date().getFullYear() - new Date(dob).getFullYear()} yrs`;
+      };
+      return { label, subtitle, sections: [{
+        title: 'Completed Studies',
+        headers: ['Date', 'Patient Name', 'PID', 'Age', 'Study', 'Bill Amount (INR)'],
+        rows: (d?.rows || []).map(r => [
+          r.study_date ? new Date(r.study_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+          r.patient_name,
+          r.pid,
+          r.age != null ? `${r.age} yrs` : calcAgeExport(r.date_of_birth),
+          r.study_name,
+          parseFloat(r.bill_amount || 0),
+        ]).concat([['', '', '', '', 'TOTAL', d?.total_amount || 0]]),
+      }]};
+    }
 
     if (selected === 'dashboard' || selected === 'billing') {
       const rev = d?.dashboard_data?.revenue_stats || {};
@@ -997,6 +1086,7 @@ export default function Reports() {
     const d = data[selected];
     if (!d) return null;
     switch (selected) {
+      case 'worklist':  return <WorklistReport  data={d} />;
       case 'dashboard': return <DashboardReport data={d} />;
       case 'billing':   return <BillingReport   data={d} />;
       case 'radiology': return <RadiologyReport data={d} />;
@@ -1009,7 +1099,7 @@ export default function Reports() {
     }
   };
 
-  const currentItem = REPORTS.flatMap(g => g.items).find(i => i.id === selected);
+  const currentItem = reports.flatMap(g => g.items).find(i => i.id === selected);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -1017,7 +1107,7 @@ export default function Reports() {
       {/* ── Sidebar ── */}
       <aside className="w-56 shrink-0 bg-white border-r border-gray-200 py-4 hidden md:block">
         <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Reports</p>
-        {REPORTS.map(group => (
+        {reports.map(group => (
           <div key={group.group} className="mb-3">
             <p className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">{group.group}</p>
             {group.items.map(item => (
@@ -1074,6 +1164,17 @@ export default function Reports() {
               </svg>
               Export
             </button>
+            {/* Print button */}
+            <button
+              onClick={() => exportReport('pdf', true)}
+              disabled={!data[selected]}
+              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 text-gray-700 flex items-center gap-1.5"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" />
+              </svg>
+              Print
+            </button>
             <button
               onClick={() => fetchReport(selected, dateFrom, dateTo, centerId)}
               disabled={loading}
@@ -1091,7 +1192,7 @@ export default function Reports() {
             onChange={e => setSelected(e.target.value)}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
           >
-            {REPORTS.map(g => (
+            {reports.map(g => (
               <optgroup key={g.group} label={g.group}>
                 {g.items.map(i => <option key={i.id} value={i.id}>{i.label}</option>)}
               </optgroup>
@@ -1130,6 +1231,14 @@ export default function Reports() {
           </div>
           {/* Quick range */}
           <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => { setDateFrom(today()); setDateTo(today()); }}
+              className={`px-3 py-2 text-xs font-medium border rounded-lg transition-colors ${
+                dateFrom === today() && dateTo === today()
+                  ? 'bg-teal-600 border-teal-600 text-white'
+                  : 'border-gray-200 hover:bg-teal-50 hover:border-teal-300 hover:text-teal-700 text-gray-600'
+              }`}
+            >Today</button>
             {[['7d','7 Days',7],['30d','30 Days',30],['90d','90 Days',90],['1y','1 Year',365]].map(([key,label,days]) => (
               <button key={key}
                 onClick={() => { setDateFrom(daysAgo(days)); setDateTo(today()); }}
