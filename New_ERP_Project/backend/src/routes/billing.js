@@ -985,6 +985,8 @@ router.get('/', async (req, res) => {
         p.pid as patient_pid,
         p.name as patient_name,
         p.phone as patient_phone,
+        p.date_of_birth,
+        p.gender,
         s.study_code,
         s.accession_number as study_accession_number,
         sd.study_name,
