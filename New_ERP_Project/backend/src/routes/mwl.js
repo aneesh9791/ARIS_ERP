@@ -281,7 +281,7 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
       const accessionNum   = r.accession_number || null;
 
       // Study Instance UID — derive from bill id (stable, reproducible)
-      const studyUID = `2.25.${BigInt('0x' + r.study_id.replace(/-/g, '')).toString()}`;
+      const studyUID = `2.25.99${String(r.study_id).replace(/\D/g, '')}`;
 
       return {
         // ── DICOM identifiers ─────────────────────────────────────────────
