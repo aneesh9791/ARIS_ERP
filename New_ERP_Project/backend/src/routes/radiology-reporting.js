@@ -9,70 +9,75 @@ const router = express.Router();
 router.use(authorizePermission('RADIOLOGY_REPORT', 'RADIOLOGY_VIEW'));
 
 // ── Study & Reporting Workflow ────────────────────────────────────────────────
+//
+// Each bill_item row is one study. The worklist returns one row per bill_item.
+// :id in exam-complete / report-complete is bill_item_id (NOT bill_id).
 
-// GET /api/rad-reporting/worklist?exam_workflow_status=&center_id=
-// Returns PAID bills (not cancelled) as study workflow items.
-// If the bill has a linked studies row, uses its exam_workflow_status;
-// otherwise defaults to EXAM_SCHEDULED.
+// GET /api/rad-reporting/worklist?exam_workflow_status=&center_id=&page=&limit=
+// Returns one row per bill_item (individual study), with per-study accession,
+// status, and reporter assignment.
 router.get('/worklist', async (req, res) => {
   try {
     const { exam_workflow_status, center_id, page = 1, limit = 50 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    // Conditions on patient_bills
-    const billConds = ["pb.payment_status = 'PAID'", "pb.active = true"];
+    const conds  = ["pb.payment_status = 'PAID'", 'pb.active = true', 'bi.active = true'];
     const params = [];
 
-    if (center_id) { params.push(center_id); billConds.push(`pb.center_id = $${params.length}`); }
-
-    // Workflow status filter (on the studies row or defaulted)
-    let statusFilter = '';
+    if (center_id) {
+      params.push(center_id);
+      conds.push(`pb.center_id = $${params.length}`);
+    }
     if (exam_workflow_status) {
       params.push(exam_workflow_status);
-      statusFilter = `AND COALESCE(s.exam_workflow_status, 'EXAM_SCHEDULED') = $${params.length}`;
+      conds.push(`COALESCE(bi.exam_workflow_status, 'EXAM_SCHEDULED') = $${params.length}`);
     }
 
     const { rows } = await pool.query(
       `SELECT
-         pb.id                                                    AS bill_id,
-         pb.id                                                    AS id,
-         COALESCE(pb.accession_number, s.accession_number, pb.invoice_number) AS accession_number,
+         bi.id                                                        AS id,
+         bi.id                                                        AS bill_item_id,
+         pb.id                                                        AS bill_id,
+         COALESCE(bi.accession_number, pb.accession_number,
+                  pb.invoice_number)                                  AS accession_number,
          pb.center_id,
-         pb.bill_date                                             AS created_at,
-         pb.notes                                                 AS study_name_fallback,
-         COALESCE(s.exam_workflow_status, 'EXAM_SCHEDULED')       AS exam_workflow_status,
-         s.id                                                     AS study_id,
+         pb.bill_date                                                 AS created_at,
+         COALESCE(bi.exam_workflow_status, 'EXAM_SCHEDULED')          AS exam_workflow_status,
+         bi.study_code,
+         bi.study_name,
+         bi.modality,
+         bi.reporter_radiologist_id,
+         bi.rate_snapshot,
+         sm.study_definition_id,
+         -- Pull reporter & JE info from linked studies row (if exists)
+         s.id                                                         AS study_id,
          s.radiologist_code,
-         s.reporter_radiologist_id,
-         s.rate_snapshot,
          s.reporting_rate,
          s.report_date,
          s.reporting_posted_at,
-         p.name                                                   AS patient_name,
-         p.phone                                                  AS patient_phone,
-         p.id                                                     AS patient_id,
-         COALESCE(sm.study_name, pb.notes, pb.invoice_number)     AS study_name,
-         sm.modality,
-         sm.study_definition_id,
-         c.name                                                   AS center_name,
-         rm.name                                                  AS reporter_name,
-         rm.type                                                  AS reporter_type
-       FROM patient_bills pb
-       LEFT JOIN patients p          ON p.id::text = pb.patient_id::text
-       LEFT JOIN studies s           ON s.id = pb.study_id AND s.active = true
-       LEFT JOIN study_master sm     ON sm.study_code = s.study_code AND sm.active = true
-       LEFT JOIN centers c           ON c.id = pb.center_id
-       LEFT JOIN radiologist_master rm ON rm.id = s.reporter_radiologist_id
-       WHERE ${billConds.join(' AND ')} ${statusFilter}
-       ORDER BY pb.bill_date DESC, pb.id DESC
+         p.name                                                       AS patient_name,
+         p.phone                                                      AS patient_phone,
+         p.id                                                         AS patient_id,
+         c.name                                                       AS center_name,
+         rm.name                                                      AS reporter_name,
+         rm.type                                                      AS reporter_type
+       FROM bill_items bi
+       JOIN patient_bills pb         ON pb.id = bi.bill_id
+       JOIN patients p               ON p.id::text = pb.patient_id::text
+       JOIN centers c                ON c.id = pb.center_id
+       LEFT JOIN study_master sm     ON sm.study_code = bi.study_code AND sm.active = true
+       LEFT JOIN studies s           ON s.bill_item_id = bi.id AND s.active = true
+       LEFT JOIN radiologist_master rm ON rm.id = bi.reporter_radiologist_id
+       WHERE ${conds.join(' AND ')}
+       ORDER BY pb.bill_date DESC, pb.id DESC, bi.id
        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, parseInt(limit), offset]
     );
 
     const { rows: cnt } = await pool.query(
-      `SELECT COUNT(*) FROM patient_bills pb
-       LEFT JOIN studies s ON s.id = pb.study_id AND s.active = true
-       WHERE ${billConds.join(' AND ')} ${statusFilter}`,
+      `SELECT COUNT(*) FROM bill_items bi
+       JOIN patient_bills pb ON pb.id = bi.bill_id
+       WHERE ${conds.join(' AND ')}`,
       params
     );
 
@@ -83,28 +88,32 @@ router.get('/worklist', async (req, res) => {
   }
 });
 
-// GET /api/rad-reporting/reporters?study_id= (study_id is bill_id in new workflow)
-// Returns reporters with their applicable rate for the given study/bill
+// GET /api/rad-reporting/reporters?bill_item_id=
+// Returns reporters with their applicable rate for the given bill_item's study.
 router.get('/reporters', async (req, res) => {
   try {
-    const { study_id } = req.query; // study_id here is actually bill_id
+    const { bill_item_id, study_id } = req.query;
     let studyCode = null;
     let modality  = null;
 
-    if (study_id) {
-      // Try bill → service name → study_master match
-      const { rows: billRows } = await pool.query(
-        `SELECT pb.service, pb.study_id,
-                sm.study_code, sm.modality
-         FROM patient_bills pb
-         LEFT JOIN studies s ON s.id = pb.study_id
-         LEFT JOIN study_master sm ON sm.billing_code = pb.service AND sm.active = true
-         WHERE pb.id = $1 LIMIT 1`, [study_id]
+    // bill_item_id is the primary key; fall back to legacy study_id (bill_id)
+    if (bill_item_id) {
+      const { rows: [bi] } = await pool.query(
+        `SELECT bi.study_code, sm.modality
+         FROM bill_items bi
+         LEFT JOIN study_master sm ON sm.study_code = bi.study_code AND sm.active = true
+         WHERE bi.id = $1`, [bill_item_id]
       );
-      if (billRows[0]) {
-        studyCode = billRows[0].study_code || null;
-        modality  = billRows[0].modality  || null;
-      }
+      if (bi) { studyCode = bi.study_code; modality = bi.modality; }
+    } else if (study_id) {
+      // Legacy: study_id was actually bill_id
+      const { rows: [bi] } = await pool.query(
+        `SELECT bi.study_code, sm.modality
+         FROM bill_items bi
+         LEFT JOIN study_master sm ON sm.study_code = bi.study_code AND sm.active = true
+         WHERE bi.bill_id = $1 LIMIT 1`, [study_id]
+      );
+      if (bi) { studyCode = bi.study_code; modality = bi.modality; }
     }
 
     const { rows } = await pool.query(
@@ -112,20 +121,18 @@ router.get('/reporters', async (req, res) => {
        FROM radiologist_master WHERE active = true ORDER BY type, name`
     );
 
-    // Resolve applicable rate for each reporter — only include reporters with a configured rate
     const reporters = rows.map(r => {
       let rate = null;
       try {
         const rates = typeof r.reporting_rates === 'string'
           ? JSON.parse(r.reporting_rates) : (r.reporting_rates || []);
-        // Prefer study_code match, fallback to modality match, then any rate
         const byStudy    = rates.find(x => x.study_code === studyCode);
         const byModality = rates.find(x => x.modality   === modality);
         const found = byStudy || byModality || rates[0] || null;
         rate = found ? parseFloat(found.rate) : null;
       } catch (_) {}
       return { id: r.id, code: r.radiologist_code, name: r.name, type: r.type, specialty: r.specialty, rate };
-    }).filter(r => r.rate !== null && r.rate > 0);  // only show reporters with a rate for this study
+    }).filter(r => r.rate !== null && r.rate > 0);
 
     res.json({ success: true, reporters });
   } catch (e) {
@@ -135,56 +142,61 @@ router.get('/reporters', async (req, res) => {
 });
 
 // PUT /api/rad-reporting/:id/exam-complete
-// :id is bill_id. Mark exam done + assign reporter.
-// Auto-creates a studies row linked to the bill if one does not exist.
+// :id is bill_item_id. Marks the individual study exam done + assigns reporter.
+// Also saves consumables if provided in the request body.
+// Auto-creates a studies row linked to this bill_item for JE tracking.
 router.put('/:id/exam-complete', async (req, res) => {
   try {
     const { reporter_radiologist_id, rate_snapshot } = req.body;
     if (!reporter_radiologist_id) return res.status(400).json({ error: 'Reporter is required' });
 
-    const billId = parseInt(req.params.id, 10);
+    const billItemId = parseInt(req.params.id, 10);
 
-    // Fetch the bill
-    const { rows: [bill] } = await pool.query(
-      `SELECT * FROM patient_bills WHERE id = $1 AND active = true`, [billId]
+    // Fetch the bill_item + parent bill
+    const { rows: [bi] } = await pool.query(
+      `SELECT bi.*, pb.center_id, pb.patient_id, pb.id AS bill_id,
+              pb.accession_number AS bill_accession
+       FROM bill_items bi
+       JOIN patient_bills pb ON pb.id = bi.bill_id
+       WHERE bi.id = $1 AND bi.active = true`, [billItemId]
     );
-    if (!bill) return res.status(404).json({ error: 'Bill not found' });
+    if (!bi) return res.status(404).json({ error: 'Study item not found' });
 
-    // Get reporter
     const { rows: [rep] } = await pool.query(
       `SELECT id, radiologist_code FROM radiologist_master WHERE id = $1`, [reporter_radiologist_id]
     );
     if (!rep) return res.status(404).json({ error: 'Reporter not found' });
 
-    // Resolve study_code from bill_items (which always has study_code set at billing time)
-    const { rows: [biRow] } = await pool.query(
-      `SELECT study_code FROM bill_items WHERE bill_id = $1 AND study_code IS NOT NULL AND active = true LIMIT 1`,
-      [billId]
-    );
-    const resolvedStudyCode = biRow?.study_code || null;
+    if (bi.exam_workflow_status === 'REPORT_COMPLETED')
+      return res.status(400).json({ error: 'Report already completed for this study' });
 
-    // Find or auto-create a studies row for this bill
-    let studyId = bill.study_id;
-    if (!studyId) {
+    // Update bill_items workflow columns
+    await pool.query(
+      `UPDATE bill_items
+       SET exam_workflow_status    = 'EXAM_COMPLETED',
+           reporter_radiologist_id = $1,
+           rate_snapshot           = $2,
+           updated_at              = NOW()
+       WHERE id = $3`,
+      [reporter_radiologist_id, rate_snapshot || null, billItemId]
+    );
+
+    // Find or create a studies row for this bill_item (needed for JE posting later)
+    let { rows: [study] } = await pool.query(
+      `SELECT id FROM studies WHERE bill_item_id = $1 AND active = true LIMIT 1`, [billItemId]
+    );
+    if (!study) {
       const { rows: [newStudy] } = await pool.query(
         `INSERT INTO studies
            (patient_id, center_id, payment_status, exam_workflow_status,
-            study_code, accession_number, active, created_at, updated_at)
-         VALUES ($1, $2, 'PAID', 'EXAM_SCHEDULED',
-                 $3, $4, true, NOW(), NOW())
+            study_code, accession_number, bill_item_id, active, created_at, updated_at)
+         VALUES ($1, $2, 'PAID', 'EXAM_SCHEDULED', $3, $4, $5, true, NOW(), NOW())
          RETURNING id`,
-        [bill.patient_id, bill.center_id, resolvedStudyCode, bill.accession_number || null]
+        [bi.patient_id, bi.center_id, bi.study_code,
+         bi.accession_number || bi.bill_accession || null, billItemId]
       );
-      studyId = newStudy.id;
-      await pool.query(`UPDATE patient_bills SET study_id = $1 WHERE id = $2`, [studyId, billId]);
+      study = newStudy;
     }
-
-    // Check current status; also patch study_code if it was never set
-    const { rows: [study] } = await pool.query(
-      `SELECT exam_workflow_status, study_code FROM studies WHERE id = $1`, [studyId]
-    );
-    if (study?.exam_workflow_status === 'REPORT_COMPLETED')
-      return res.status(400).json({ error: 'Report already completed' });
 
     await pool.query(
       `UPDATE studies
@@ -193,13 +205,16 @@ router.put('/:id/exam-complete', async (req, res) => {
            rate_snapshot           = $2,
            radiologist_code        = $3,
            reporting_rate          = $2,
-           study_code              = COALESCE(study_code, $5),
+           study_code              = COALESCE(study_code, $4),
            updated_at              = NOW()
-       WHERE id = $4`,
-      [reporter_radiologist_id, rate_snapshot || null, rep.radiologist_code, studyId, resolvedStudyCode]
+       WHERE id = $5`,
+      [reporter_radiologist_id, rate_snapshot || null, rep.radiologist_code, bi.study_code, study.id]
     );
 
-    logger.info('Exam completed + reporter assigned', { bill_id: billId, study_id: studyId, reporter_radiologist_id });
+    // Note: consumables are saved separately via POST /api/bill-consumables/save
+    // with bill_item_id set for per-study items or null for shared/patient-level items.
+
+    logger.info('Exam completed + reporter assigned', { bill_item_id: billItemId, reporter_radiologist_id });
     res.json({ success: true, message: 'Exam completed and reporter assigned' });
   } catch (e) {
     logger.error('Exam-complete PUT:', e);
@@ -208,24 +223,19 @@ router.put('/:id/exam-complete', async (req, res) => {
 });
 
 // PUT /api/rad-reporting/:id/report-complete
-// :id is bill_id. Mark report done → auto-generate reporting payable JE.
+// :id is bill_item_id. Marks report done → generates reporting payable JE.
 router.put('/:id/report-complete', async (req, res) => {
   try {
     const { report_notes } = req.body;
-    const billId = parseInt(req.params.id, 10);
+    const billItemId = parseInt(req.params.id, 10);
 
-    // Get the linked study via bill
-    const { rows: [bill] } = await pool.query(
-      `SELECT study_id FROM patient_bills WHERE id = $1 AND active = true`, [billId]
-    );
-    if (!bill?.study_id) return res.status(404).json({ error: 'No study linked to this bill. Complete exam first.' });
-
+    // Find the studies row linked to this bill_item
     const { rows: [study] } = await pool.query(
       `SELECT s.*, sm.modality FROM studies s
        LEFT JOIN study_master sm ON sm.study_code = s.study_code
-       WHERE s.id = $1 AND s.active = true`, [bill.study_id]
+       WHERE s.bill_item_id = $1 AND s.active = true`, [billItemId]
     );
-    if (!study) return res.status(404).json({ error: 'Study not found' });
+    if (!study) return res.status(404).json({ error: 'No study record found. Complete exam first.' });
     if (study.exam_workflow_status !== 'EXAM_COMPLETED')
       return res.status(400).json({ error: 'Exam must be completed before marking report done' });
     if (!study.radiologist_code)
@@ -233,45 +243,47 @@ router.put('/:id/report-complete', async (req, res) => {
     if (study.reporting_posted_at)
       return res.status(409).json({ error: 'Reporting payout already posted' });
 
-    // Update study
     const now = new Date();
+
+    // Update both studies and bill_items
     await pool.query(
       `UPDATE studies
        SET exam_workflow_status = 'REPORT_COMPLETED',
-           report_status = 'COMPLETED',
-           report_date = $1,
-           notes = COALESCE($2, notes),
-           updated_at = NOW()
+           report_status        = 'COMPLETED',
+           report_date          = $1,
+           notes                = COALESCE($2, notes),
+           updated_at           = NOW()
        WHERE id = $3 AND active = true`,
-      [now, report_notes || null, req.params.id]
+      [now, report_notes || null, study.id]
     );
 
-    // Re-fetch for finance posting
-    const { rows: [updated] } = await pool.query(
-      'SELECT * FROM studies WHERE id = $1', [req.params.id]
+    await pool.query(
+      `UPDATE bill_items SET exam_workflow_status = 'REPORT_COMPLETED', updated_at = NOW()
+       WHERE id = $1`,
+      [billItemId]
     );
 
-    // Fire reporting payout JE
+    // Fire reporting payout JE asynchronously
     setImmediate(async () => {
       try {
         await financeService.postReportingPayoutJE(
           {
-            id:               updated.id,
-            study_code:       updated.study_code,
-            center_id:        updated.center_id,
-            radiologist_code: updated.radiologist_code,
-            report_date:      updated.report_date || now,
-            accession_number: updated.accession_number,
+            id:               study.id,
+            study_code:       study.study_code,
+            center_id:        study.center_id,
+            radiologist_code: study.radiologist_code,
+            report_date:      study.report_date || now,
+            accession_number: study.accession_number,
           },
           req.user?.id
         );
-        logger.info('Reporting payout JE posted', { study_id: req.params.id });
+        logger.info('Reporting payout JE posted', { study_id: study.id, bill_item_id: billItemId });
       } catch (jeErr) {
-        logger.error('Reporting payout JE failed:', { study_id: req.params.id, error: jeErr.message });
+        logger.error('Reporting payout JE failed:', { study_id: study.id, error: jeErr.message });
       }
     });
 
-    logger.info('Report completed', { study_id: req.params.id });
+    logger.info('Report completed', { study_id: study.id, bill_item_id: billItemId });
     res.json({ success: true, message: 'Report completed — payout payable being generated' });
   } catch (e) {
     logger.error('Report-complete PUT:', e);

@@ -53,18 +53,19 @@ router.post('/', [
   body('study_definition_id').isInt({ min: 1 }),
   body('item_master_id').isInt({ min: 1 }),
   body('default_qty').isFloat({ min: 0.001 }),
+  body('scope').optional().isIn(['per_study', 'per_patient']),
 ], async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   try {
-    const { study_definition_id, item_master_id, default_qty, notes } = req.body;
+    const { study_definition_id, item_master_id, default_qty, notes, scope } = req.body;
     const { rows } = await pool.query(
-      `INSERT INTO study_consumables (study_definition_id, item_master_id, default_qty, notes)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO study_consumables (study_definition_id, item_master_id, default_qty, notes, scope)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (study_definition_id, item_master_id) DO UPDATE
-         SET default_qty = $3, notes = $4, active = true, updated_at = NOW()
+         SET default_qty = $3, notes = $4, scope = $5, active = true, updated_at = NOW()
        RETURNING *`,
-      [study_definition_id, item_master_id, default_qty, notes || null]
+      [study_definition_id, item_master_id, default_qty, notes || null, scope || 'per_study']
     );
     res.status(201).json({ success: true, consumable: rows[0] });
   } catch (e) {
@@ -76,15 +77,16 @@ router.post('/', [
 // PUT /api/study-consumables/:id
 router.put('/:id', [
   body('default_qty').isFloat({ min: 0 }),
+  body('scope').optional().isIn(['per_study', 'per_patient']),
 ], async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
   try {
-    const { default_qty, notes } = req.body;
+    const { default_qty, notes, scope } = req.body;
     const { rows } = await pool.query(
-      `UPDATE study_consumables SET default_qty=$1, notes=$2, updated_at=NOW()
-       WHERE id=$3 RETURNING *`,
-      [default_qty, notes || null, req.params.id]
+      `UPDATE study_consumables SET default_qty=$1, notes=$2, scope=COALESCE($3, scope), updated_at=NOW()
+       WHERE id=$4 RETURNING *`,
+      [default_qty, notes || null, scope || null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ success: true, consumable: rows[0] });

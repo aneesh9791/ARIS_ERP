@@ -184,23 +184,25 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
       params.push(toDate.toLocaleDateString('en-CA'));
     }
 
-    // ── Status filter — based on payment_status ───────────────────────────
-    // Default: show PAID + PENDING (ready to scan or about to pay)
-    // include_completed=true: also show COMPLETED exam_workflow_status
+    // ── Status filter — per bill_item exam_workflow_status ────────────────
+    // Default: exclude studies already EXAM_COMPLETED or REPORT_COMPLETED
+    // include_completed=true: show everything
     if (include_completed !== 'true') {
-      conds.push(`(pb.exam_workflow_status IS NULL OR pb.exam_workflow_status NOT IN ('EXAM_COMPLETED','REPORT_COMPLETED'))`);
+      conds.push(`(bi.exam_workflow_status IS NULL OR bi.exam_workflow_status NOT IN ('EXAM_COMPLETED','REPORT_COMPLETED'))`);
     }
 
     const { rows } = await pool.query(`
       SELECT
-        pb.id                                       AS study_id,
-        pb.accession_number,
+        bi.id                                       AS study_id,
+        COALESCE(bi.accession_number,
+                 pb.accession_number)               AS accession_number,
         pb.bill_date,
         pb.payment_status,
-        pb.exam_workflow_status,
+        bi.exam_workflow_status,
         pb.notes,
 
-        -- Bill item (one STUDY item per bill)
+        -- Bill item (one row per study)
+        bi.id                                       AS bill_item_id,
         bi.study_code,
         bi.study_name,
         bi.modality,
@@ -280,8 +282,8 @@ router.get('/worklist', bearerTokenAuth, async (req, res) => {
       const stationAeTitle = ae_title || r.station_ae_title || '';
       const accessionNum   = r.accession_number || null;
 
-      // Study Instance UID — derive from bill id (stable, reproducible)
-      const studyUID = `2.25.99${String(r.study_id).replace(/\D/g, '')}`;
+      // Study Instance UID — derive from bill_item id (stable, reproducible, per-study)
+      const studyUID = `2.25.99${String(r.bill_item_id || r.study_id).replace(/\D/g, '')}`;
 
       return {
         // ── DICOM identifiers ─────────────────────────────────────────────

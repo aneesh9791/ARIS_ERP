@@ -24,47 +24,116 @@ const REPORTER_TYPE_BADGE = {
   TELERADIOLOGY_COMPANY:'bg-purple-100 text-purple-700',
 };
 
-// ── Exam Complete Modal (combined: consumables + reporter) ─────────────────────
-const ExamCompleteModal = ({ study, onClose, onSaved }) => {
-  const [consOpen, setConsOpen]     = useState(true);
-  const [rows, setRows]             = useState([]);
-  const [stockItems, setStockItems] = useState([]);
-  const [addItemId, setAddItemId]   = useState('');
-  const [loadingCons, setLoadingCons] = useState(true);
-  const [reporters, setReporters]   = useState([]);
-  const [selected, setSelected]     = useState(null);
-  const [loadingRep, setLoadingRep] = useState(true);
-  const [saving, setSaving]         = useState(false);
-  const [err, setErr]               = useState('');
+// ── Shared consumable row list (used in both modals) ──────────────────────────
+const ConsumableRowList = ({ rows, onChangeQty, onRemove }) => (
+  <div className="rounded-lg border border-slate-200 overflow-hidden">
+    <div className="grid px-3 py-2 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wider"
+      style={{ gridTemplateColumns: '1fr 88px 44px 80px 28px' }}>
+      <span>Item</span><span className="text-center">Qty</span>
+      <span className="text-center">UOM</span><span className="text-right">Cost</span><span/>
+    </div>
+    <div className="divide-y divide-slate-100">
+      {rows.map(row => (
+        <div key={row.item_master_id} className={`grid gap-2 items-center px-3 py-2 hover:bg-slate-50 ${row.alreadySaved ? 'opacity-60' : ''}`}
+          style={{ gridTemplateColumns: '1fr 88px 44px 80px 28px' }}>
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-slate-800 truncate">{row.item_name}</div>
+            <div className="text-[10px] text-slate-400">{row.item_code}{row.alreadySaved ? ' · saved' : ''}</div>
+          </div>
+          <div className="flex items-center justify-center gap-1">
+            <button type="button" onClick={() => onChangeQty(row.item_master_id, -1)}
+              className="w-6 h-6 flex items-center justify-center rounded border border-slate-300 text-slate-600 hover:bg-slate-100 text-sm font-bold">−</button>
+            <span className="w-6 text-center text-xs font-semibold">{row.qty_used}</span>
+            <button type="button" onClick={() => onChangeQty(row.item_master_id, 1)}
+              className="w-6 h-6 flex items-center justify-center rounded border border-slate-300 text-slate-600 hover:bg-slate-100 text-sm font-bold">+</button>
+          </div>
+          <span className="text-xs text-slate-500 text-center">{row.uom}</span>
+          <span className="text-xs text-slate-600 text-right">
+            {row.unit_cost > 0 ? fmtCurrency((parseInt(row.qty_used)||0)*row.unit_cost) : '—'}
+          </span>
+          <button type="button" onClick={() => onRemove(row.item_master_id)}
+            className="p-1 text-red-400 hover:text-red-600 rounded">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
-  // Load consumable template + any saved consumables
+// ── Exam Complete Modal (combined: consumables + reporter) ─────────────────────
+// study.id = bill_item_id; study.bill_id = parent bill
+const ExamCompleteModal = ({ study, onClose, onSaved }) => {
+  const [consOpen, setConsOpen]       = useState(true);
+  // sharedRows = per_patient scope (report cover, CD — one per bill)
+  // studyRows  = per_study scope (contrast, film — per this study)
+  const [sharedRows, setSharedRows]   = useState([]);
+  const [studyRows, setStudyRows]     = useState([]);
+  const [stockItems, setStockItems]   = useState([]);
+  const [addItemId, setAddItemId]     = useState('');
+  const [addScope, setAddScope]       = useState('per_study');
+  const [loadingCons, setLoadingCons] = useState(true);
+  const [reporters, setReporters]     = useState([]);
+  const [selected, setSelected]       = useState(null);
+  const [loadingRep, setLoadingRep]   = useState(true);
+  const [saving, setSaving]           = useState(false);
+  const [err, setErr]                 = useState('');
+
   useEffect(() => {
     const load = async () => {
       setLoadingCons(true);
       try {
-        let template = [];
+        // 1. Template (with scope field)
+        let tplShared = [], tplStudy = [];
         if (study.study_definition_id) {
           const r = await fetch(`/api/study-consumables?study_definition_id=${study.study_definition_id}`, { headers: hdrs() });
           const d = await r.json();
-          template = (d.consumables || []).map(c => ({
-            item_master_id: c.item_master_id, item_name: c.item_name, uom: c.uom,
-            item_code: c.item_code, unit_cost: parseFloat(c.unit_cost || 0),
-            qty_used: Math.round(parseFloat(c.default_qty) || 1),
-          }));
+          for (const c of (d.consumables || [])) {
+            const row = {
+              item_master_id: c.item_master_id, item_name: c.item_name, uom: c.uom,
+              item_code: c.item_code, unit_cost: parseFloat(c.unit_cost || 0),
+              qty_used: Math.round(parseFloat(c.default_qty) || 1),
+            };
+            if (c.scope === 'per_patient') tplShared.push(row);
+            else tplStudy.push(row);
+          }
         }
+
+        // 2. Saved consumables for this bill
         if (study.bill_id) {
           const r2 = await fetch(`/api/bill-consumables?bill_id=${study.bill_id}`, { headers: hdrs() });
           const d2 = await r2.json();
-          if (d2.consumables?.length > 0) {
-            const saved = d2.consumables.map(c => ({
-              item_master_id: c.item_master_id, item_name: c.item_name, uom: c.uom,
-              item_code: c.item_code, unit_cost: parseFloat(c.unit_cost || 0),
-              qty_used: Math.round(parseFloat(c.qty_used) || 0),
-            }));
-            const savedIds = new Set(saved.map(s => s.item_master_id));
-            setRows([...saved, ...template.filter(t => !savedIds.has(t.item_master_id))]);
-          } else { setRows(template); }
-        } else { setRows(template); }
+          const allSaved = d2.consumables || [];
+
+          // Shared: bill_item_id IS NULL
+          const savedShared = allSaved.filter(c => !c.bill_item_id);
+          if (savedShared.length) {
+            const savedIds = new Set(savedShared.map(s => s.item_master_id));
+            setSharedRows([
+              ...savedShared.map(c => ({ item_master_id: c.item_master_id, item_name: c.item_name,
+                uom: c.uom, item_code: c.item_code, unit_cost: parseFloat(c.unit_cost || 0),
+                qty_used: Math.round(parseFloat(c.qty_used) || 0), alreadySaved: true })),
+              ...tplShared.filter(t => !savedIds.has(t.item_master_id)),
+            ]);
+          } else { setSharedRows(tplShared); }
+
+          // Per-study: bill_item_id = this study's bill_item_id
+          const savedStudy = allSaved.filter(c => c.bill_item_id === study.id);
+          if (savedStudy.length) {
+            const savedIds = new Set(savedStudy.map(s => s.item_master_id));
+            setStudyRows([
+              ...savedStudy.map(c => ({ item_master_id: c.item_master_id, item_name: c.item_name,
+                uom: c.uom, item_code: c.item_code, unit_cost: parseFloat(c.unit_cost || 0),
+                qty_used: Math.round(parseFloat(c.qty_used) || 0) })),
+              ...tplStudy.filter(t => !savedIds.has(t.item_master_id)),
+            ]);
+          } else { setStudyRows(tplStudy); }
+        } else {
+          setSharedRows(tplShared);
+          setStudyRows(tplStudy);
+        }
       } catch { /* non-critical */ }
       finally { setLoadingCons(false); }
     };
@@ -76,46 +145,71 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    fetch(`/api/rad-reporting/reporters?study_id=${study.id}`, { headers: hdrs() })
+    fetch(`/api/rad-reporting/reporters?bill_item_id=${study.id}`, { headers: hdrs() })
       .then(r => r.json())
       .then(d => { if (d.success) setReporters(d.reporters || []); })
       .finally(() => setLoadingRep(false));
   }, [study.id]);
 
-  const changeQty = (id, delta) =>
-    setRows(prev => prev.map(r => r.item_master_id === id
+  const allRows = [...sharedRows, ...studyRows];
+  const changeSharedQty = (id, delta) =>
+    setSharedRows(prev => prev.map(r => r.item_master_id === id
       ? { ...r, qty_used: Math.max(0, (parseInt(r.qty_used) || 0) + delta) } : r));
-  const removeRow = (id) => setRows(prev => prev.filter(r => r.item_master_id !== id));
+  const changeStudyQty = (id, delta) =>
+    setStudyRows(prev => prev.map(r => r.item_master_id === id
+      ? { ...r, qty_used: Math.max(0, (parseInt(r.qty_used) || 0) + delta) } : r));
+  const removeShared = (id) => setSharedRows(prev => prev.filter(r => r.item_master_id !== id));
+  const removeStudy  = (id) => setStudyRows(prev => prev.filter(r => r.item_master_id !== id));
+
   const addItem = () => {
     if (!addItemId) return;
     const found = stockItems.find(i => i.id === parseInt(addItemId, 10));
-    if (!found || rows.some(r => r.item_master_id === found.id)) return;
-    setRows(prev => [...prev, {
+    if (!found) return;
+    const row = {
       item_master_id: found.id, item_name: found.item_name, uom: found.uom,
       item_code: found.item_code, unit_cost: parseFloat(found.standard_rate || 0), qty_used: 1,
-    }]);
+    };
+    if (addScope === 'per_patient') {
+      if (sharedRows.some(r => r.item_master_id === found.id)) return;
+      setSharedRows(prev => [...prev, row]);
+    } else {
+      if (studyRows.some(r => r.item_master_id === found.id)) return;
+      setStudyRows(prev => [...prev, row]);
+    }
     setAddItemId('');
   };
 
-  const totalCost = rows.reduce((s, r) => s + (parseInt(r.qty_used) || 0) * (r.unit_cost || 0), 0);
+  const totalCost = allRows.reduce((s, r) => s + (parseInt(r.qty_used) || 0) * (r.unit_cost || 0), 0);
 
   const confirm = async () => {
     if (!selected) { setErr('Please select a reporter'); return; }
     setSaving(true); setErr('');
     try {
+      // Step 1: Mark exam complete
       const r = await fetch(`/api/rad-reporting/${study.id}/exam-complete`, {
         method: 'PUT',
         headers: hdrs(),
         body: JSON.stringify({
           reporter_radiologist_id: selected.id,
-          rate_snapshot: selected.total_rate,
-          consumables: rows
-            .filter(r => parseInt(r.qty_used) > 0)
-            .map(r => ({ item_master_id: r.item_master_id, qty_used: parseInt(r.qty_used) })),
+          rate_snapshot: selected.rate,
         }),
       });
       const d = await r.json();
       if (!r.ok) { setErr(d.error || d.detail || 'Failed'); setSaving(false); return; }
+
+      // Step 2: Save consumables (shared null, per-study with bill_item_id)
+      const toSave = [
+        ...sharedRows.filter(r => parseInt(r.qty_used) > 0)
+          .map(r => ({ item_master_id: r.item_master_id, qty_used: parseInt(r.qty_used), bill_item_id: null })),
+        ...studyRows.filter(r => parseInt(r.qty_used) > 0)
+          .map(r => ({ item_master_id: r.item_master_id, qty_used: parseInt(r.qty_used), bill_item_id: study.id })),
+      ];
+      if (toSave.length > 0 && study.bill_id) {
+        await fetch('/api/bill-consumables/save', {
+          method: 'POST', headers: hdrs(),
+          body: JSON.stringify({ bill_id: study.bill_id, consumables: toSave }),
+        });
+      }
       onSaved();
     } catch { setErr('Network error'); setSaving(false); }
   };
@@ -150,7 +244,7 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
         <div className="p-5 space-y-4">
           {err && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700">{err}</div>}
 
-          {/* ── Consumables (collapsible) ───────────────────────────────────── */}
+          {/* ── Consumables (collapsible, two sections) ────────────────────── */}
           <div className="border border-slate-200 rounded-xl overflow-hidden">
             <button type="button" onClick={() => setConsOpen(o => !o)}
               className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors">
@@ -159,9 +253,9 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                 </svg>
                 <span className="text-sm font-semibold text-slate-700">Consumables</span>
-                {rows.length > 0 && (
+                {allRows.length > 0 && (
                   <span className="text-xs bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full font-medium">
-                    {rows.length} item{rows.length !== 1 ? 's' : ''}{totalCost > 0 ? ` · ${fmtCurrency(totalCost)}` : ''}
+                    {allRows.length} item{allRows.length !== 1 ? 's' : ''}{totalCost > 0 ? ` · ${fmtCurrency(totalCost)}` : ''}
                   </span>
                 )}
               </div>
@@ -175,57 +269,49 @@ const ExamCompleteModal = ({ study, onClose, onSaved }) => {
               <div className="p-4 space-y-3 border-t border-slate-200">
                 {loadingCons ? (
                   <div className="flex items-center gap-2 py-3 text-slate-400 text-sm justify-center"><Spinner/> Loading…</div>
-                ) : rows.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic text-center py-2">No template consumables. Add items below.</p>
                 ) : (
-                  <div className="rounded-lg border border-slate-200 overflow-hidden">
-                    <div className="grid px-3 py-2 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wider"
-                      style={{ gridTemplateColumns: '1fr 88px 44px 80px 28px' }}>
-                      <span>Item</span><span className="text-center">Qty</span>
-                      <span className="text-center">UOM</span><span className="text-right">Cost</span><span/>
+                  <>
+                    {/* ── Patient-level shared items ── */}
+                    {sharedRows.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Patient-level (shared — one per bill)
+                        </p>
+                        <ConsumableRowList rows={sharedRows} onChangeQty={changeSharedQty} onRemove={removeShared}/>
+                      </div>
+                    )}
+                    {/* ── Per-study items ── */}
+                    {studyRows.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                          This study — {study.study_name || study.modality}
+                        </p>
+                        <ConsumableRowList rows={studyRows} onChangeQty={changeStudyQty} onRemove={removeStudy}/>
+                      </div>
+                    )}
+                    {allRows.length === 0 && (
+                      <p className="text-xs text-slate-400 italic text-center py-2">No template consumables. Add items below.</p>
+                    )}
+                    {/* ── Add item ── */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                      <select value={addItemId} onChange={e => setAddItemId(e.target.value)}
+                        className="flex-1 px-2 py-1.5 text-xs border border-slate-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                        <option value="">{stockItems.length === 0 ? 'Loading…' : 'Add stock item…'}</option>
+                        {stockItems.filter(i => !allRows.some(r => r.item_master_id === i.id))
+                          .map(i => <option key={i.id} value={i.id}>{i.item_name} ({i.uom})</option>)}
+                      </select>
+                      <select value={addScope} onChange={e => setAddScope(e.target.value)}
+                        className="px-2 py-1.5 text-xs border border-slate-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                        <option value="per_study">This study</option>
+                        <option value="per_patient">Shared</option>
+                      </select>
+                      <button type="button" onClick={addItem} disabled={!addItemId}
+                        className="px-3 py-1.5 text-xs font-medium text-teal-800 bg-teal-100 hover:bg-teal-200 rounded-lg disabled:opacity-40">
+                        Add
+                      </button>
                     </div>
-                    <div className="divide-y divide-slate-100">
-                      {rows.map(row => (
-                        <div key={row.item_master_id} className="grid gap-2 items-center px-3 py-2 hover:bg-slate-50"
-                          style={{ gridTemplateColumns: '1fr 88px 44px 80px 28px' }}>
-                          <div className="min-w-0">
-                            <div className="text-xs font-medium text-slate-800 truncate">{row.item_name}</div>
-                            <div className="text-[10px] text-slate-400">{row.item_code}</div>
-                          </div>
-                          <div className="flex items-center justify-center gap-1">
-                            <button type="button" onClick={() => changeQty(row.item_master_id, -1)}
-                              className="w-6 h-6 flex items-center justify-center rounded border border-slate-300 text-slate-600 hover:bg-slate-100 text-sm font-bold">−</button>
-                            <span className="w-6 text-center text-xs font-semibold">{row.qty_used}</span>
-                            <button type="button" onClick={() => changeQty(row.item_master_id, 1)}
-                              className="w-6 h-6 flex items-center justify-center rounded border border-slate-300 text-slate-600 hover:bg-slate-100 text-sm font-bold">+</button>
-                          </div>
-                          <span className="text-xs text-slate-500 text-center">{row.uom}</span>
-                          <span className="text-xs text-slate-600 text-right">
-                            {row.unit_cost > 0 ? fmtCurrency((parseInt(row.qty_used)||0)*row.unit_cost) : '—'}
-                          </span>
-                          <button type="button" onClick={() => removeRow(row.item_master_id)}
-                            className="p-1 text-red-400 hover:text-red-600 rounded">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
-                            </svg>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  </>
                 )}
-                <div className="flex items-center gap-2">
-                  <select value={addItemId} onChange={e => setAddItemId(e.target.value)}
-                    className="flex-1 px-2 py-1.5 text-xs border border-slate-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
-                    <option value="">{stockItems.length === 0 ? 'Loading…' : 'Add stock item…'}</option>
-                    {stockItems.filter(i => !rows.some(r => r.item_master_id === i.id))
-                      .map(i => <option key={i.id} value={i.id}>{i.item_name} ({i.uom})</option>)}
-                  </select>
-                  <button type="button" onClick={addItem} disabled={!addItemId}
-                    className="px-3 py-1.5 text-xs font-medium text-teal-800 bg-teal-100 hover:bg-teal-200 rounded-lg disabled:opacity-40">
-                    Add
-                  </button>
-                </div>
               </div>
             )}
           </div>
@@ -401,6 +487,7 @@ const StudyConsumablesModal = ({ study, onClose }) => {
             notes: '',
             is_contrast: !!study.contrast_used,
             from_template: true,
+            scope: c.scope || 'per_study',
           }));
         }
 
@@ -485,6 +572,8 @@ const StudyConsumablesModal = ({ study, onClose }) => {
             qty_used: parseFloat(r.qty_used),
             notes: r.notes || null,
             is_contrast: !!r.is_contrast,
+            // per_patient items → null (shared); per_study items → this study's bill_item_id
+            bill_item_id: r.scope === 'per_patient' ? null : (study.id || null),
           })),
         }),
       });
