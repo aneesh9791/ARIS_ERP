@@ -442,6 +442,8 @@ const PatientForm = ({ onSave, onCancel }) => {
     blood_group: '', allergies: '',
     id_proof_type: '', id_proof_number: '',
   });
+  const [dobMode, setDobMode] = useState('age'); // 'dob' | 'age'
+  const [ageInput, setAgeInput] = useState('');
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const set = f => e => setForm(p => ({ ...p, [f]: e.target.value }));
@@ -467,7 +469,14 @@ const PatientForm = ({ onSave, onCancel }) => {
         gender: form.gender,
         has_insurance: false,
         ...(centerIdFromUser ? { center_id: parseInt(centerIdFromUser) } : {}),
-        ...(form.date_of_birth   ? { date_of_birth: form.date_of_birth }             : {}),
+        ...((() => {
+          if (dobMode === 'dob' && form.date_of_birth) return { date_of_birth: form.date_of_birth };
+          if (dobMode === 'age' && ageInput) {
+            const yr = new Date().getFullYear() - parseInt(ageInput);
+            return { date_of_birth: `${yr}-01-01` };
+          }
+          return {};
+        })()),
         ...(form.email           ? { email: form.email }                              : {}),
         ...(form.blood_group     ? { blood_group: form.blood_group }                  : {}),
         ...(form.allergies       ? { allergies: form.allergies }                      : {}),
@@ -477,6 +486,7 @@ const PatientForm = ({ onSave, onCancel }) => {
       const res  = await api('/api/patients', { method: 'POST', body: JSON.stringify(payload) });
       const data = await res.json();
       if (res.ok && (data.patient || data.id)) {
+        setDobMode('age'); setAgeInput('');
         onSave(data.patient || data);
       } else {
         const msg = data.errors?.[0]?.msg || data.error || 'Registration failed';
@@ -522,9 +532,26 @@ const PatientForm = ({ onSave, onCancel }) => {
           </select>
           {errors.gender && <p className="text-xs text-red-500 mt-0.5">{errors.gender}</p>}
         </Field>
-        <Field label="Date of Birth" hint="Used to calculate age">
-          <input type="date" value={form.date_of_birth} onChange={set('date_of_birth')} className={inp}
-            max={new Date().toISOString().split('T')[0]} />
+        <Field label="Date of Birth / Age">
+          <div className="flex gap-2 mb-1">
+            <button type="button"
+              onClick={() => setDobMode('dob')}
+              className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${dobMode === 'dob' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-slate-600 border-slate-300 hover:border-teal-400'}`}>
+              Date of Birth
+            </button>
+            <button type="button"
+              onClick={() => setDobMode('age')}
+              className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${dobMode === 'age' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-slate-600 border-slate-300 hover:border-teal-400'}`}>
+              Age in Years
+            </button>
+          </div>
+          {dobMode === 'dob'
+            ? <input type="date" value={form.date_of_birth} onChange={set('date_of_birth')} className={inp}
+                max={new Date().toISOString().split('T')[0]} />
+            : <input type="number" min="0" max="120" value={ageInput}
+                onChange={e => setAgeInput(e.target.value)}
+                className={inp} placeholder="e.g. 45" />
+          }
         </Field>
         <Field label="Blood Group">
           <select value={form.blood_group} onChange={set('blood_group')} className={inp}>
