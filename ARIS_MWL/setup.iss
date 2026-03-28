@@ -1,62 +1,76 @@
 ; ─────────────────────────────────────────────────────────────────────────────
-; ARIS MWL Server — Inno Setup installer script
-;
-; Requirements:
-;   Inno Setup 6.x  →  https://jrsoftware.org/isdl.php
+; ARIS MWL Server — Inno Setup 6 installer script
 ;
 ; Build order:
-;   1. Run build.bat  →  produces dist\ARIS_MWL_Server\
-;   2. Compile this script (iscc setup.iss  OR  open in Inno Setup IDE)
-;   →  produces dist\ARIS_MWL_Server_Setup.exe
+;   1. Run build.bat  →  produces  dist\ARIS_MWL_Server\
+;   2. Compile:  iscc setup.iss
+;   →  output:   dist\ARIS_MWL_Server_Setup.exe
 ; ─────────────────────────────────────────────────────────────────────────────
 
 [Setup]
+; ── Unique app identity (NEVER change the AppId GUID) ──────────────────────
 AppId={{A7D2F3E1-4B8C-4E9A-B1C2-3D5F6A7B8C9D}
 AppName=ARIS MWL Server
-AppVersion=1.0
+AppVersion=1.1
+AppVerName=ARIS MWL Server 1.1
 AppPublisher=ARIS Health Systems
 AppPublisherURL=https://ariserp.com
 AppSupportURL=https://ariserp.com
 AppUpdatesURL=https://ariserp.com
+AppCopyright=Copyright (C) 2025 ARIS Health Systems
 
-; Install to C:\Program Files\ARIS_MWL\
+; ── Installation directory ─────────────────────────────────────────────────
+; {autopf} = C:\Program Files  (64-bit) or C:\Program Files (x86)  (32-bit)
 DefaultDirName={autopf}\ARIS_MWL
 DefaultGroupName=ARIS MWL Server
-AllowNoIcons=yes
+AllowNoIcons=no
+CreateAppDir=yes
 
-; Output
+; ── Output ─────────────────────────────────────────────────────────────────
 OutputDir=dist
 OutputBaseFilename=ARIS_MWL_Server_Setup
-SetupIconFile=
 
-; Compression
+; ── Compression ────────────────────────────────────────────────────────────
 Compression=lzma2/ultra64
 SolidCompression=yes
 
-; Always require Administrator (needed to install to Program Files + firewall)
+; ── Privileges ─────────────────────────────────────────────────────────────
+; Always require Administrator — needed for Program Files + firewall rule
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=
 
-; Uninstaller
-UninstallDisplayIcon={app}\ARIS_MWL_Server.exe
+; ── Windows version info (shown in Programs & Features) ───────────────────
+VersionInfoVersion=1.1.0.0
+VersionInfoCompany=ARIS Health Systems
+VersionInfoDescription=ARIS DICOM Modality Worklist Server
+VersionInfoProductName=ARIS MWL Server
+VersionInfoProductVersion=1.1
+
+; ── Uninstaller ────────────────────────────────────────────────────────────
+CreateUninstallRegKey=yes
 UninstallDisplayName=ARIS MWL Server
+UninstallDisplayIcon={app}\ARIS_MWL_Server.exe
+UninstallFilesDir={app}
 
-; Appearance
+; ── Appearance ─────────────────────────────────────────────────────────────
 WizardStyle=modern
-WizardSmallImageFile=
 DisableWelcomePage=no
-LicenseFile=
-InfoBeforeFile=
-InfoAfterFile=
+DisableDirPage=no
+DisableProgramGroupPage=no
 
-; Misc
+; ── Platform ───────────────────────────────────────────────────────────────
 ArchitecturesInstallIn64BitMode=x64compatible
-MinVersion=6.1   ; Windows 7 minimum
+MinVersion=10.0   ; Windows 10 minimum
 
 
 ; ─────────────────────────────────────────────────────────────────────────────
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+
+; ─────────────────────────────────────────────────────────────────────────────
+[Dirs]
+; Explicitly create the install directory with full permissions
+Name: "{app}"; Permissions: users-full
 
 
 ; ─────────────────────────────────────────────────────────────────────────────
@@ -74,15 +88,15 @@ Name: "startupentry"; \
 
 ; ─────────────────────────────────────────────────────────────────────────────
 [Files]
-; Main application folder (entire --onedir output)
+; Main application — entire PyInstaller --onedir output
 Source: "dist\ARIS_MWL_Server\*"; \
   DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
-; README
+; Documentation
 Source: "README.txt"; \
   DestDir: "{app}"; \
-  Flags: ignoreversion
+  Flags: ignoreversion isreadme
 
 
 ; ─────────────────────────────────────────────────────────────────────────────
@@ -92,13 +106,14 @@ Name: "{group}\ARIS MWL Server"; \
   Filename: "{app}\ARIS_MWL_Server.exe"; \
   Comment: "DICOM Modality Worklist Server"
 
-Name: "{group}\README"; \
+Name: "{group}\README - ARIS MWL Server"; \
   Filename: "{app}\README.txt"
 
 Name: "{group}\Uninstall ARIS MWL Server"; \
-  Filename: "{uninstallexe}"
+  Filename: "{uninstallexe}"; \
+  Comment: "Remove ARIS MWL Server from this computer"
 
-; Desktop shortcut (optional task)
+; Desktop shortcut (optional)
 Name: "{autodesktop}\ARIS MWL Server"; \
   Filename: "{app}\ARIS_MWL_Server.exe"; \
   Tasks: desktopicon; \
@@ -107,7 +122,7 @@ Name: "{autodesktop}\ARIS MWL Server"; \
 
 ; ─────────────────────────────────────────────────────────────────────────────
 [Registry]
-; Windows startup entry (optional task)
+; Auto-start on Windows login (optional task)
 Root: HKCU; \
   Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
   ValueType: string; \
@@ -125,7 +140,7 @@ Filename: "netsh"; \
   Flags: runhidden; \
   StatusMsg: "Configuring Windows Firewall for DICOM port 104..."
 
-; Launch app after install (optional)
+; Offer to launch the app immediately after install
 Filename: "{app}\ARIS_MWL_Server.exe"; \
   Description: "Launch ARIS MWL Server now"; \
   Flags: nowait postinstall skipifsilent
@@ -133,25 +148,20 @@ Filename: "{app}\ARIS_MWL_Server.exe"; \
 
 ; ─────────────────────────────────────────────────────────────────────────────
 [UninstallRun]
-; Remove the firewall rule on uninstall
+; Remove the firewall rule
 Filename: "netsh"; \
   Parameters: "advfirewall firewall delete rule name=""ARIS MWL Server"""; \
-  Flags: runhidden
+  Flags: runhidden; \
+  RunOnceId: "DelFirewallRule"
 
 
 ; ─────────────────────────────────────────────────────────────────────────────
 [UninstallDelete]
-; Remove log and config files left behind by the app
-Type: files; Name: "{app}\aris_mwl_config.json"
-Type: files; Name: "{app}\aris_mwl.log"
-Type: files; Name: "{app}\aris_mwl.log.1"
-Type: files; Name: "{app}\aris_mwl.log.2"
-Type: files; Name: "{app}\aris_mwl.log.3"
+; Remove runtime files that Inno Setup's uninstaller won't track
+Type: files;      Name: "{app}\aris_mwl_config.json"
+Type: files;      Name: "{app}\aris_mwl.log"
+Type: files;      Name: "{app}\aris_mwl.log.1"
+Type: files;      Name: "{app}\aris_mwl.log.2"
+Type: files;      Name: "{app}\aris_mwl.log.3"
+Type: filesandordirs; Name: "{app}\_internal"
 Type: dirifempty; Name: "{app}"
-
-
-; ─────────────────────────────────────────────────────────────────────────────
-[Messages]
-; Custom messages shown in the installer wizard
-FinishedHeadingLabel=ARIS MWL Server is installed
-FinishedLabelNoIcons=The application was successfully installed in:%n%n[app]%n%nOpen the app, go to Settings, and enter your ERP URL, Bearer Token, and Center ID.
