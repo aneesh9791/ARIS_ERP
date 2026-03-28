@@ -10,6 +10,7 @@ import re
 import time
 import threading
 import logging
+import concurrent.futures
 
 from pynetdicom import AE, evt
 from pynetdicom.sop_class import ModalityWorklistInformationFind, Verification
@@ -302,43 +303,51 @@ def self_test(local_ae: str, port: int, timeout: int = 10) -> tuple:
     """
     C-FIND self-test: connect to localhost SCP and send empty query.
     Returns (success: bool, message: str, count: int).
+
+    Uses a hard wall-clock timeout via concurrent.futures so that even if
+    pynetdicom's internal timeouts fail to interrupt a blocked socket, the
+    function is guaranteed to return within (timeout + 1) seconds.
     """
     if not is_running():
         return False, 'DICOM server is not running — start it first', 0
 
-    ae = AE()
-    ae.add_requested_context(ModalityWorklistInformationFind)
-    ae.acse_timeout    = timeout   # cap association setup
-    ae.network_timeout = timeout   # cap network inactivity
-    ae.dimse_timeout   = timeout   # cap C-FIND response wait
+    def _attempt():
+        ae = AE()
+        ae.add_requested_context(ModalityWorklistInformationFind)
+        ae.acse_timeout    = timeout
+        ae.network_timeout = timeout
+        ae.dimse_timeout   = timeout
+        try:
+            assoc = ae.associate('127.0.0.1', port, ae_title=local_ae.strip())
+            if not assoc.is_established:
+                return False, 'Association rejected — check AE title and port', 0
 
-    try:
-        assoc = ae.associate(
-            '127.0.0.1', port,
-            ae_title=local_ae.encode('ascii').ljust(16)[:16],
-        )
-        if not assoc.is_established:
-            return False, 'Association rejected — check AE title and port', 0
+            ds = Dataset()
+            ds.PatientName     = ''
+            ds.PatientID       = ''
+            ds.AccessionNumber = ''
+            sps = Dataset()
+            sps.Modality                        = ''
+            sps.ScheduledProcedureStepStartDate = ''
+            ds.ScheduledProcedureStepSequence   = Sequence([sps])
 
-        ds = Dataset()
-        ds.PatientName     = ''
-        ds.PatientID       = ''
-        ds.AccessionNumber = ''
-        sps = Dataset()
-        sps.Modality                        = ''
-        sps.ScheduledProcedureStepStartDate = ''
-        ds.ScheduledProcedureStepSequence = Sequence([sps])
+            count = 0
+            for status, _ in assoc.send_c_find(ds, ModalityWorklistInformationFind):
+                if status and status.Status == 0xFF00:
+                    count += 1
 
-        count = 0
-        for status, identifier in assoc.send_c_find(ds, ModalityWorklistInformationFind):
-            if status and status.Status == 0xFF00:
-                count += 1
+            assoc.release()
+            return True, f'SCP responded OK — {count} worklist item(s) in cache', count
 
-        assoc.release()
-        return True, f'SCP responded OK — {count} worklist items returned', count
+        except Exception as exc:
+            return False, f'{type(exc).__name__}: {exc}', 0
 
-    except Exception as exc:
-        return False, str(exc), 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(_attempt)
+        try:
+            return fut.result(timeout=timeout + 2)
+        except concurrent.futures.TimeoutError:
+            return False, f'Self-test timed out after {timeout}s — SCP not responding', 0
 
 
 def echo_modality(remote_ip: str, remote_port: int,
@@ -347,36 +356,41 @@ def echo_modality(remote_ip: str, remote_port: int,
     """
     C-ECHO to a remote modality (DICOM ping).
     Returns (success: bool, message: str, elapsed_ms: int).
+
+    Uses a hard wall-clock timeout so a blocked socket never hangs the UI.
     """
-    ae = AE(ae_title=local_ae.encode('ascii').ljust(16)[:16])
-    ae.add_requested_context(Verification)
-    ae.acse_timeout    = timeout
-    ae.network_timeout = timeout
-    ae.dimse_timeout   = timeout
+    def _attempt():
+        t0 = time.monotonic()
+        ae = AE(ae_title=local_ae.strip())
+        ae.add_requested_context(Verification)
+        ae.acse_timeout    = timeout
+        ae.network_timeout = timeout
+        ae.dimse_timeout   = timeout
+        try:
+            assoc = ae.associate(remote_ip, remote_port, ae_title=remote_ae.strip())
+            if not assoc.is_established:
+                ms = int((time.monotonic() - t0) * 1000)
+                return False, f'Association rejected by {remote_ae} @ {remote_ip}:{remote_port}', ms
 
-    t0 = time.monotonic()
-    try:
-        assoc = ae.associate(
-            remote_ip, remote_port,
-            ae_title=remote_ae.encode('ascii').ljust(16)[:16],
-        )
-        if not assoc.is_established:
-            ms = int((time.monotonic() - t0) * 1000)
-            return False, f'Association rejected by {remote_ae} @ {remote_ip}:{remote_port}', ms
+            status = assoc.send_c_echo()
+            ms     = int((time.monotonic() - t0) * 1000)
+            assoc.release()
 
-        status = assoc.send_c_echo()
-        ms     = int((time.monotonic() - t0) * 1000)
-        assoc.release()
-
-        if status and status.Status == 0x0000:
-            return True, f'C-ECHO success — {remote_ae} responded in {ms} ms', ms
-        else:
+            if status and status.Status == 0x0000:
+                return True, f'C-ECHO success — {remote_ae} responded in {ms} ms', ms
             code = hex(status.Status) if status else 'no response'
             return False, f'C-ECHO failed — status {code}', ms
 
-    except ConnectionRefusedError:
-        ms = int((time.monotonic() - t0) * 1000)
-        return False, f'Connection refused — {remote_ip}:{remote_port} not reachable', ms
-    except Exception as exc:
-        ms = int((time.monotonic() - t0) * 1000)
-        return False, str(exc), ms
+        except ConnectionRefusedError:
+            ms = int((time.monotonic() - t0) * 1000)
+            return False, f'Connection refused — {remote_ip}:{remote_port} not reachable', ms
+        except Exception as exc:
+            ms = int((time.monotonic() - t0) * 1000)
+            return False, f'{type(exc).__name__}: {exc}', ms
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(_attempt)
+        try:
+            return fut.result(timeout=timeout + 2)
+        except concurrent.futures.TimeoutError:
+            return False, f'C-ECHO timed out after {timeout}s — {remote_ip}:{remote_port} not responding', 0
