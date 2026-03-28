@@ -963,20 +963,20 @@ const StudyReporting = () => {
     report_completed: 'REPORT_COMPLETED',
   };
 
-  // Always fetch KPI totals across all statuses (independent of active tab)
+  // Fetch KPIs using limit=1 — only the total COUNT matters, not the rows
   const loadKpis = useCallback(async () => {
     const cq = centerId ? `&center_id=${centerId}` : '';
     const dq = `&from=${dateFrom}&to=${dateTo}`;
     try {
       const [s1, s2, s3] = await Promise.all([
-        fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_SCHEDULED&limit=1000${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
-        fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_COMPLETED&limit=1000${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
-        fetch(`/api/rad-reporting/worklist?exam_workflow_status=REPORT_COMPLETED&limit=1000${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
+        fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_SCHEDULED&limit=1${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
+        fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_COMPLETED&limit=1${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
+        fetch(`/api/rad-reporting/worklist?exam_workflow_status=REPORT_COMPLETED&limit=1${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
       ]);
       setKpis({
-        scheduled:  s1.total || s1.studies?.length || 0,
-        examDone:   s2.total || s2.studies?.length || 0,
-        reportDone: s3.total || s3.studies?.length || 0,
+        scheduled:  s1.total || 0,
+        examDone:   s2.total || 0,
+        reportDone: s3.total || 0,
       });
     } catch { /* non-critical */ }
   }, [centerId, dateFrom, dateTo]);
@@ -987,23 +987,13 @@ const StudyReporting = () => {
     const cq = centerId ? `&center_id=${centerId}` : '';
     const dq = `&from=${dateFrom}&to=${dateTo}`;
     try {
-      if (!status) {
-        const [s1, s2, s3] = await Promise.all([
-          fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_SCHEDULED&limit=100${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
-          fetch(`/api/rad-reporting/worklist?exam_workflow_status=EXAM_COMPLETED&limit=100${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
-          fetch(`/api/rad-reporting/worklist?exam_workflow_status=REPORT_COMPLETED&limit=100${cq}${dq}`, { headers: hdrs() }).then(r => r.json()),
-        ]);
-        const all = [
-          ...(s1.studies || []),
-          ...(s2.studies || []),
-          ...(s3.studies || []),
-        ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        setStudies(all);
-      } else {
-        const r = await fetch(`/api/rad-reporting/worklist?exam_workflow_status=${status}&limit=100${cq}${dq}`, { headers: hdrs() });
-        const d = await r.json();
-        if (d.success) setStudies(d.studies || []);
-      }
+      // Single request — backend handles status filter or returns all
+      const r = await fetch(
+        `/api/rad-reporting/worklist?limit=200${status ? `&exam_workflow_status=${status}` : ''}${cq}${dq}`,
+        { headers: hdrs() }
+      );
+      const d = await r.json();
+      if (d.success) setStudies(d.studies || []);
     } finally { setLoading(false); }
   }, [activeTab, centerId, dateFrom, dateTo]);
 
