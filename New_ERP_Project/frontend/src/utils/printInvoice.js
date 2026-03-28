@@ -25,8 +25,15 @@ const fmtDate = v => {
 
 const calcAge = dob => {
   if (!dob) return '—';
-  const y = new Date().getFullYear() - new Date(dob).getFullYear();
-  return `${y} yrs`;
+  const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return '—';
+  // Use UTC values to avoid timezone shift on date-only strings (e.g. "1990-03-15")
+  const by = birth.getUTCFullYear(), bm = birth.getUTCMonth(), bd = birth.getUTCDate();
+  const now = new Date();
+  const ny = now.getUTCFullYear(), nm = now.getUTCMonth(), nd = now.getUTCDate();
+  let age = ny - by;
+  if (nm < bm || (nm === bm && nd < bd)) age--; // birthday not yet this year
+  return `${age} yrs`;
 };
 
 const esc = s =>

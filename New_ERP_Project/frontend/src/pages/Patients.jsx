@@ -11,8 +11,14 @@ const api = (path, opts = {}) => fetch(path, {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const calcAge = dob => {
   if (!dob) return '—';
-  const y = new Date().getFullYear() - new Date(dob).getFullYear();
-  return `${y} yrs`;
+  const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return '—';
+  const by = birth.getUTCFullYear(), bm = birth.getUTCMonth(), bd = birth.getUTCDate();
+  const now = new Date();
+  const ny = now.getUTCFullYear(), nm = now.getUTCMonth(), nd = now.getUTCDate();
+  let age = ny - by;
+  if (nm < bm || (nm === bm && nd < bd)) age--;
+  return `${age} yrs`;
 };
 const fmt = n => `₹${parseFloat(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 const MODALITY_BG = { MRI: '#6d28d9', CT: '#0369a1', XRAY: '#0f766e', ULTRASOUND: '#b45309', MAMMOGRAPHY: '#be185d', PET: '#7c2d12' };
