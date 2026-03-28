@@ -49,12 +49,13 @@ if errorlevel 1 (
 
 echo.
 echo === [2/3] Building application (PyInstaller) ===
-REM --onedir    : extracts to install folder, not %%TEMP%% (avoids DLL hijack risk)
-REM --uac-admin : embeds UAC manifest — Windows will auto-prompt for elevation
+REM --onedir  : extracts to install folder, not %%TEMP%% (avoids DLL hijack risk)
+REM No --uac-admin: app must NOT require admin so Windows silent startup works.
+REM               Port 104 needs admin; default is 11112 (no admin needed).
+REM               The installer handles the one-time admin tasks (firewall, Program Files).
 %PY% -m PyInstaller ^
   --onedir ^
   --windowed ^
-  --uac-admin ^
   --name "ARIS_MWL_Server" ^
   --hidden-import "pystray._win32" ^
   --hidden-import "PIL._tkinter_finder" ^

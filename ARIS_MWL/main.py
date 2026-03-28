@@ -25,6 +25,7 @@ import pystray
 from PIL import Image, ImageDraw
 
 import config as cfg_module
+from config import DATA_DIR          # user-writable dir (%LOCALAPPDATA%\ARIS_MWL)
 import erp_client
 import dicom_server
 
@@ -32,7 +33,7 @@ import dicom_server
 logging.basicConfig(level=logging.INFO, format='%(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger('aris_mwl')
 
-_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'aris_mwl.log')
+_LOG_FILE = os.path.join(DATA_DIR, 'aris_mwl.log')   # writable without admin
 _file_handler = logging.handlers.RotatingFileHandler(
     _LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8')
 _file_handler.setFormatter(

@@ -12,14 +12,26 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'aris_mwl_config.json')
+# ── User-writable data directory ──────────────────────────────────────────────
+# Config and logs live in %LOCALAPPDATA%\ARIS_MWL  (no admin required).
+# Falls back to %APPDATA%, then home dir, then next to the exe as last resort.
+DATA_DIR = os.path.join(
+    os.environ.get('LOCALAPPDATA') or os.environ.get('APPDATA') or os.path.expanduser('~'),
+    'ARIS_MWL',
+)
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except OSError:
+    DATA_DIR = os.path.dirname(os.path.abspath(__file__))  # fallback: exe dir
+
+CONFIG_FILE = os.path.join(DATA_DIR, 'aris_mwl_config.json')
 
 DEFAULTS = {
     'erp_url':              '',
     'erp_token':            '',
     'erp_center_id':        '',
     'ae_title':             'ARIS_MWL',
-    'dicom_port':           104,
+    'dicom_port':           11112,  # non-privileged; no admin needed (change to 104 if scanners require it)
     'refresh_interval_min': 5,
     'days_ahead':           1,
     'include_completed':    False,
