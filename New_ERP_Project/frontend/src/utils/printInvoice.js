@@ -109,11 +109,11 @@ export const printInvoice = async (data, printWin = null) => {
     .hdr-center{flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:0 8px}
     .co-info{display:flex;flex-direction:column;gap:1px}
     .co-name{font-size:13px;font-weight:800;color:#1e293b;line-height:1.2}
-    .co-line{font-size:8.5px;color:#64748b;line-height:1.5}
-    .co-tax{font-size:8.5px;color:#475569;font-weight:600}
+    .co-line{font-size:8.5px;color:#1e293b;line-height:1.5}
+    .co-tax{font-size:8.5px;color:#1e293b;font-weight:700}
     .hdr-right{text-align:right;flex:1}
     .inv-title{font-size:18px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
-    .inv-meta{margin-top:4px;font-size:8.5px;line-height:1.8;color:#475569}
+    .inv-meta{margin-top:4px;font-size:8.5px;line-height:1.8;color:#1e293b}
     .inv-meta b{color:#1e293b}
     .badge{display:inline-block;padding:1px 6px;border-radius:20px;font-size:8px;font-weight:700}
     .badge-paid{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
@@ -127,8 +127,8 @@ export const printInvoice = async (data, printWin = null) => {
             padding:7px 10px;margin-bottom:9px;
             display:grid;grid-template-columns:repeat(2,1fr);gap:5px 14px}
     .pt-label{font-size:7.5px;text-transform:uppercase;font-weight:700;
-              color:#94a3b8;letter-spacing:.05em}
-    .pt-val{font-size:11px;font-weight:600;margin-top:1px;color:#1e293b}
+              color:#334155;letter-spacing:.05em}
+    .pt-val{font-size:11px;font-weight:700;margin-top:1px;color:#0f172a}
 
     /* ── Items table ── */
     table{width:100%;border-collapse:collapse;margin-bottom:9px}
@@ -137,39 +137,39 @@ export const printInvoice = async (data, printWin = null) => {
        color:#fff;text-transform:uppercase;letter-spacing:.04em}
     th.r,td.r{text-align:right}
     tbody tr:nth-child(even){background:#f0fdfa}
-    td{padding:5px 7px;border-bottom:1px solid #f1f5f9;font-size:10.5px;color:#334155}
+    td{padding:5px 7px;border-bottom:1px solid #e2e8f0;font-size:10.5px;color:#0f172a;font-weight:500}
 
     /* ── Totals ── */
     .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:9px}
     .totals{width:185px;border:1px solid #e2e8f0;border-radius:5px;overflow:hidden}
     .tot-row{display:flex;justify-content:space-between;padding:4px 9px;
-             font-size:10.5px;border-bottom:1px solid #f1f5f9;color:#475569}
-    .tot-disc{color:#16a34a}
+             font-size:10.5px;border-bottom:1px solid #e2e8f0;color:#1e293b;font-weight:600}
+    .tot-disc{color:#15803d}
     .grand{display:flex;justify-content:space-between;padding:6px 9px;
            background:${AC};color:#fff;font-size:12px;font-weight:800}
 
     /* ── Notes ── */
     .notes-box{background:#f0fdfa;border:1px solid #99f6e4;border-radius:4px;
-               padding:5px 9px;margin-bottom:8px;font-size:9.5px;color:#134e4a}
+               padding:5px 9px;margin-bottom:8px;font-size:9.5px;color:#0f172a}
 
     /* ── Terms ── */
-    .terms-box{padding-top:7px;border-top:1px dashed #e2e8f0;margin-bottom:8px}
-    .terms-hdr{font-size:8px;font-weight:700;color:#64748b;
+    .terms-box{padding-top:7px;border-top:1px dashed #cbd5e1;margin-bottom:8px}
+    .terms-hdr{font-size:8px;font-weight:700;color:#1e293b;
                text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
-    .t-line{display:flex;gap:4px;font-size:8px;color:#94a3b8;line-height:1.5;padding:1px 0}
-    .t-num{flex-shrink:0;color:#64748b;font-weight:700;min-width:12px}
+    .t-line{display:flex;gap:4px;font-size:8px;color:#334155;line-height:1.5;padding:1px 0}
+    .t-num{flex-shrink:0;color:#1e293b;font-weight:700;min-width:12px}
 
     /* ── Signature ── */
     .sig-row{display:flex;justify-content:flex-end;padding-top:10px;margin-top:auto}
     .sig-box{text-align:center;width:115px}
-    .sig-line{border-top:1px solid #334155;padding-top:4px;font-size:8.5px;color:#64748b}
+    .sig-line{border-top:1.5px solid #1e293b;padding-top:4px;font-size:8.5px;color:#1e293b;font-weight:600}
 
     /* ── Footer band ── */
     .ftr-band{flex-shrink:0;background:linear-gradient(135deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);
       border-top:2px solid #0f766e;padding:4px 8mm;display:flex;
       justify-content:space-between;align-items:center;
-      font-size:8px;color:rgba(255,255,255,0.9)}
-    .ftr-text{font-style:italic;color:rgba(255,255,255,0.75);flex:1;
+      font-size:8px;color:#fff;font-weight:600}
+    .ftr-text{font-style:italic;color:rgba(255,255,255,0.95);flex:1;
               text-align:center;padding:0 8px;overflow:hidden;
               white-space:nowrap;text-overflow:ellipsis}
 
