@@ -4,13 +4,15 @@ REM  ARIS MWL Server — Build script
 REM  Produces:  dist\ARIS_MWL_Server_Setup.exe  (Windows installer)
 REM
 REM  Requirements:
-REM    • Python 3.10  (recommended — use py -3.10)
+REM    • Python 3.12  →  https://python.org/downloads/
 REM    • Inno Setup 6  →  https://jrsoftware.org/isdl.php
 REM      (default install path: C:\Program Files (x86)\Inno Setup 6\)
 REM ─────────────────────────────────────────────────────────────────────────
 
-REM ── Select Python ─────────────────────────────────────────────────────────
+REM ── Select Python 3.12 (preferred) then fall back ─────────────────────────
 set PY=
+py -3.12 --version >nul 2>&1
+if %errorlevel%==0 ( set PY=py -3.12 & goto :found_py )
 python --version >nul 2>&1
 if %errorlevel%==0 ( set PY=python & goto :found_py )
 python3 --version >nul 2>&1

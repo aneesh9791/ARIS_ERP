@@ -177,7 +177,7 @@ class App(ctk.CTk):
         cols = ('Accession #', 'Patient Name', 'PID', 'DOB', 'Sex',
                 'Modality', 'Study / Procedure', 'Date', 'Time',
                 'Referring Doctor', 'Status')
-        widths = (120, 170, 100, 90, 40, 80, 200, 90, 65, 160, 105)
+        widths = (150, 220, 120, 100, 50, 90, 260, 100, 70, 190, 120)
 
         self._tree = ttk.Treeview(tbl_frame, columns=cols,
                                   show='headings', selectmode='browse')
@@ -452,8 +452,8 @@ class App(ctk.CTk):
             ok, msg = erp_client.test_connection(self.cfg)
             color = SUCCESS if ok else DANGER
             prefix = '✓  ' if ok else '✗  '
-            self.after(0, self._diag_lbl_erp.configure,
-                       {'text': prefix + msg, 'text_color': color})
+            self.after(0, lambda: self._diag_lbl_erp.configure(
+                text=prefix + msg, text_color=color))
             self._log(f'ERP test: {msg}')
         threading.Thread(target=_run, daemon=True).start()
 
@@ -465,8 +465,8 @@ class App(ctk.CTk):
             ok, msg, count = dicom_server.self_test(ae, port)
             color  = SUCCESS if ok else DANGER
             prefix = '✓  ' if ok else '✗  '
-            self.after(0, self._diag_lbl_self.configure,
-                       {'text': prefix + msg, 'text_color': color})
+            self.after(0, lambda: self._diag_lbl_self.configure(
+                text=prefix + msg, text_color=color))
             self._log(f'DICOM self-test: {msg}')
         threading.Thread(target=_run, daemon=True).start()
 
@@ -495,7 +495,7 @@ class App(ctk.CTk):
             ok, msg, ms = dicom_server.echo_modality(ip, port_int, remote_ae, local_ae)
             color  = SUCCESS if ok else DANGER
             prefix = '✓  ' if ok else '✗  '
-            self.after(0, lbl.configure, {'text': prefix + msg, 'text_color': color})
+            self.after(0, lambda: lbl.configure(text=prefix + msg, text_color=color))
             self._log(f'C-ECHO {remote_ae}@{ip}:{port} → {msg}')
             return ok, ms
 
@@ -599,11 +599,11 @@ class App(ctk.CTk):
         style = ttk.Style(self)
         style.theme_use('clam')
         style.configure('Treeview',
-                        rowheight=24, font=('Segoe UI', 10),
+                        rowheight=32, font=('Segoe UI', 12),
                         background='#1c1c1c', foreground='#ececec',
                         fieldbackground='#1c1c1c', borderwidth=0)
         style.configure('Treeview.Heading',
-                        font=('Segoe UI', 10, 'bold'),
+                        font=('Segoe UI', 12, 'bold'),
                         background='#2b2b2b', foreground='white')
         style.map('Treeview', background=[('selected', '#1a5276')])
 
@@ -681,8 +681,8 @@ class App(ctk.CTk):
         def _test():
             ok, msg = erp_client.test_connection(self.cfg)
             color   = SUCCESS if ok else DANGER
-            self.after(0, self._lbl_test.configure,
-                       {'text': ('✓  ' if ok else '✗  ') + msg, 'text_color': color})
+            text    = ('✓  ' if ok else '✗  ') + msg
+            self.after(0, lambda: self._lbl_test.configure(text=text, text_color=color))
 
         threading.Thread(target=_test, daemon=True).start()
 
