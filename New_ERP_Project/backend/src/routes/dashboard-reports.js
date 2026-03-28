@@ -1273,7 +1273,7 @@ router.get('/worklist', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        COALESCE(s.study_date::date, s.completion_date::date) AS study_date,
+        COALESCE(s.study_date::date, s.completion_date::date, s.created_at::date) AS study_date,
         p.name          AS patient_name,
         p.pid,
         p.date_of_birth,
@@ -1292,9 +1292,9 @@ router.get('/worklist', async (req, res) => {
       LEFT JOIN bill_items bi ON bi.id = s.bill_item_id
       LEFT JOIN patient_bills pb ON pb.id = bi.bill_id
       WHERE s.report_status = 'COMPLETED'
-        AND COALESCE(s.study_date::date, s.completion_date::date) BETWEEN $1 AND $2
+        AND COALESCE(s.study_date::date, s.completion_date::date, s.created_at::date) BETWEEN $1 AND $2
         AND ($3::int IS NULL OR s.center_id = $3::int)
-      ORDER BY COALESCE(s.study_date::date, s.completion_date::date) DESC, s.created_at DESC
+      ORDER BY COALESCE(s.study_date::date, s.completion_date::date, s.created_at::date) DESC, s.created_at DESC
     `, [from, to, center_id || null]);
 
     res.json({
