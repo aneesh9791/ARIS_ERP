@@ -154,6 +154,7 @@ const printInvoice = async (bill, items, printWin = null) => {
           ['Gender', bill.gender || '—'],
           ['Age', calcAge(bill.date_of_birth)],
           ['Payment Mode', bill.payment_mode || '—'],
+          ...(bill.referring_physician_name ? [['Ref. Physician', bill.referring_physician_name]] : []),
         ].map(([l, v]) => `<div><div class="pt-label">${esc(l)}</div><div class="pt-val">${esc(v || '—')}</div></div>`).join('')}
       </div>
       <table>
@@ -170,7 +171,7 @@ const printInvoice = async (bill, items, printWin = null) => {
           <div class="grand"><span>Total</span><span>${fmt(bill.total_amount)}</span></div>
         </div>
       </div>
-      ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${esc(bill.notes)}</div>` : ''}
+      ${bill.notes ? `<div class="notes-box"><b>Clinical Notes:</b> ${esc(bill.notes)}</div>` : ''}
       ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${esc(l.trim().replace(/^\d+[\.\)]\s*/,''))}</span></div>`).join('')}</div>` : ''}
       <div class="sig-row">
         <div style="flex:1"></div>

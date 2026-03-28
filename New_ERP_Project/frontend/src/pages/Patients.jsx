@@ -261,7 +261,15 @@ const PrintBill = ({ bill, patient, onClose }) => {
 
         <!-- Patient Details -->
         <div class="pt-box">
-          ${[['Patient', patient.name], ['PID', patient.pid || '—'], ['Phone', patient.phone || '—'], ['Gender', patient.gender || '—'], ['Age', calcAge(patient.date_of_birth)], ['Payment Mode', bill.payment_mode || '—']].map(([l, v]) => `<div><div class="pt-label">${esc(l)}</div><div class="pt-val">${esc(v)}</div></div>`).join('')}
+          ${[
+            ['Patient', patient.name],
+            ['PID', patient.pid || '—'],
+            ['Phone', patient.phone || '—'],
+            ['Gender', patient.gender || '—'],
+            ['Age', calcAge(patient.date_of_birth)],
+            ['Payment Mode', bill.payment_mode || '—'],
+            ...(bill.referring_physician_name ? [['Ref. Physician', bill.referring_physician_name]] : []),
+          ].map(([l, v]) => `<div><div class="pt-label">${esc(l)}</div><div class="pt-val">${esc(v)}</div></div>`).join('')}
         </div>
 
         <!-- Services Table -->
@@ -282,7 +290,7 @@ const PrintBill = ({ bill, patient, onClose }) => {
           </div>
         </div>
 
-        ${bill.notes ? `<div class="notes-box"><b>Notes:</b> ${esc(bill.notes)}</div>` : ''}
+        ${bill.notes ? `<div class="notes-box"><b>Clinical Notes:</b> ${esc(bill.notes)}</div>` : ''}
         ${termsText ? `<div class="terms-box"><div class="terms-hdr">Terms &amp; Conditions</div>${termsText.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>`<div class="t-line"><span class="t-num">${i+1}.</span><span>${esc(l.trim().replace(/^\d+[\.\)]\s*/,''))}</span></div>`).join('')}</div>` : ''}
 
         <div class="sig-row">
@@ -747,6 +755,10 @@ export default function Patients() {
           subtotal, discount_amount: discountAmt, gst_amount: gstAmt, total_amount: total,
           payment_mode: payMode, payment_status: payStatus,
           payment_reference: payRef.trim() || null,
+          notes: notes.trim() || null,
+          referring_physician_name: refPhysician
+            ? (physicians.find(p => p.physician_code === refPhysician)?.physician_name || refPhysician)
+            : null,
         });
         setCart([]); setNotes(''); setRefPhysician('');  // clear for next bill
       } else {

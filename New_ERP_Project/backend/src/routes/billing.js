@@ -32,6 +32,7 @@ router.post('/patient-bill', authorizePermission('BILLING_WRITE'), [
   body('payment_details').optional(),
   body('payment_reference').optional({ nullable: true, checkFalsy: true }).trim().isLength({ max: 100 }),
   body('notes').optional({ nullable: true, checkFalsy: true }).trim().isLength({ max: 500 }),
+  body('referring_physician_code').optional({ nullable: true, checkFalsy: true }).trim(),
   body('payment_status').optional().isIn(['BILLED', 'PAID', 'CANCELLED', 'REFUNDED']),
   body('study_id').optional().isInt()
 ], async (req, res) => {
@@ -53,6 +54,7 @@ router.post('/patient-bill', authorizePermission('BILLING_WRITE'), [
       payment_details,
       payment_reference,
       notes,
+      referring_physician_code,
       payment_status = 'BILLED',
       study_id,
       addon_contrast_lines = [],   // [{ id, name, price, qty }]
@@ -167,7 +169,7 @@ router.post('/patient-bill', authorizePermission('BILLING_WRITE'), [
           taxable_amount, cgst_rate, cgst_amount, sgst_rate, sgst_amount,
           igst_rate, igst_amount, total_gst, total_amount,
           payment_mode, payment_status, gst_applicable,
-          payment_details, payment_reference, notes,
+          payment_details, payment_reference, notes, referring_physician_code,
           accession_number, accession_generated, accession_generated_at,
           api_sent, api_success, api_retry_count, active
         ) VALUES (
@@ -176,8 +178,8 @@ router.post('/patient-bill', authorizePermission('BILLING_WRITE'), [
           $8, $9, $10, $11, $12,
           0, 0, $13, $14,
           $15, $16, $17,
-          $18, $19, $20,
-          $21, $22, $23,
+          $18, $19, $20, $21,
+          $22, $23, $24,
           false, false, 0, true
         ) RETURNING *
       `;
@@ -191,7 +193,7 @@ router.post('/patient-bill', authorizePermission('BILLING_WRITE'), [
         total_gst_val, final_total,
         payment_mode, payment_status, gst_applicable,
         payment_details ? JSON.stringify(payment_details) : null,
-        payment_reference || null, notes || null,
+        payment_reference || null, notes || null, referring_physician_code || null,
         accessionNumber, accessionGenerated,
         accessionGenerated ? new Date() : null,
       ];
@@ -1028,12 +1030,15 @@ router.get('/:id/items', async (req, res) => {
       `SELECT bi.*, pb.invoice_number, pb.patient_id, pb.payment_status, pb.payment_mode,
               pb.payment_reference, pb.subtotal, pb.discount_amount, pb.total_gst,
               pb.total_amount, pb.bill_date, pb.notes, pb.accession_number,
+              pb.referring_physician_code,
+              CONCAT(rpm.first_name, ' ', rpm.last_name) AS referring_physician_name,
               p.name as patient_name, p.pid, p.phone, p.gender, p.date_of_birth,
               c.name as center_name
        FROM bill_items bi
        JOIN patient_bills pb ON pb.id = bi.bill_id
        JOIN patients p ON p.id = pb.patient_id
        LEFT JOIN centers c ON c.id = pb.center_id
+       LEFT JOIN referring_physician_master rpm ON rpm.physician_code = pb.referring_physician_code
        WHERE bi.bill_id = $1 AND bi.active = true`,
       [id]
     );
