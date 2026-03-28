@@ -453,7 +453,7 @@ export default function Patients() {
   const [contrastSelected, setContrastSelected] = useState(''); // id string in dropdown
   const [contrastLines, setContrastLines]       = useState([]); // added lines: [{ id, name, price, qty }]
   const [dicomItem, setDicomItem]               = useState(null);
-  const [dicomChecked, setDicomChecked]         = useState(true);
+  const [dicomChecked, setDicomChecked]         = useState(false);
 
   useEffect(() => {
     if (!isCorp) return;

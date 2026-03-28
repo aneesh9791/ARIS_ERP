@@ -111,7 +111,7 @@ export const printInvoice = async (data, printWin = null) => {
     .co-name{font-size:13px;font-weight:800;color:#1e293b;line-height:1.2}
     .co-line{font-size:8.5px;color:#64748b;line-height:1.5}
     .co-tax{font-size:8.5px;color:#475569;font-weight:600}
-    .hdr-right{text-align:right;flex-shrink:0}
+    .hdr-right{text-align:right;flex:1}
     .inv-title{font-size:18px;font-weight:900;color:${AC};letter-spacing:-1px;line-height:1}
     .inv-meta{margin-top:4px;font-size:8.5px;line-height:1.8;color:#475569}
     .inv-meta b{color:#1e293b}
